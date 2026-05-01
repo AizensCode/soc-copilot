@@ -1,0 +1,25 @@
+{
+  "alert_id": "ALRT-2026-0419-002",
+  "timestamp": "2026-04-19T09:42:11Z",
+  "source": "edr",
+  "severity": "high",
+  "title": "Suspicious executable dropped from email attachment",
+  "raw_log": {
+    "event_type": "file_execution",
+    "host": "finance-ws-14.corp.internal",
+    "user": "m.dubois",
+    "process_path": "C:\\Users\\m.dubois\\AppData\\Local\\Temp\\Outlook\\invoice_Q2_2026.exe",
+    "parent_process": "OUTLOOK.EXE",
+    "command_line": "invoice_Q2_2026.exe",
+    "file_sha256": "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+    "email_sender": "accounting@suppliersi-nvoices.com",
+    "email_subject": "URGENT: Outstanding Invoice Q2 2026 - Payment Overdue",
+    "email_received": "2026-04-19T09:38:47Z"
+  },
+  "indicators": {
+    "ips": [],
+    "hashes": ["275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f"],
+    "users": ["m.dubois"],
+    "domains": ["suppliersi-nvoices.com"]
+  }
+}

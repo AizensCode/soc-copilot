@@ -1,0 +1,19 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Conventionally files to ignore, .env file, logs, caches and any sample alerts related to real life scenarios.
+.env
+*.log
+__pycache__/
+.pytest_cache/
+data/sample_alerts/*.real.jsonlast_run_debug.json
+last_agentic_final_turn.txt
+last_run_debug.json

@@ -1,0 +1,248 @@
+{
+  "alert": {
+    "alert_id": "ALRT-2026-0419-002",
+    "timestamp": "2026-04-19T09:42:11Z",
+    "source": "edr",
+    "severity": "high",
+    "title": "Suspicious executable dropped from email attachment",
+    "raw_log": {
+      "event_type": "file_execution",
+      "host": "finance-ws-14.corp.internal",
+      "user": "m.dubois",
+      "process_path": "C:\\Users\\m.dubois\\AppData\\Local\\Temp\\Outlook\\invoice_Q2_2026.exe",
+      "parent_process": "OUTLOOK.EXE",
+      "command_line": "invoice_Q2_2026.exe",
+      "file_sha256": "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+      "email_sender": "accounting@suppliersi-nvoices.com",
+      "email_subject": "URGENT: Outstanding Invoice Q2 2026 - Payment Overdue",
+      "email_received": "2026-04-19T09:38:47Z"
+    },
+    "indicators": {
+      "ips": [],
+      "hashes": [
+        "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f"
+      ],
+      "users": [
+        "m.dubois"
+      ],
+      "domains": [
+        "suppliersi-nvoices.com"
+      ]
+    }
+  },
+  "evidence_raw": [
+    {
+      "source_tool": "check_file_hash",
+      "claim": "Hash 275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f flagged malicious by 67/76 engines; file type: Powershell; common names: ['eicar.com-17281', 'eicar.com-12958', 'eicar.com-8535']",
+      "raw_data": {
+        "found": true,
+        "hash": "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+        "malicious_count": 67,
+        "suspicious_count": 0,
+        "undetected_count": 2,
+        "total_engines": 76,
+        "file_type": "Powershell",
+        "file_size": 68,
+        "first_seen": 1148301722,
+        "last_seen": 1776729163,
+        "common_names": [
+          "eicar.com-17281",
+          "eicar.com-12958",
+          "eicar.com-8535",
+          "eicar.com.txt",
+          "eicar.com-3740",
+          "EICAR Standard Anti-Virus Test File.exe.txt",
+          "eicar.com-47744",
+          "EICAR.COM",
+          "eicar.com-43475",
+          "eicar.com-38994"
+        ],
+        "reputation": 3733,
+        "detections": [
+          {
+            "engine": "Bkav",
+            "result": "W32.EicarTest.Trojan"
+          },
+          {
+            "engine": "Lionic",
+            "result": "Test.File.EICAR.y"
+          },
+          {
+            "engine": "Elastic",
+            "result": "eicar"
+          },
+          {
+            "engine": "MicroWorld-eScan",
+            "result": "EICAR-Test-File"
+          },
+          {
+            "engine": "ClamAV",
+            "result": "Eicar-Test-Signature"
+          },
+          {
+            "engine": "CMC",
+            "result": "Eicar.test.file"
+          },
+          {
+            "engine": "CAT-QuickHeal",
+            "result": "EICAR.TestFile"
+          },
+          {
+            "engine": "Skyhigh",
+            "result": "EICAR test file"
+          },
+          {
+            "engine": "ALYac",
+            "result": "Misc.Eicar-Test-File"
+          },
+          {
+            "engine": "Malwarebytes",
+            "result": "EICAR-AV-Test"
+          },
+          {
+            "engine": "Zillya",
+            "result": "EICAR.TestFile"
+          },
+          {
+            "engine": "Sangfor",
+            "result": "EICAR-Test-File (not a virus)"
+          },
+          {
+            "engine": "K7AntiVirus",
+            "result": "EICAR_Test_File"
+          },
+          {
+            "engine": "BitDefender",
+            "result": "EICAR-Test-File (not a virus)"
+          },
+          {
+            "engine": "K7GW",
+            "result": "EICAR_Test_File"
+          }
+        ]
+      },
+      "confidence": "high"
+    }
+  ],
+  "investigation": {
+    "alert_id": "ALRT-2026-0419-002",
+    "verdict": "false_positive",
+    "confidence": "high",
+    "hypothesis": "The alert was triggered by execution of the EICAR standard antivirus test file, which is a benign test artifact, not a genuine malware infection. The file was likely extracted from an email attachment by Outlook, but the hash matches a well-known test file used for AV signature validation across the security industry.",
+    "attack_techniques": [],
+    "evidence": [
+      {
+        "source_tool": "check_file_hash",
+        "claim": "Hash 275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f flagged malicious by 67/76 engines; file type: Powershell; common names: ['eicar.com-17281', 'eicar.com-12958', 'eicar.com-8535']",
+        "raw_data": {
+          "found": true,
+          "hash": "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+          "malicious_count": 67,
+          "suspicious_count": 0,
+          "undetected_count": 2,
+          "total_engines": 76,
+          "file_type": "Powershell",
+          "file_size": 68,
+          "first_seen": 1148301722,
+          "last_seen": 1776729163,
+          "common_names": [
+            "eicar.com-17281",
+            "eicar.com-12958",
+            "eicar.com-8535",
+            "eicar.com.txt",
+            "eicar.com-3740",
+            "EICAR Standard Anti-Virus Test File.exe.txt",
+            "eicar.com-47744",
+            "EICAR.COM",
+            "eicar.com-43475",
+            "eicar.com-38994"
+          ],
+          "reputation": 3733,
+          "detections": [
+            {
+              "engine": "Bkav",
+              "result": "W32.EicarTest.Trojan"
+            },
+            {
+              "engine": "Lionic",
+              "result": "Test.File.EICAR.y"
+            },
+            {
+              "engine": "Elastic",
+              "result": "eicar"
+            },
+            {
+              "engine": "MicroWorld-eScan",
+              "result": "EICAR-Test-File"
+            },
+            {
+              "engine": "ClamAV",
+              "result": "Eicar-Test-Signature"
+            },
+            {
+              "engine": "CMC",
+              "result": "Eicar.test.file"
+            },
+            {
+              "engine": "CAT-QuickHeal",
+              "result": "EICAR.TestFile"
+            },
+            {
+              "engine": "Skyhigh",
+              "result": "EICAR test file"
+            },
+            {
+              "engine": "ALYac",
+              "result": "Misc.Eicar-Test-File"
+            },
+            {
+              "engine": "Malwarebytes",
+              "result": "EICAR-AV-Test"
+            },
+            {
+              "engine": "Zillya",
+              "result": "EICAR.TestFile"
+            },
+            {
+              "engine": "Sangfor",
+              "result": "EICAR-Test-File (not a virus)"
+            },
+            {
+              "engine": "K7AntiVirus",
+              "result": "EICAR_Test_File"
+            },
+            {
+              "engine": "BitDefender",
+              "result": "EICAR-Test-File (not a virus)"
+            },
+            {
+              "engine": "K7GW",
+              "result": "EICAR_Test_File"
+            }
+          ]
+        },
+        "confidence": "high"
+      }
+    ],
+    "suggested_pivots": [
+      {
+        "action": "Verify m.dubois received a legitimate test email or internal security assessment",
+        "rationale": "EICAR files are intentionally distributed for AV testing. Confirm whether this was a phishing simulation, internal security test, or misdirected email from a vendor.",
+        "priority": "medium"
+      },
+      {
+        "action": "Check email gateway logs for sender domain 'suppliersi-nvoices.com' reputation",
+        "rationale": "The domain name closely mirrors 'suppliers-invoices' with a suspicious hyphenation pattern. While the file itself is benign, the sender domain warrants validation to rule out phishing or domain spoofing.",
+        "priority": "medium"
+      },
+      {
+        "action": "Review Outlook attachment handling and sandboxing configuration",
+        "rationale": "If EICAR test files are reaching end users' inboxes and being executed, sandboxing or attachment filtering may need review.",
+        "priority": "low"
+      }
+    ],
+    "escalation_recommended": false,
+    "escalation_draft": null,
+    "reasoning_transcript": "Alert indicates suspicious executable dropped from email and executed by m.dubois. Initial appearance: high-severity malware execution. Evidence review: The file hash 275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f is detected by 67/76 antivirus engines. However, all detection names are variants of 'EICAR' \u2014 the standard EICAR test file used globally by antivirus vendors to validate signature detection. Common names include 'eicar.com', 'EICAR Standard Anti-Virus Test File', and engine detections all reference 'EICAR test file' or 'eicar' signatures. File size is 68 bytes, consistent with the published EICAR test file (typically 68 bytes). File type is listed as Powershell but appears misclassified; EICAR is typically a text-based test string. First-seen timestamp of 1148301722 corresponds to 2006, and last-seen 1776729163 corresponds to 2026 \u2014 consistent with a file in circulation for 20 years as an industry standard. No attack techniques apply: EICAR is not malware and exploits no vulnerabilities. Verdict: False positive. The execution was flagged because AV signatures correctly identified EICAR, but EICAR is a benign test artifact, not a real threat. Confidence is high because the hash, detection patterns, and metadata all definitively match the known EICAR test file. No escalation needed. Recommended pivots focus on confirming the source of the test file and validating the sender domain, which shows suspicious characteristics but is orthogonal to the malware determination."
+  }
+}

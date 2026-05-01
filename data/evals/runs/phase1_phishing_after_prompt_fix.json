@@ -1,0 +1,262 @@
+{
+  "alert": {
+    "alert_id": "ALRT-2026-0419-002",
+    "timestamp": "2026-04-19T09:42:11Z",
+    "source": "edr",
+    "severity": "high",
+    "title": "Suspicious executable dropped from email attachment",
+    "raw_log": {
+      "event_type": "file_execution",
+      "host": "finance-ws-14.corp.internal",
+      "user": "m.dubois",
+      "process_path": "C:\\Users\\m.dubois\\AppData\\Local\\Temp\\Outlook\\invoice_Q2_2026.exe",
+      "parent_process": "OUTLOOK.EXE",
+      "command_line": "invoice_Q2_2026.exe",
+      "file_sha256": "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+      "email_sender": "accounting@suppliersi-nvoices.com",
+      "email_subject": "URGENT: Outstanding Invoice Q2 2026 - Payment Overdue",
+      "email_received": "2026-04-19T09:38:47Z"
+    },
+    "indicators": {
+      "ips": [],
+      "hashes": [
+        "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f"
+      ],
+      "users": [
+        "m.dubois"
+      ],
+      "domains": [
+        "suppliersi-nvoices.com"
+      ]
+    }
+  },
+  "evidence_raw": [
+    {
+      "source_tool": "check_file_hash",
+      "claim": "Hash 275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f flagged malicious by 67/76 engines; file type: Powershell; common names: ['prueba_virus.txt..txt', 'eicar.com-14541', 'malwareAERKFJHD.txt']",
+      "raw_data": {
+        "found": true,
+        "hash": "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+        "malicious_count": 67,
+        "suspicious_count": 0,
+        "undetected_count": 2,
+        "total_engines": 76,
+        "file_type": "Powershell",
+        "file_size": 68,
+        "first_seen": 1148301722,
+        "last_seen": 1776898644,
+        "common_names": [
+          "prueba_virus.txt..txt",
+          "eicar.com-14541",
+          "malwareAERKFJHD.txt",
+          "EICARAntivirusTestFile.com",
+          "eicar.com-10187",
+          "eicar.com.txt",
+          "eicar.com",
+          "EICAR.COM",
+          "eicar.com-5297",
+          "eicar.com-640"
+        ],
+        "reputation": 3733,
+        "detections": [
+          {
+            "engine": "Bkav",
+            "result": "W32.EicarTest.Trojan"
+          },
+          {
+            "engine": "Lionic",
+            "result": "Test.File.EICAR.y"
+          },
+          {
+            "engine": "Elastic",
+            "result": "eicar"
+          },
+          {
+            "engine": "MicroWorld-eScan",
+            "result": "EICAR-Test-File"
+          },
+          {
+            "engine": "ClamAV",
+            "result": "Eicar-Test-Signature"
+          },
+          {
+            "engine": "CTX",
+            "result": "txt.virus.eicar"
+          },
+          {
+            "engine": "CAT-QuickHeal",
+            "result": "EICAR.TestFile"
+          },
+          {
+            "engine": "Skyhigh",
+            "result": "EICAR test file"
+          },
+          {
+            "engine": "ALYac",
+            "result": "Misc.Eicar-Test-File"
+          },
+          {
+            "engine": "Malwarebytes",
+            "result": "EICAR-AV-Test"
+          },
+          {
+            "engine": "VIPRE",
+            "result": "EICAR-Test-File (not a virus)"
+          },
+          {
+            "engine": "Sangfor",
+            "result": "EICAR-Test-File (not a virus)"
+          },
+          {
+            "engine": "K7AntiVirus",
+            "result": "EICAR_Test_File"
+          },
+          {
+            "engine": "BitDefender",
+            "result": "EICAR-Test-File (not a virus)"
+          },
+          {
+            "engine": "K7GW",
+            "result": "EICAR_Test_File"
+          }
+        ]
+      },
+      "confidence": "high"
+    }
+  ],
+  "investigation": {
+    "alert_id": "ALRT-2026-0419-002",
+    "verdict": "true_positive",
+    "confidence": "high",
+    "hypothesis": "This alert represents a real attack delivery event masquerading as an invoice notification. The payload is the EICAR test file (a known-safe security testing artifact), but the delivery mechanism\u2014a typosquatted sender domain, urgency-driven subject line, and direct executable execution from Outlook temp\u2014exhibits legitimate phishing and malware-delivery TTPs. The attacker's technique is confirmed even though the specific payload is benign.",
+    "attack_techniques": [
+      "T1566.001 (Phishing: Spearphishing Attachment)",
+      "T1204.002 (User Execution: Malicious File)",
+      "T1036.005 (Masquerading: Match Legitimate Name or Location)"
+    ],
+    "evidence": [
+      {
+        "source_tool": "check_file_hash",
+        "claim": "Hash 275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f flagged malicious by 67/76 engines; file type: Powershell; common names: ['prueba_virus.txt..txt', 'eicar.com-14541', 'malwareAERKFJHD.txt']",
+        "raw_data": {
+          "found": true,
+          "hash": "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+          "malicious_count": 67,
+          "suspicious_count": 0,
+          "undetected_count": 2,
+          "total_engines": 76,
+          "file_type": "Powershell",
+          "file_size": 68,
+          "first_seen": 1148301722,
+          "last_seen": 1776898644,
+          "common_names": [
+            "prueba_virus.txt..txt",
+            "eicar.com-14541",
+            "malwareAERKFJHD.txt",
+            "EICARAntivirusTestFile.com",
+            "eicar.com-10187",
+            "eicar.com.txt",
+            "eicar.com",
+            "EICAR.COM",
+            "eicar.com-5297",
+            "eicar.com-640"
+          ],
+          "reputation": 3733,
+          "detections": [
+            {
+              "engine": "Bkav",
+              "result": "W32.EicarTest.Trojan"
+            },
+            {
+              "engine": "Lionic",
+              "result": "Test.File.EICAR.y"
+            },
+            {
+              "engine": "Elastic",
+              "result": "eicar"
+            },
+            {
+              "engine": "MicroWorld-eScan",
+              "result": "EICAR-Test-File"
+            },
+            {
+              "engine": "ClamAV",
+              "result": "Eicar-Test-Signature"
+            },
+            {
+              "engine": "CTX",
+              "result": "txt.virus.eicar"
+            },
+            {
+              "engine": "CAT-QuickHeal",
+              "result": "EICAR.TestFile"
+            },
+            {
+              "engine": "Skyhigh",
+              "result": "EICAR test file"
+            },
+            {
+              "engine": "ALYac",
+              "result": "Misc.Eicar-Test-File"
+            },
+            {
+              "engine": "Malwarebytes",
+              "result": "EICAR-AV-Test"
+            },
+            {
+              "engine": "VIPRE",
+              "result": "EICAR-Test-File (not a virus)"
+            },
+            {
+              "engine": "Sangfor",
+              "result": "EICAR-Test-File (not a virus)"
+            },
+            {
+              "engine": "K7AntiVirus",
+              "result": "EICAR_Test_File"
+            },
+            {
+              "engine": "BitDefender",
+              "result": "EICAR-Test-File (not a virus)"
+            },
+            {
+              "engine": "K7GW",
+              "result": "EICAR_Test_File"
+            }
+          ]
+        },
+        "confidence": "high"
+      }
+    ],
+    "suggested_pivots": [
+      {
+        "action": "Validate sender domain 'suppliersi-nvoices.com' against known supplier/vendor list and check WHOIS registration details, creation date, and registrant information.",
+        "rationale": "The domain name closely resembles 'suppliers-invoices.com' (typosquatting pattern). This is a strong indicator of attacker infrastructure rather than legitimate supplier communication.",
+        "priority": "high"
+      },
+      {
+        "action": "Search for other emails from 'accounting@suppliersi-nvoices.com' or the domain across all mailboxes in the past 30 days; also check for similar typosquatted domains in email logs.",
+        "rationale": "Phishing campaigns often target multiple users or departments. Identifying scope will inform containment and awareness efforts.",
+        "priority": "high"
+      },
+      {
+        "action": "Confirm whether m.dubois or the security team has initiated a red team exercise, phishing simulation, or penetration test that would explain this benign-payload delivery.",
+        "rationale": "EICAR test files are legitimately used for AV testing; however, the delivery context (spoofed invoice, from external domain) is inconsistent with typical internal testing workflows.",
+        "priority": "medium"
+      },
+      {
+        "action": "Check for PowerShell execution or cmd.exe child processes spawned from the Outlook temp directory in the 60 seconds following the file execution event.",
+        "rationale": "While the EICAR file itself is benign, an attacker using this as a delivery payload would typically have a follow-on execution chain. Absence of child processes suggests the attacker's command failed or was not yet deployed.",
+        "priority": "medium"
+      },
+      {
+        "action": "Review m.dubois's email history for similar 'invoice' or 'payment overdue' messages from other external senders in the past 90 days.",
+        "rationale": "If this user is frequently targeted by invoice-themed phishing, they may be a higher-risk recipient and warrant security awareness retraining.",
+        "priority": "low"
+      }
+    ],
+    "escalation_recommended": true,
+    "escalation_draft": "ALRT-2026-0419-002 \u2013 Phishing Delivery with Benign Test Payload. A user (m.dubois) on finance-ws-14 executed an executable from an Outlook email sent by 'accounting@suppliersi-nvoices.com' with subject 'URGENT: Outstanding Invoice Q2 2026 - Payment Overdue' at 2026-04-19T09:38:47Z. The file hash (275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f) is the well-known EICAR antivirus test file, confirming the payload itself is benign. However, the delivery demonstrates successful phishing TTPs: (1) domain typosquatting (suppliersi-nvoices.com vs. legitimate supplier domains), (2) urgency-driven social engineering (overdue payment), and (3) direct executable execution from email attachment via Outlook. This indicates attacker capability and user susceptibility. Recommend: (a) validate sender domain ownership and registration; (b) hunt for other emails from this sender/domain; (c) confirm whether this is a sanctioned red team test; (d) inspect for follow-on execution chains; and (e) flag m.dubois for security awareness training if this is an actual attack. The benign payload does not diminish the security posture risk\u2014the attack vector was successfully executed.",
+    "reasoning_transcript": "Alert shows executable file (invoice_Q2_2026.exe) dropped from email attachment (accounting@suppliersi-nvoices.com) and executed by user m.dubois via Outlook. The sender domain 'suppliersi-nvoices.com' is a typosquatted variant (likely intended to resemble a legitimate supplier). Subject line uses urgency ('URGENT: Outstanding Invoice Q2 2026 - Payment Overdue'), a common phishing social-engineering tactic. File hash lookup reveals the payload is the EICAR test file\u2014a 68-byte Powershell file flagged by 67/76 antivirus engines as EICAR-Test-File. EICAR is a standardized, benign file used for AV signature testing, not actual malware. However, per the operating principles: (1) the ATTACK BEHAVIOR (phishing email with typosquatted domain, urgency social engineering, attachment execution from Outlook) maps clearly to MITRE techniques T1566.001 (Spearphishing Attachment), T1204.002 (User Execution), and T1036.005 (Masquerading via domain spoofing); (2) the benign payload does NOT negate that an attacker successfully delivered and executed code through a legitimate user action; (3) this is a true-positive security event because the delivery channel and execution chain exhibit adversarial behavior. Verdict: true_positive (high confidence). The attack was real; the payload outcome was that a test file was executed, but the attacker's technique succeeded. Escalation is warranted to security awareness and threat hunt teams to validate the sender domain, check for campaign scope, and confirm whether this is a sanctioned test or a genuine phishing attack."
+  }
+}

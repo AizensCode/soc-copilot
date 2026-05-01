@@ -1,0 +1,24 @@
+{
+  "alert_id": "ALRT-2026-0419-001",
+  "timestamp": "2026-04-19T03:14:22Z",
+  "source": "siem",
+  "severity": "high",
+  "title": "Multiple failed SSH authentications from single source",
+  "raw_log": {
+    "event_type": "auth_failure",
+    "service": "sshd",
+    "host": "prod-web-02.internal",
+    "failed_attempts": 847,
+    "time_window_seconds": 180,
+    "usernames_tried": ["root", "admin", "ubuntu", "oracle", "postgres", "git"],
+    "source_ip": "185.220.101.47",
+    "destination_port": 22,
+    "first_seen": "2026-04-19T03:11:22Z",
+    "last_seen": "2026-04-19T03:14:22Z"
+  },
+  "indicators": {
+    "ips": ["185.220.101.47"],
+    "hashes": [],
+    "users": ["root", "admin", "ubuntu"]
+  }
+}
