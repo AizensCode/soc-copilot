@@ -186,9 +186,9 @@ uv run pytest tests/test_investigations.py -v
 
 API keys:
 
-- Anthropic: console.anthropic.com (≈$0.05 per investigation on Sonnet)
-- AbuseIPDB: abuseipdb.com (free tier, 1000 req/day)
-- VirusTotal: virustotal.com (free tier, 4 req/min, 500/day)
+- Anthropic: [console.anthropic.com](https://console.anthropic.com) (≈$0.05 per investigation on Sonnet)
+- AbuseIPDB: [abuseipdb.com](https://www.abuseipdb.com) (free tier, 1000 req/day)
+- VirusTotal: [virustotal.com](https://www.virustotal.com) (free tier, 4 req/min, 500/day)
 
 ## Roadmap
 
