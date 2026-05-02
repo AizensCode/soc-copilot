@@ -12,8 +12,7 @@ wheels/
 # Conventionally files to ignore, .env file, logs, caches and any sample alerts related to real life scenarios.
 .env
 *.log
-__pycache__/
 .pytest_cache/
-data/sample_alerts/*.real.jsonlast_run_debug.json
+data/sample_alerts/*.real.json
 last_agentic_final_turn.txt
 last_run_debug.json
