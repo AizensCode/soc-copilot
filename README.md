@@ -45,38 +45,40 @@ The agent gathered this by calling AbuseIPDB, reading 90+ historical abuse repor
 
 ## Architecture
 
-```text
-Alert JSON (SIEM/EDR)
-        │
-        ▼
-┌─────────────────────────────────────┐
-│  SOC Copilot                        │
-│                                     │
-│  Phase 1: Fixed pipeline            │
-│  Python routes IOCs to tools        │
-│  deterministically                  │
-│                                     │
-│  Phase 2: Agentic loop              │
-│  LLM decides which tools to call    │
-│  iteratively                        │
-│                                     │
-│         ▼                           │
-│  Tool Registry                      │
-│  • AbuseIPDB (IPs)                  │
-│  • VirusTotal (hashes)              │
-│                                     │
-│         ▼                           │
-│  Claude (Sonnet 4.6)                │
-│  + system prompt with grounding,    │
-│    MITRE accuracy, behavior/payload │
-│                                     │
-│         ▼                           │
-│  Pydantic validation                │
-│  Schema-checked output              │
-└─────────────────────────────────────┘
-        │
-        ▼
-Investigation JSON
+```mermaid
+flowchart TD
+    Alert["Alert JSON<br/>(SIEM/EDR)"] --> Copilot
+
+    subgraph Copilot["SOC Copilot"]
+        direction TB
+        Phase1["<b>Phase 1: Fixed pipeline</b><br/>Python routes IOCs to tools<br/>deterministically"]
+        Phase2["<b>Phase 2: Agentic loop</b><br/>LLM decides which tools to call<br/>iteratively"]
+
+        Registry["<b>Tool Registry</b><br/>• AbuseIPDB (IPs)<br/>• VirusTotal (hashes)"]
+
+        LLM["<b>Claude Sonnet 4.6</b><br/>system prompt with grounding,<br/>MITRE accuracy, behavior/payload"]
+
+        Validation["<b>Pydantic validation</b><br/>schema-checked output"]
+
+        Phase1 --> Registry
+        Phase2 --> Registry
+        Registry --> LLM
+        LLM --> Validation
+    end
+
+    Copilot --> Output["Investigation JSON"]
+
+    classDef alert fill:#1f2937,stroke:#3b82f6,color:#e5e7eb
+    classDef phase fill:#1e3a8a,stroke:#60a5fa,color:#e5e7eb
+    classDef tool fill:#065f46,stroke:#10b981,color:#e5e7eb
+    classDef llm fill:#581c87,stroke:#a855f7,color:#e5e7eb
+    classDef output fill:#1f2937,stroke:#3b82f6,color:#e5e7eb
+
+    class Alert,Output alert
+    class Phase1,Phase2 phase
+    class Registry tool
+    class LLM llm
+    class Validation output
 ```
 
 Both modes produce the same `Investigation` schema. Run either through the same eval harness.
