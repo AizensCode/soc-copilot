@@ -54,7 +54,7 @@ flowchart TD
         Phase1["<b>Phase 1: Fixed pipeline</b><br/>Python routes IOCs to tools<br/>deterministically"]
         Phase2["<b>Phase 2: Agentic loop</b><br/>LLM decides which tools to call<br/>iteratively"]
 
-        Registry["<b>Tool Registry</b><br/>• AbuseIPDB (IPs)<br/>• VirusTotal (hashes)"]
+        Registry["<b>Tool Registry</b><br/>• AbuseIPDB (IPs)<br/>• VirusTotal (hashes)<br/>• URLScan (domains)"]
 
         LLM["<b>Claude Sonnet 4.6</b><br/>system prompt with grounding,<br/>MITRE accuracy, behavior/payload"]
 
@@ -87,7 +87,7 @@ Both modes produce the same `Investigation` schema. Run either through the same 
 
 **Phase 1 — fixed enrichment pipeline.** Python code looks at the alert indicators, routes IPs to AbuseIPDB and hashes to VirusTotal, hands the collected evidence to Claude, gets a structured investigation back. One LLM call per alert. Cheap, predictable, easy to debug.
 
-**Phase 2 — agentic loop.** No routing in the Python layer. The model sees the alert, decides which tools (if any) to call, observes the results, decides whether to call more tools, and eventually emits the final investigation. Multiple LLM calls per alert. More flexible, handles novel indicator combinations the Python layer doesn't know about.
+**Phase 2 — agentic loop.** No routing in the Python layer. The model sees the alert, decides which tools (currently AbuseIPDB for IPs, VirusTotal for hashes, URLScan for domains) to call, observes the results, decides whether to call more tools, and eventually emits the final investigation. Multiple LLM calls per alert. More flexible, handles novel indicator combinations the Python layer doesn't know about.
 
 Both exist because they're useful for different reasons. Phase 1 is the production-safe baseline — when you know the alert shape, fixed routing is faster and cheaper. Phase 2 is where the agent earns its keep — alerts with mixed indicators, ambiguous cases, novel TTPs. The eval harness runs both modes against the same expectations so you can A/B compare.
 
@@ -154,7 +154,8 @@ soc-copilot/
 │       ├── base.py         # Tool ABC, ToolResult model
 │       ├── registry.py     # Tool registration + dispatch
 │       ├── abuseipdb.py    # IP reputation
-│       └── virustotal.py   # File hash reputation
+│       ├── virustotal.py   # File hash reputation
+│       └── urlscan.py      # Domain reputation
 ├── tests/
 │   ├── test_investigations.py  # The eval harness
 │   └── expectations.py     # Per-alert correctness criteria
@@ -191,6 +192,7 @@ API keys:
 - Anthropic: [console.anthropic.com](https://console.anthropic.com) (≈$0.05 per investigation on Sonnet)
 - AbuseIPDB: [abuseipdb.com](https://www.abuseipdb.com) (free tier, 1000 req/day)
 - VirusTotal: [virustotal.com](https://www.virustotal.com) (free tier, 4 req/min, 500/day)
+- URLScan: [urlscan.io](https://urlscan.io) (free tier, 1000 scans/day, 60/min)
 
 ## Roadmap
 
@@ -199,7 +201,7 @@ The project is research-grade today. Three concrete directions to grow it.
 ### Near-term: real alert sources and broader threat intel
 
 - **Elastic SIEM integration** — pull alerts from Elastic via the detection engine API, pipe through the copilot, push the investigation back as a custom field on the alert document. This is the next thing I want to build.
-- **Domain reputation tool** — URLScan or VirusTotal's domain endpoint. Currently the agent reasons about typosquatted domains using only the alert text; a real reputation lookup would strengthen this.
+- ~~**Domain reputation tool**~~ ✅ Implemented via URLScan.io. The agent now calls check_domain_reputation on domains in alert indicators. "No historical scans" is treated as a positive signal for newly-registered attacker infrastructure.
 - **Threat actor lookup** — query MITRE ATT&CK Groups for actors associated with observed TTPs. "These techniques chain together in a way associated with FIN7" is the kind of context an analyst would surface manually.
 - **Sigma rule matching** — given the raw log, match it against community Sigma rules to surface relevant detection logic. This bridges from "the alert fired" to "and here's why the detection exists" in a maintainable way.
 
