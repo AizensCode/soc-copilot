@@ -15,6 +15,7 @@ class Settings:
     ANTHROPIC_KEY: str
     ABUSEIPDB_KEY: str
     VIRUSTOTAL_KEY: str
+    URLSCAN_KEY: str
     MODEL: str = "claude-sonnet-4-6" # upgrade to claude-sonnet-4-6 for agentic phase; use claude-opus-4-7 only for final eval runs
 
     @classmethod
@@ -22,6 +23,7 @@ class Settings:
         anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
         abuseipdb_key = os.environ.get("ABUSEIPDB_API_KEY")
         virustotal_key = os.environ.get("VIRUSTOTAL_API_KEY")
+        urlscan_key = os.environ.get("URLSCAN_API_KEY")
 
         missing = []
         if not anthropic_key:
@@ -30,6 +32,8 @@ class Settings:
             missing.append("ABUSEIPDB_API_KEY")
         if not virustotal_key:
             missing.append("VIRUSTOTAL_API_KEY")
+        if not urlscan_key:
+            missing.append("URLSCAN_API_KEY")
 
         if missing:
             raise RuntimeError(
@@ -37,7 +41,7 @@ class Settings:
                 f"Add them to your .env file."
             )
 
-        return cls(ANTHROPIC_KEY=anthropic_key, ABUSEIPDB_KEY=abuseipdb_key, VIRUSTOTAL_KEY=virustotal_key)
+        return cls(ANTHROPIC_KEY=anthropic_key, ABUSEIPDB_KEY=abuseipdb_key, VIRUSTOTAL_KEY=virustotal_key, URLSCAN_KEY=urlscan_key,)
 
 
 settings = Settings.from_env()
