@@ -54,7 +54,7 @@ flowchart TD
         Phase1["<b>Phase 1: Fixed pipeline</b><br/>Python routes IOCs to tools<br/>deterministically"]
         Phase2["<b>Phase 2: Agentic loop</b><br/>LLM decides which tools to call<br/>iteratively"]
 
-        Registry["<b>Tool Registry</b><br/>• AbuseIPDB (IPs)<br/>• VirusTotal (hashes)"]
+        Registry["<b>Tool Registry</b><br/>• AbuseIPDB (IPs)<br/>• VirusTotal (hashes)<br/>• URLScan (domains)"]
 
         LLM["<b>Claude Sonnet 4.6</b><br/>system prompt with grounding,<br/>MITRE accuracy, behavior/payload"]
 
