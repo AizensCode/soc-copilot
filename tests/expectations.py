@@ -71,6 +71,29 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
         ],
         "min_evidence_count": 1,
     },
+    "suspicious_url_click.json": {
+        # Credential-phishing pattern is obvious from URL anatomy, but
+        # inconclusive is also defensible if the model wants tool confirmation
+        # before fully committing. Both are acceptable analyst stances.
+        "allowed_verdicts": ["true_positive", "inconclusive"],
+        "min_confidence": "medium",
+        # T1566 (link phishing) and T1204 (user execution) are the core
+        # observed techniques. Substring match allows .001/.002 variation.
+        "required_techniques": ["T1566"],
+        "forbidden_techniques": [
+            "T1110",       # not brute force
+            "T1566.001",   # not attachment-based (this is a link)
+            "T1078",       # account-compromise is the ANTICIPATED outcome,
+                          # not an OBSERVED technique — don't map what you
+                          # haven't seen evidence of
+        ],
+        "must_escalate": True,
+        "pivots_must_include": [
+            "credential",            # must address whether creds were submitted
+            "security-portal.app",   # must address the malicious domain
+        ],
+        "min_evidence_count": 1,  # at minimum URLScan; this run had 3 tool calls
+    },
 }
 
 

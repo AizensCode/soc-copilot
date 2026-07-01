@@ -1,0 +1,30 @@
+{
+  "alert_id": "ALRT-2026-0419-003",
+  "timestamp": "2026-04-19T14:23:08Z",
+  "source": "edr",
+  "severity": "medium",
+  "title": "User clicked link to recently-registered low-reputation domain",
+  "raw_log": {
+    "event_type": "url_navigation",
+    "host": "marketing-ws-07.corp.internal",
+    "user": "j.lefevre",
+    "browser": "msedge.exe",
+    "parent_process": "OUTLOOK.EXE",
+    "url": "https://office365-mfa-renewal.security-portal.app/auth/verify?session=eyJ1c2VyIjoiai5sZWZldnJlIn0",
+    "destination_domain": "office365-mfa-renewal.security-portal.app",
+    "destination_ip": "104.21.84.12",
+    "http_method": "GET",
+    "http_status": 200,
+    "response_size_bytes": 47823,
+    "referer": "outlook.office.com",
+    "click_time": "2026-04-19T14:23:05Z",
+    "page_load_time": "2026-04-19T14:23:08Z",
+    "subsequent_post_request": false
+  },
+  "indicators": {
+    "ips": ["104.21.84.12"],
+    "hashes": [],
+    "users": ["j.lefevre"],
+    "domains": ["office365-mfa-renewal.security-portal.app"]
+  }
+}
