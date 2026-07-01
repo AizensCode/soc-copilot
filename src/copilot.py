@@ -272,13 +272,16 @@ class SOCCopilot:
     def _extract_json(text: str) -> dict:
         """Extract a JSON object from arbitrary text.
 
-        Handles three cases:
-        1. Pure JSON string (phase one's typical output)
+        Handles:
+        1. Pure JSON (phase one's typical output)
         2. JSON wrapped in ```json ... ``` markdown fences
-        3. JSON embedded in prose with preamble/postamble (agentic mode)
+        3. JSON embedded in prose, possibly with OTHER json-shaped
+        fragments quoted earlier in the text (agentic mode)
 
-        The JSON object is found by locating the first `{` and tracking
-        brace depth to find its matching `}`.
+        Strategy: try direct parse first. If that fails, find the LAST
+        balanced top-level JSON object in the text — the model's final
+        answer comes after any reasoning prose, and reasoning prose may
+        quote alert fragments that look like JSON.
         """
         cleaned = text.strip()
 
@@ -292,47 +295,72 @@ class SOCCopilot:
                 cleaned = "\n".join(lines[1:-1])
             else:
                 cleaned = "\n".join(lines[1:])
+            cleaned = cleaned.strip()
 
-        # Try direct parse first (fast path for clean JSON)
+        # Fast path: the whole thing is clean JSON
         try:
             return json.loads(cleaned)
         except json.JSONDecodeError:
             pass
 
-        # Fall back to extracting the first balanced JSON object from the text
-        start = cleaned.find("{")
-        if start == -1:
-            raise ValueError(
-                f"No JSON object found in text. First 500 chars: {cleaned[:500]}"
-            )
-
+        # Find ALL balanced top-level JSON objects in the text, return the last.
+        candidates = []
         depth = 0
         in_string = False
         escape_next = False
-        for i in range(start, len(cleaned)):
-            char = cleaned[i]
+        start_idx = None
 
+        for i, char in enumerate(cleaned):
             if escape_next:
                 escape_next = False
                 continue
             if char == "\\":
                 escape_next = True
                 continue
-            if char == '"' and not escape_next:
+            if char == '"':
                 in_string = not in_string
                 continue
             if in_string:
                 continue
 
             if char == "{":
+                if depth == 0:
+                    start_idx = i
                 depth += 1
             elif char == "}":
-                depth -= 1
-                if depth == 0:
-                    candidate = cleaned[start : i + 1]
-                    return json.loads(candidate)
+                if depth > 0:
+                    depth -= 1
+                    if depth == 0 and start_idx is not None:
+                        candidates.append(cleaned[start_idx : i + 1])
+                        start_idx = None
+
+        if not candidates:
+            raise ValueError(
+                f"No JSON object found in text. First 500 chars: {cleaned[:500]}"
+            )
+
+        # Try candidates from last to first — the real Investigation is the
+        # final top-level object; earlier ones may be quoted alert fragments.
+        for candidate in reversed(candidates):
+            try:
+                parsed = json.loads(candidate)
+                # Sanity check: the Investigation must have an alert_id.
+                # If this candidate doesn't, it's probably a quoted fragment;
+                # keep looking.
+                if isinstance(parsed, dict) and "alert_id" in parsed:
+                    return parsed
+            except json.JSONDecodeError:
+                continue
+
+        # Fallback: if no candidate had alert_id, return the last parseable one
+        # and let Pydantic produce a clear error.
+        for candidate in reversed(candidates):
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
 
         raise ValueError(
-            f"Unbalanced JSON object starting at position {start}. "
+            f"Found {len(candidates)} JSON-like objects but none parsed. "
             f"First 500 chars: {cleaned[:500]}"
         )

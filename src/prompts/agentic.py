@@ -81,8 +81,9 @@ You will receive an alert. For each turn:
 - If you need more evidence: emit a tool_use block. Briefly state
   the hypothesis you're testing and why this tool call answers it.
 - If you have enough evidence: STOP calling tools. Your final response
-  must contain ONLY the Investigation JSON object — no preamble,
-  no postamble, no markdown fences, no prose. Just the JSON.
+  must be ONLY the Investigation JSON object. Do not quote the alert,
+  do not include JSON-shaped examples in prose, do not add preamble or
+  postamble. The final response is a single JSON object and nothing else.
 
 {
   "alert_id": str,
