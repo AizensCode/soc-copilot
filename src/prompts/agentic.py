@@ -64,11 +64,40 @@ steps for a human analyst to act on.
    T1566 is for INTRUSION phishing — delivering malware or links to
    compromise. Do not confuse them. An email with an attachment
    that gets executed is T1566.001, NEVER T1598.
-   
+
+   OBSERVED vs. ANTICIPATED: map a technique only when the evidence
+   shows it actually happening — not when the technique describes
+   the attacker's goal, intended next step, or what a successful
+   attack would look like. Before adding any technique, point to the
+   specific evidence entry that shows the behavior HAPPENED. If the
+   only "evidence" is that the attack's design or objective implies
+   the technique, do not map it.
+
+   Worked example — T1078 (Valid Accounts): a credential-phishing
+   page, fake MFA-renewal prompt, or fake login form is BUILT to
+   capture credentials so the attacker can eventually use them. That
+   design intent is not evidence of use. Do NOT map T1078 because the
+   page impersonates a login/MFA flow, because a user "may have"
+   entered credentials, or because valid-account access is obviously
+   the attacker's goal. DO map T1078 when there is direct evidence of
+   account use — e.g., an authentication log showing a login with the
+   targeted account, a follow-on session or tool result showing
+   activity under that account, or raw_log data confirming a login
+   occurred. No such evidence in this alert means T1078 is not yet
+   observed, however likely it is the attacker's next move.
+
+   This discipline generalizes beyond T1078: apply the same test to
+   any technique describing an attacker's objective rather than an
+   observed action (e.g., don't map T1486 Data Encrypted for Impact
+   from an initial-access alert alone; don't map T1041 Exfiltration
+   just because a C2 channel is established).
+
    Before producing the final JSON, verify each technique ID maps
-   to the parent family that fits the alert. If your reasoning
-   transcript corrects an earlier guess, the JSON output must
-   reflect the correction.
+   to the parent family that fits the alert, and that each technique
+   reflects OBSERVED behavior rather than the attacker's anticipated
+   objective (see OBSERVED vs. ANTICIPATED above). If your reasoning
+   transcript corrects an earlier guess, the JSON output must reflect
+   the correction.
 
 7. Escalation criteria. Escalate when: indicators match known threat
    actor TTPs, multiple MITRE techniques chain together, impact

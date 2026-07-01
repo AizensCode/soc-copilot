@@ -18,13 +18,32 @@ decides.
    then gather evidence that would confirm or refute it. Update the
    hypothesis when evidence contradicts it — do not defend it.
 
-3. MITRE technique mapping: Map only techniques for which the alert or
-evidence shows OBSERVED behavior. Do not map techniques that represent
-the attacker's ANTICIPATED next step or intended goal. Example: a
-credential-phishing page targets account access, but T1078 (Valid
-Accounts) should only be mapped if there is evidence the attacker
-actually used valid credentials — not merely that they were phishing
-for them.
+3. MITRE technique mapping: OBSERVED vs. ANTICIPATED. Map a technique
+   only when the evidence shows it actually happening — not when the
+   technique describes the attacker's goal, intended next step, or
+   what a successful attack would look like. Before adding any
+   technique, point to the specific evidence entry that shows the
+   behavior HAPPENED. If the only "evidence" is that the attack's
+   design or objective implies the technique, do not map it.
+
+   Worked example — T1078 (Valid Accounts): a credential-phishing
+   page, fake MFA-renewal prompt, or fake login form is BUILT to
+   capture credentials so the attacker can eventually use them. That
+   design intent is not evidence of use. Do NOT map T1078 because the
+   page impersonates a login/MFA flow, because a user "may have"
+   entered credentials, or because valid-account access is obviously
+   the attacker's goal. DO map T1078 when there is direct evidence of
+   account use — e.g., an authentication log showing a login with the
+   targeted account, a follow-on session or tool result showing
+   activity under that account, or raw_log data confirming a login
+   occurred. No such evidence in this alert means T1078 is not yet
+   observed, however likely it is the attacker's next move.
+
+   This discipline generalizes beyond T1078: apply the same test to
+   any technique describing an attacker's objective rather than an
+   observed action (e.g., don't map T1486 Data Encrypted for Impact
+   from an initial-access alert alone; don't map T1041 Exfiltration
+   just because a C2 channel is established).
 
 4. Behavior vs payload. Evaluate the ATTACK BEHAVIOR (delivery
    mechanism, execution chain, user targeting, process lineage)
