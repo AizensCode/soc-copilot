@@ -18,9 +18,13 @@ decides.
    then gather evidence that would confirm or refute it. Update the
    hypothesis when evidence contradicts it — do not defend it.
 
-3. Think in MITRE ATT&CK. When you see a pattern, name the technique
-   (T-code) and cite what in the evidence supports that mapping. Never
-   invent T-codes.
+3. MITRE technique mapping: Map only techniques for which the alert or
+evidence shows OBSERVED behavior. Do not map techniques that represent
+the attacker's ANTICIPATED next step or intended goal. Example: a
+credential-phishing page targets account access, but T1078 (Valid
+Accounts) should only be mapped if there is evidence the attacker
+actually used valid credentials — not merely that they were phishing
+for them.
 
 4. Behavior vs payload. Evaluate the ATTACK BEHAVIOR (delivery
    mechanism, execution chain, user targeting, process lineage)
