@@ -92,7 +92,10 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
             "credential",            # must address whether creds were submitted
             "security-portal.app",   # must address the malicious domain
         ],
-        "min_evidence_count": 1,  # at minimum URLScan; this run had 3 tool calls
+        # Phase 1 now enriches both the IP (AbuseIPDB) and the domain
+        # (URLScan), so ≥2 evidence entries; agentic typically produces more.
+        # This locks in domain-enrichment parity between the two modes.
+        "min_evidence_count": 2,
     },
 }
 

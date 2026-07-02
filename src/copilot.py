@@ -10,6 +10,7 @@ from .prompts.system import SYSTEM_PROMPT
 from .tools.abuseipdb import AbuseIPDBTool
 from .tools.base import ToolResult
 from .tools.registry import anthropic_tool_schemas, dispatch
+from .tools.urlscan import URLScanTool
 from .tools.virustotal import VirusTotalTool
 
 
@@ -18,6 +19,7 @@ class SOCCopilot:
         self.client = AsyncAnthropic(api_key=settings.ANTHROPIC_KEY)
         self.ip_tool = AbuseIPDBTool()
         self.hash_tool = VirusTotalTool()
+        self.domain_tool = URLScanTool()
 
     # ------------------------------------------------------------------
     # Phase 1: fixed enrichment pipeline
@@ -36,6 +38,11 @@ class SOCCopilot:
         for file_hash in alert.indicators.get("hashes", []):
             result = await self.hash_tool.execute(file_hash=file_hash)
             evidence.append(self._hash_result_to_evidence(result, file_hash))
+
+        # Route domains to URLScan
+        for domain in alert.indicators.get("domains", []):
+            result = await self.domain_tool.execute(domain=domain)
+            evidence.append(self._domain_result_to_evidence(result, domain))
 
         return evidence
 
@@ -107,6 +114,55 @@ class SOCCopilot:
                 f"Hash {file_hash} flagged malicious by {mal}/{total} engines; "
                 f"file type: {result.data.get('file_type', 'unknown')}; "
                 f"common names: {result.data.get('common_names', [])[:3]}"
+            ),
+            raw_data=result.data,
+            confidence=confidence,
+        )
+
+    def _domain_result_to_evidence(
+        self, result: ToolResult, domain: str
+    ) -> Evidence:
+        if not result.success:
+            return Evidence(
+                source_tool=result.tool_name,
+                claim=f"Failed to check domain reputation for {domain}: {result.error}",
+                raw_data={"error": result.error},
+                confidence="low",
+            )
+
+        # No historical scans is ambiguous, not exculpatory: it fits a
+        # newly-registered / not-yet-catalogued domain (possible fresh
+        # attacker infrastructure) as much as an obscure-but-benign one.
+        # Surface the ambiguity in the claim; let the LLM weigh it against
+        # the rest of the alert rather than deciding here.
+        if not result.data.get("found"):
+            return Evidence(
+                source_tool=result.tool_name,
+                claim=(
+                    f"Domain {domain} has no historical scans in URLScan — "
+                    f"consistent with a newly-registered or not-yet-catalogued "
+                    f"domain (possible fresh attacker infrastructure) or simply "
+                    f"an obscure domain. Absence of scans is not evidence of safety."
+                ),
+                raw_data=result.data,
+                confidence="medium",
+            )
+
+        malicious = result.data.get("malicious_scan_count", 0)
+        total_scans = result.data.get("total_scans", 0)
+
+        if malicious > 0:
+            confidence = "high"
+        else:
+            confidence = "low"
+
+        return Evidence(
+            source_tool=result.tool_name,
+            claim=(
+                f"Domain {domain} has {total_scans} historical URLScan scans, "
+                f"{malicious} flagged malicious; "
+                f"most recent page title: {result.data.get('most_recent_page_title')!r}; "
+                f"seen URLs: {result.data.get('seen_urls', [])[:3]}"
             ),
             raw_data=result.data,
             confidence=confidence,
