@@ -4,8 +4,9 @@ import json
 from anthropic import AsyncAnthropic
 
 from .config import settings
+from .history import AlertHistoryStore
 from .mitre_groups import match_groups
-from .models import Alert, Evidence, Investigation
+from .models import Alert, Evidence, Investigation, PriorSighting
 from .prompts.agentic import AGENTIC_SYSTEM_PROMPT
 from .prompts.system import SYSTEM_PROMPT
 from .tools.abuseipdb import AbuseIPDBTool
@@ -16,11 +17,36 @@ from .tools.virustotal import VirusTotalTool
 
 
 class SOCCopilot:
-    def __init__(self) -> None:
+    def __init__(self, history_store: AlertHistoryStore | None = None) -> None:
         self.client = AsyncAnthropic(api_key=settings.ANTHROPIC_KEY)
         self.ip_tool = AbuseIPDBTool()
         self.hash_tool = VirusTotalTool()
         self.domain_tool = URLScanTool()
+        # Cross-alert memory. Injectable so tests can isolate it.
+        self.history = history_store or AlertHistoryStore(settings.HISTORY_PATH)
+
+    @staticmethod
+    def _format_priors(priors: list[PriorSighting]) -> str:
+        """Render prior sightings as a prompt context block.
+
+        Returns "" when there are none, so an empty history leaves the prompt
+        byte-for-byte unchanged (keeps investigations deterministic).
+        """
+        if not priors:
+            return ""
+        lines = [
+            "# Prior investigation history (from the copilot's own case store)",
+            "These past investigations share one or more indicators with this "
+            "alert. Treat as grounded context — weigh it in your hypothesis, "
+            "confidence, and escalation call:",
+        ]
+        for p in priors:
+            lines.append(
+                f"- {p.alert_id} ({p.timestamp:%Y-%m-%d}, verdict={p.verdict}, "
+                f"confidence={p.confidence}): \"{p.title}\" "
+                f"— shared indicators: {', '.join(p.matched_iocs)}"
+            )
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------
     # Phase 1: fixed enrichment pipeline
@@ -172,11 +198,15 @@ class SOCCopilot:
     async def investigate(self, alert: Alert) -> Investigation:
         """Phase 1 entrypoint: pre-enrich, then one LLM call to write the report."""
         evidence = await self.enrich(alert)
+        priors = self.history.prior_sightings(alert)
 
+        priors_block = self._format_priors(priors)
+        priors_section = f"{priors_block}\n\n" if priors_block else ""
         user_message = (
             f"# Alert\n```json\n{alert.model_dump_json(indent=2)}\n```\n\n"
             f"# Enrichment evidence collected\n"
             f"```json\n{json.dumps([e.model_dump() for e in evidence], indent=2)}\n```\n\n"
+            f"{priors_section}"
             f"Produce the final Investigation JSON now."
         )
 
@@ -201,6 +231,8 @@ class SOCCopilot:
         investigation.associated_groups = match_groups(
             investigation.attack_techniques
         )
+        investigation.prior_sightings = priors
+        self.history.record(alert, investigation)
         return investigation
 
     # ------------------------------------------------------------------
@@ -218,6 +250,9 @@ class SOCCopilot:
         (stop_reason='end_turn') or until max_iterations is reached
         as a safety stop against runaway loops.
         """
+        priors = self.history.prior_sightings(alert)
+        priors_block = self._format_priors(priors)
+        priors_section = f"\n\n{priors_block}" if priors_block else ""
         messages: list[dict] = [
             {
                 "role": "user",
@@ -225,6 +260,7 @@ class SOCCopilot:
                     f"Investigate this alert. Call tools as needed to gather "
                     f"evidence, then produce the final Investigation JSON.\n\n"
                     f"```json\n{alert.model_dump_json(indent=2)}\n```"
+                    f"{priors_section}"
                 ),
             }
         ]
@@ -244,7 +280,12 @@ class SOCCopilot:
             messages.append({"role": "assistant", "content": response.content})
 
             if response.stop_reason == "end_turn":
-                return self._parse_agentic_final(response, evidence_collected)
+                investigation = self._parse_agentic_final(
+                    response, evidence_collected
+                )
+                investigation.prior_sightings = priors
+                self.history.record(alert, investigation)
+                return investigation
 
             if response.stop_reason == "max_tokens":
                 raise RuntimeError(

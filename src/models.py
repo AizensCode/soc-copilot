@@ -64,6 +64,25 @@ class GroupMatch(BaseModel):
     overlap_count: int
 
 
+class PriorSighting(BaseModel):
+    """A past investigation that shares one or more indicators with the
+    current alert.
+
+    Filled deterministically from the copilot's own case history (never by the
+    LLM), so every sighting traces back to a real prior investigation. This is
+    the cross-alert memory a human analyst keeps in their head.
+    """
+
+    alert_id: str
+    timestamp: datetime
+    verdict: str
+    confidence: str
+    title: str
+    matched_iocs: list[str] = Field(
+        description="Indicators shared between this alert and the prior one"
+    )
+
+
 class Investigation(BaseModel):
     """The final report produced for an alert."""
 
@@ -82,6 +101,13 @@ class Investigation(BaseModel):
         description=(
             "MITRE ATT&CK groups whose TTPs overlap the mapped techniques. "
             "Filled deterministically from the local group map, not the LLM."
+        ),
+    )
+    prior_sightings: list[PriorSighting] = Field(
+        default_factory=list,
+        description=(
+            "Past investigations sharing an indicator with this alert. "
+            "Filled deterministically from the case history, not the LLM."
         ),
     )
     escalation_recommended: bool

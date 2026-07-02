@@ -16,7 +16,9 @@ class Settings:
     ABUSEIPDB_KEY: str
     VIRUSTOTAL_KEY: str
     URLSCAN_KEY: str
-    MODEL: str = "claude-sonnet-4-6" # upgrade to claude-sonnet-4-6 for agentic phase; use claude-opus-4-7 only for final eval runs
+    MODEL: str = "claude-sonnet-4-6"
+    # Case-history store (cross-alert memory). Not a secret; overridable per env.
+    HISTORY_PATH: str = "data/history/investigations.jsonl"
 
     @classmethod
     def from_env(cls) -> "Settings":

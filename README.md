@@ -60,10 +60,15 @@ flowchart TD
 
         Validation["<b>Pydantic validation</b><br/>schema-checked output"]
 
+        History["<b>Case history</b><br/>prior sightings by IOC<br/>(cross-alert memory)"]
+
         Phase1 --> Registry
         Phase2 --> Registry
         Registry --> LLM
         LLM --> Validation
+        History -.->|prior sightings| Phase1
+        History -.->|prior sightings| Phase2
+        Validation -.->|persist| History
     end
 
     Copilot --> Output["Investigation JSON"]
@@ -73,12 +78,14 @@ flowchart TD
     classDef tool fill:#065f46,stroke:#10b981,color:#e5e7eb
     classDef llm fill:#581c87,stroke:#a855f7,color:#e5e7eb
     classDef output fill:#1f2937,stroke:#3b82f6,color:#e5e7eb
+    classDef store fill:#78350f,stroke:#f59e0b,color:#e5e7eb
 
     class Alert,Output alert
     class Phase1,Phase2 phase
     class Registry tool
     class LLM llm
     class Validation output
+    class History store
 ```
 
 Both modes produce the same `Investigation` schema. Run either through the same eval harness.
@@ -148,14 +155,23 @@ The agentic model still gets a `lookup_threat_actors` tool, but its job there is
 
 This is also the cleanest expression of the two-mode philosophy: threat-actor lookup operates on the investigation's *output* (techniques the LLM produced), not its *input* (alert indicators), so it can't be a pre-enrichment step like the IOC tools. Phase 1 annotates post-hoc; agentic can additionally reason mid-loop. Both end up with the same grounded field.
 
+### Cross-alert memory, grounded
+
+Real analysts don't triage each alert in a vacuum — they remember that *this IP was flagged true_positive last week*. `AlertHistoryStore` gives the copilot that memory: every investigation is persisted to a JSONL store indexed by IOC, and when a new alert shares an indicator with a past one, the prior sighting is surfaced.
+
+The same grounding discipline as threat-actor context applies. Prior sightings are looked up *deterministically in Python* and injected into the prompt as context ("ALRT-… 2026-04-10, verdict=true_positive"); the `prior_sightings` field is filled from the store, never authored by the LLM. So the model can weigh real history in its hypothesis and escalation call, but it can't invent a past investigation that didn't happen.
+
+Two details worth calling out. First, when the store has no match, the injected block is the empty string — an empty history leaves the prompt byte-for-byte unchanged, which keeps investigations deterministic and means the existing eval harness (which runs against an isolated empty store) is unaffected. Second, the core memory logic is a pure function of the store, so it's tested entirely without the API: `tests/test_history.py` records and looks up investigations directly, validating recurrence detection, self-exclusion, multi-IOC dedup, and recency ordering in milliseconds. The expensive API harness only has to confirm the wiring, not the logic.
+
 ## Project layout
 
 ```text
 soc-copilot/
 ├── src/
 │   ├── copilot.py          # The main class: investigate() and investigate_agentic()
-│   ├── models.py           # Pydantic models: Alert, Evidence, GroupMatch, Investigation
+│   ├── models.py           # Pydantic models: Alert, Evidence, GroupMatch, PriorSighting, Investigation
 │   ├── mitre_groups.py     # Technique→threat-group matcher (reads the local map)
+│   ├── history.py          # AlertHistoryStore: cross-alert memory indexed by IOC
 │   ├── config.py           # Settings + env loading
 │   ├── main.py             # CLI: python -m src.main <alert.json> [--agentic]
 │   ├── prompts/
@@ -171,11 +187,13 @@ soc-copilot/
 ├── scripts/
 │   └── build_group_map.py  # One-time: STIX bundle → committed group map
 ├── tests/
-│   ├── test_investigations.py  # The eval harness
+│   ├── test_investigations.py  # The eval harness (API-backed)
+│   ├── test_history.py     # Cross-alert memory unit tests (no API)
 │   └── expectations.py     # Per-alert correctness criteria
 ├── data/
 │   ├── sample_alerts/      # Labeled alerts for testing
 │   ├── mitre/              # Generated technique→group lookup (committed)
+│   ├── history/            # Runtime case history (gitignored)
 │   └── evals/runs/         # Captured before/after investigations
 └── pyproject.toml
 ```
@@ -230,7 +248,7 @@ The project is research-grade today. Three concrete directions to grow it.
 
 ### Medium-term: memory and correlation
 
-- **Alert history store** — every investigation persists, indexed by IOC. When a new alert involves an IOC seen before, surface that history to the agent. Real analysts do this constantly; none of my current tooling supports it.
+- ~~**Alert history store**~~ ✅ Implemented via `AlertHistoryStore` (JSONL-backed, indexed by IOC). Every investigation persists; when a new alert shares an indicator with a past one, the copilot surfaces that prior sighting as grounded context in both modes. The cross-alert memory a human analyst keeps in their head. See "Cross-alert memory, grounded" below.
 - **Multi-alert correlation** — if three brute-force alerts hit three different hosts from related IPs in the same hour, the copilot should recognize the pattern. Right now each alert is isolated.
 
 ### Long-term: case management integration
@@ -241,7 +259,7 @@ The project is research-grade today. Three concrete directions to grow it.
 ## Limitations and honest caveats
 
 - **Two alert types only.** Brute force and phishing-with-attachment. Real SOC environments have dozens of alert classes. The architecture scales but the testing doesn't yet.
-- **No memory between alerts.** Each investigation is stateless. A real analyst maintains context across days; the copilot doesn't.
+- **Memory is single-indicator, not correlated.** The copilot now remembers past investigations and surfaces prior sightings when an IOC recurs (`AlertHistoryStore`), but it doesn't yet *correlate* — e.g. recognizing that three alerts on different hosts form one campaign. That's the next step.
 - **Tool coverage is shallow.** Three external threat-intel sources (IP, hash, domain) plus a local MITRE ATT&CK Groups lookup. Production use still needs sandbox detonation, internal log search, and richer reputation feeds.
 - **No human-in-the-loop UI.** Output is JSON. Useful for piping into other systems, not for an analyst sitting at a console.
 - **LLM costs.** Sonnet runs ≈$0.03–0.05 per investigation. At SOC volumes (thousands of alerts/day) this adds up. Production would need a tiered approach: cheap model for triage, expensive model for ambiguous cases.

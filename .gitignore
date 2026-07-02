@@ -14,5 +14,7 @@ wheels/
 *.log
 .pytest_cache/
 data/sample_alerts/*.real.json
+# Runtime case history — holds real investigation records, keep out of git
+data/history/
 last_agentic_final_turn.txt
 last_run_debug.json
