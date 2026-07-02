@@ -4,6 +4,7 @@ import json
 from anthropic import AsyncAnthropic
 
 from .config import settings
+from .mitre_groups import match_groups
 from .models import Alert, Evidence, Investigation
 from .prompts.agentic import AGENTIC_SYSTEM_PROMPT
 from .prompts.system import SYSTEM_PROMPT
@@ -196,7 +197,11 @@ class SOCCopilot:
         report_text = response.content[0].text
         report_json = self._extract_json(report_text)
 
-        return Investigation(**report_json, evidence=evidence)
+        investigation = Investigation(**report_json, evidence=evidence)
+        investigation.associated_groups = match_groups(
+            investigation.attack_techniques
+        )
+        return investigation
 
     # ------------------------------------------------------------------
     # Phase 2: agentic investigation
@@ -297,7 +302,11 @@ class SOCCopilot:
         Path("last_agentic_final_turn.txt").write_text(final_text)
 
         report_json = self._extract_json(final_text)
-        return Investigation(**report_json, evidence=evidence_collected)
+        investigation = Investigation(**report_json, evidence=evidence_collected)
+        investigation.associated_groups = match_groups(
+            investigation.attack_techniques
+        )
+        return investigation
 
     def _tool_result_to_evidence(self, result: ToolResult) -> Evidence:
         """Convert a ToolResult into an Evidence entry.

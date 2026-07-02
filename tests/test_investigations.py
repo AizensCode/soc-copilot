@@ -8,6 +8,7 @@ the phase-one baseline.
 Run: uv run pytest tests/test_investigations.py -v
 """
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -197,3 +198,44 @@ async def test_evidence_count(
         f"{alert_file} [{mode}]: expected at least "
         f"{expected['min_evidence_count']} evidence entries, got {actual}"
     )
+
+
+_TCODE_RE = re.compile(r"T\d{4}(?:\.\d{3})?")
+
+
+@pytest.mark.parametrize("alert_file,mode,expected", _cases())
+async def test_associated_groups(
+    alert_file: str,
+    mode: str,
+    expected: AlertExpectation,
+    investigations: dict[tuple[str, str], Investigation],
+):
+    if "min_associated_groups" not in expected:
+        pytest.skip("No min_associated_groups specified")
+    inv = investigations[(alert_file, mode)]
+
+    # Count invariant: enough groups surfaced from the mapped techniques
+    actual = len(inv.associated_groups)
+    assert actual >= expected["min_associated_groups"], (
+        f"{alert_file} [{mode}]: expected at least "
+        f"{expected['min_associated_groups']} associated groups, got {actual}. "
+        f"Techniques: {inv.attack_techniques}"
+    )
+
+    # Grounding invariant: every group's matched_techniques must come from
+    # THIS investigation's own techniques (or their parent) — catches
+    # hallucinated or cross-contaminated overlap. Groups are filled by the
+    # deterministic map, so this should hold by construction; assert it so a
+    # future regression in the matcher can't slip through silently.
+    inv_codes = {c for t in inv.attack_techniques for c in _TCODE_RE.findall(t)}
+    inv_codes |= {c.split(".")[0] for c in inv_codes}  # allow parent rollup
+    for gm in inv.associated_groups:
+        assert gm.overlap_count == len(gm.matched_techniques) >= 1, (
+            f"{alert_file} [{mode}]: group {gm.group} has inconsistent "
+            f"overlap_count={gm.overlap_count} vs {gm.matched_techniques}"
+        )
+        stray = [c for c in gm.matched_techniques if c not in inv_codes]
+        assert not stray, (
+            f"{alert_file} [{mode}]: group {gm.group} matched techniques "
+            f"{stray} not present in the investigation: {inv.attack_techniques}"
+        )

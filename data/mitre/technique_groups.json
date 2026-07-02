@@ -1,0 +1,6566 @@
+{
+  "_meta": {
+    "source": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/master/enterprise-attack/enterprise-attack.json",
+    "attack_version": "19.1",
+    "generated": "2026-07-02T22:04:51.544472+00:00",
+    "technique_count": 492,
+    "group_count": 170
+  },
+  "techniques": {
+    "T1001": [
+      "Gamaredon Group"
+    ],
+    "T1001.001": [
+      "APT28"
+    ],
+    "T1001.002": [
+      "Axiom"
+    ],
+    "T1001.003": [
+      "Higaisa",
+      "Lazarus Group",
+      "Mustang Panda"
+    ],
+    "T1003": [
+      "APT28",
+      "APT32",
+      "APT39",
+      "Axiom",
+      "BlackByte",
+      "Ember Bear",
+      "Leviathan",
+      "Mustang Panda",
+      "Poseidon Group",
+      "Sowbug",
+      "Storm-0501",
+      "Suckfly",
+      "Tonto Team"
+    ],
+    "T1003.001": [
+      "APT1",
+      "APT28",
+      "APT3",
+      "APT32",
+      "APT33",
+      "APT39",
+      "APT41",
+      "APT5",
+      "Agrius",
+      "Aquatic Panda",
+      "BRONZE BUTLER",
+      "Blue Mockingbird",
+      "Cleaver",
+      "Earth Lusca",
+      "Ember Bear",
+      "FIN13",
+      "FIN6",
+      "FIN8",
+      "Fox Kitten",
+      "GALLIUM",
+      "HAFNIUM",
+      "Indrik Spider",
+      "Ke3chang",
+      "Kimsuky",
+      "Leafminer",
+      "Leviathan",
+      "Magic Hound",
+      "Medusa Group",
+      "MirrorFace",
+      "Moonstone Sleet",
+      "MuddyWater",
+      "Mustang Panda",
+      "OilRig",
+      "PLATINUM",
+      "Play",
+      "RedCurl",
+      "Sandworm Team",
+      "Silence",
+      "Threat Group-3390",
+      "UNC3886",
+      "VOID MANTICORE",
+      "Volt Typhoon",
+      "Whitefly",
+      "Wizard Spider"
+    ],
+    "T1003.002": [
+      "APT29",
+      "APT41",
+      "APT5",
+      "Agrius",
+      "Daggerfly",
+      "Dragonfly",
+      "Ember Bear",
+      "FIN13",
+      "GALLIUM",
+      "Ke3chang",
+      "MirrorFace",
+      "Threat Group-3390",
+      "Wizard Spider",
+      "menuPass"
+    ],
+    "T1003.003": [
+      "APT28",
+      "APT41",
+      "Chimera",
+      "Dragonfly",
+      "FIN13",
+      "FIN6",
+      "Fox Kitten",
+      "HAFNIUM",
+      "Ke3chang",
+      "LAPSUS$",
+      "Medusa Group",
+      "MirrorFace",
+      "Mustang Panda",
+      "Sandworm Team",
+      "Scattered Spider",
+      "Volt Typhoon",
+      "Wizard Spider",
+      "menuPass"
+    ],
+    "T1003.004": [
+      "APT29",
+      "APT33",
+      "Dragonfly",
+      "Ember Bear",
+      "Ke3chang",
+      "Leafminer",
+      "MuddyWater",
+      "OilRig",
+      "Threat Group-3390",
+      "menuPass"
+    ],
+    "T1003.005": [
+      "APT33",
+      "Leafminer",
+      "MuddyWater",
+      "OilRig"
+    ],
+    "T1003.006": [
+      "Earth Lusca",
+      "LAPSUS$",
+      "Mustang Panda",
+      "Storm-0501"
+    ],
+    "T1005": [
+      "APT1",
+      "APT28",
+      "APT29",
+      "APT3",
+      "APT37",
+      "APT38",
+      "APT39",
+      "APT41",
+      "Agrius",
+      "Andariel",
+      "Aquatic Panda",
+      "Axiom",
+      "BRONZE BUTLER",
+      "CURIUM",
+      "Dark Caracal",
+      "Dragonfly",
+      "Ember Bear",
+      "FIN13",
+      "FIN6",
+      "FIN7",
+      "Fox Kitten",
+      "GALLIUM",
+      "Gamaredon Group",
+      "HAFNIUM",
+      "Inception",
+      "Ke3chang",
+      "Kimsuky",
+      "LAPSUS$",
+      "Lazarus Group",
+      "LuminousMoth",
+      "Magic Hound",
+      "MirrorFace",
+      "OilRig",
+      "Patchwork",
+      "RedCurl",
+      "Sandworm Team",
+      "Stealth Falcon",
+      "Threat Group-3390",
+      "ToddyCat",
+      "Turla",
+      "VOID MANTICORE",
+      "Volt Typhoon",
+      "Windigo",
+      "Wizard Spider",
+      "menuPass"
+    ],
+    "T1006": [
+      "Scattered Spider",
+      "Volt Typhoon"
+    ],
+    "T1007": [
+      "APT1",
+      "Aquatic Panda",
+      "BRONZE BUTLER",
+      "Chimera",
+      "Earth Lusca",
+      "Indrik Spider",
+      "Ke3chang",
+      "Kimsuky",
+      "MirrorFace",
+      "OilRig",
+      "Poseidon Group",
+      "TeamTNT",
+      "Turla",
+      "Volt Typhoon",
+      "admin@338"
+    ],
+    "T1008": [
+      "APT41",
+      "FIN7",
+      "Lazarus Group",
+      "OilRig",
+      "UNC3886"
+    ],
+    "T1010": [
+      "HEXANE",
+      "Lazarus Group",
+      "Volt Typhoon"
+    ],
+    "T1012": [
+      "APT32",
+      "APT39",
+      "APT41",
+      "BlackByte",
+      "Chimera",
+      "Daggerfly",
+      "Dragonfly",
+      "Fox Kitten",
+      "Gamaredon Group",
+      "Indrik Spider",
+      "Kimsuky",
+      "Lazarus Group",
+      "Lotus Blossom",
+      "OilRig",
+      "Stealth Falcon",
+      "Threat Group-3390",
+      "Turla",
+      "Volt Typhoon",
+      "ZIRCONIUM"
+    ],
+    "T1014": [
+      "APT28",
+      "APT41",
+      "Rocke",
+      "TeamTNT",
+      "UNC3886",
+      "Winnti Group"
+    ],
+    "T1016": [
+      "APT1",
+      "APT19",
+      "APT3",
+      "APT32",
+      "APT41",
+      "APT42",
+      "BlackByte",
+      "Chimera",
+      "Darkhotel",
+      "Dragonfly",
+      "Earth Lusca",
+      "FIN13",
+      "GALLIUM",
+      "HAFNIUM",
+      "HEXANE",
+      "Higaisa",
+      "Ke3chang",
+      "Kimsuky",
+      "Lazarus Group",
+      "Lotus Blossom",
+      "Magic Hound",
+      "Medusa Group",
+      "MirrorFace",
+      "Moonstone Sleet",
+      "Moses Staff",
+      "MuddyWater",
+      "Mustang Panda",
+      "Naikon",
+      "OilRig",
+      "Play",
+      "Scattered Spider",
+      "SideCopy",
+      "Sidewinder",
+      "Stealth Falcon",
+      "TeamTNT",
+      "Threat Group-3390",
+      "Tropic Trooper",
+      "Turla",
+      "Volt Typhoon",
+      "Wizard Spider",
+      "ZIRCONIUM",
+      "admin@338",
+      "menuPass"
+    ],
+    "T1016.001": [
+      "APT29",
+      "FIN13",
+      "FIN8",
+      "Gamaredon Group",
+      "HAFNIUM",
+      "HEXANE",
+      "Lotus Blossom",
+      "Magic Hound",
+      "TA2541",
+      "Turla",
+      "Volt Typhoon"
+    ],
+    "T1016.002": [
+      "Magic Hound"
+    ],
+    "T1018": [
+      "APT3",
+      "APT32",
+      "APT39",
+      "APT41",
+      "Agrius",
+      "Akira",
+      "BRONZE BUTLER",
+      "BlackByte",
+      "Chimera",
+      "Deep Panda",
+      "Dragonfly",
+      "Earth Lusca",
+      "Ember Bear",
+      "FIN5",
+      "FIN6",
+      "FIN8",
+      "Fox Kitten",
+      "GALLIUM",
+      "HAFNIUM",
+      "HEXANE",
+      "Indrik Spider",
+      "Ke3chang",
+      "Leafminer",
+      "Lotus Blossom",
+      "Magic Hound",
+      "Medusa Group",
+      "MirrorFace",
+      "Mustang Panda",
+      "Naikon",
+      "Play",
+      "Rocke",
+      "Sandworm Team",
+      "Scattered Spider",
+      "Silence",
+      "Threat Group-3390",
+      "ToddyCat",
+      "Turla",
+      "Volt Typhoon",
+      "Wizard Spider",
+      "menuPass"
+    ],
+    "T1020": [
+      "Gamaredon Group",
+      "Ke3chang",
+      "Kimsuky",
+      "RedCurl",
+      "Sidewinder",
+      "Tropic Trooper",
+      "Winter Vivern"
+    ],
+    "T1021": [
+      "Aquatic Panda",
+      "Ember Bear",
+      "Wizard Spider"
+    ],
+    "T1021.001": [
+      "APT1",
+      "APT3",
+      "APT39",
+      "APT41",
+      "APT5",
+      "Agrius",
+      "Akira",
+      "Aquatic Panda",
+      "Axiom",
+      "BlackByte",
+      "Blue Mockingbird",
+      "Chimera",
+      "Cobalt Group",
+      "Dragonfly",
+      "FIN10",
+      "FIN13",
+      "FIN6",
+      "FIN7",
+      "FIN8",
+      "Fox Kitten",
+      "HEXANE",
+      "INC Ransom",
+      "Indrik Spider",
+      "Kimsuky",
+      "Lazarus Group",
+      "Leviathan",
+      "Magic Hound",
+      "Medusa Group",
+      "MirrorFace",
+      "OilRig",
+      "Patchwork",
+      "Scattered Spider",
+      "Silence",
+      "VOID MANTICORE",
+      "Volt Typhoon",
+      "Wizard Spider",
+      "menuPass"
+    ],
+    "T1021.002": [
+      "APT28",
+      "APT3",
+      "APT32",
+      "APT39",
+      "APT41",
+      "Aquatic Panda",
+      "BlackByte",
+      "Blue Mockingbird",
+      "Chimera",
+      "Cinnamon Tempest",
+      "Deep Panda",
+      "FIN13",
+      "FIN8",
+      "Fox Kitten",
+      "Ke3chang",
+      "Lazarus Group",
+      "MirrorFace",
+      "Moses Staff",
+      "Orangeworm",
+      "Play",
+      "Sandworm Team",
+      "Storm-1811",
+      "Threat Group-1314",
+      "ToddyCat",
+      "Turla",
+      "Velvet Ant",
+      "Wizard Spider"
+    ],
+    "T1021.004": [
+      "APT39",
+      "APT5",
+      "Aquatic Panda",
+      "BlackTech",
+      "FIN13",
+      "FIN7",
+      "Fox Kitten",
+      "GCMAN",
+      "Indrik Spider",
+      "Lazarus Group",
+      "Leviathan",
+      "OilRig",
+      "Rocke",
+      "Salt Typhoon",
+      "Scattered Spider",
+      "Storm-1811",
+      "TeamTNT",
+      "UNC3886",
+      "menuPass"
+    ],
+    "T1021.005": [
+      "FIN7",
+      "Fox Kitten",
+      "GCMAN",
+      "Gamaredon Group"
+    ],
+    "T1021.006": [
+      "Chimera",
+      "FIN13",
+      "Storm-0501",
+      "Threat Group-3390",
+      "Wizard Spider"
+    ],
+    "T1021.007": [
+      "APT29",
+      "Scattered Spider",
+      "Storm-0501"
+    ],
+    "T1025": [
+      "APT28",
+      "Gamaredon Group",
+      "OilRig",
+      "Turla"
+    ],
+    "T1027": [
+      "APT-C-36",
+      "APT3",
+      "APT37",
+      "APT41",
+      "BackdoorDiplomacy",
+      "BlackOasis",
+      "Earth Lusca",
+      "GALLIUM",
+      "Gallmaker",
+      "Gamaredon Group",
+      "Ke3chang",
+      "Kimsuky",
+      "Moonstone Sleet",
+      "Mustang Panda",
+      "RedCurl",
+      "Rocke",
+      "Sandworm Team",
+      "Windshift"
+    ],
+    "T1027.001": [
+      "APT29",
+      "Akira",
+      "BRONZE BUTLER",
+      "Higaisa",
+      "Kimsuky",
+      "Leviathan",
+      "Moafee",
+      "Patchwork"
+    ],
+    "T1027.002": [
+      "APT29",
+      "APT3",
+      "APT38",
+      "APT39",
+      "APT41",
+      "Aoqin Dragon",
+      "Dark Caracal",
+      "Elderwood",
+      "GALLIUM",
+      "Kimsuky",
+      "Medusa Group",
+      "MoustachedBouncer",
+      "Patchwork",
+      "Rocke",
+      "Saint Bear",
+      "Storm-0501",
+      "TA2541",
+      "TA505",
+      "TeamTNT",
+      "The White Company",
+      "Threat Group-3390",
+      "Volt Typhoon",
+      "ZIRCONIUM"
+    ],
+    "T1027.003": [
+      "APT-C-36",
+      "APT37",
+      "Andariel",
+      "BRONZE BUTLER",
+      "Earth Lusca",
+      "Leviathan",
+      "MuddyWater",
+      "TA551",
+      "Tropic Trooper"
+    ],
+    "T1027.004": [
+      "Gamaredon Group",
+      "MuddyWater",
+      "Rocke",
+      "Sea Turtle"
+    ],
+    "T1027.005": [
+      "APT3",
+      "Deep Panda",
+      "GALLIUM",
+      "OilRig",
+      "Patchwork",
+      "Turla",
+      "UNC3886"
+    ],
+    "T1027.006": [
+      "APT29"
+    ],
+    "T1027.007": [
+      "Kimsuky",
+      "Lazarus Group",
+      "Mustang Panda"
+    ],
+    "T1027.009": [
+      "Lazarus Group",
+      "Moonstone Sleet",
+      "TA577"
+    ],
+    "T1027.010": [
+      "APT19",
+      "APT32",
+      "Aquatic Panda",
+      "Chimera",
+      "Cobalt Group",
+      "Contagious Interview",
+      "FIN6",
+      "FIN7",
+      "FIN8",
+      "Fox Kitten",
+      "GOLD SOUTHFIELD",
+      "Gamaredon Group",
+      "HEXANE",
+      "Kimsuky",
+      "LazyScripter",
+      "Leafminer",
+      "Magic Hound",
+      "Medusa Group",
+      "MuddyWater",
+      "Patchwork",
+      "Play",
+      "Sandworm Team",
+      "Sidewinder",
+      "Silence",
+      "TA505",
+      "TA551",
+      "Turla",
+      "WIRTE",
+      "Wizard Spider"
+    ],
+    "T1027.011": [
+      "APT32",
+      "Turla"
+    ],
+    "T1027.012": [
+      "Gamaredon Group",
+      "Kimsuky",
+      "Mustang Panda"
+    ],
+    "T1027.013": [
+      "APT-C-36",
+      "APT18",
+      "APT19",
+      "APT28",
+      "APT32",
+      "APT33",
+      "APT39",
+      "BITTER",
+      "Blue Mockingbird",
+      "Contagious Interview",
+      "Dark Caracal",
+      "Darkhotel",
+      "Elderwood",
+      "Fox Kitten",
+      "Group5",
+      "Higaisa",
+      "Inception",
+      "Kimsuky",
+      "Lazarus Group",
+      "Leviathan",
+      "Magic Hound",
+      "Malteiro",
+      "Metador",
+      "MirrorFace",
+      "Mofang",
+      "Moonstone Sleet",
+      "Moses Staff",
+      "OilRig",
+      "Putter Panda",
+      "Saint Bear",
+      "Sidewinder",
+      "Storm-1811",
+      "TA2541",
+      "TA505",
+      "TeamTNT",
+      "Threat Group-3390",
+      "Transparent Tribe",
+      "Tropic Trooper",
+      "Whitefly",
+      "menuPass"
+    ],
+    "T1027.015": [
+      "Gamaredon Group",
+      "Higaisa",
+      "Kimsuky",
+      "Leviathan",
+      "Mofang",
+      "Molerats",
+      "TA2541",
+      "Threat Group-3390",
+      "VOID MANTICORE",
+      "WIRTE"
+    ],
+    "T1027.016": [
+      "APT-C-36",
+      "APT32",
+      "FIN7",
+      "Gamaredon Group",
+      "Kimsuky",
+      "Mustang Panda"
+    ],
+    "T1029": [
+      "Higaisa"
+    ],
+    "T1030": [
+      "APT28",
+      "APT41",
+      "LuminousMoth",
+      "Play",
+      "Threat Group-3390"
+    ],
+    "T1033": [
+      "APT19",
+      "APT3",
+      "APT32",
+      "APT37",
+      "APT38",
+      "APT39",
+      "APT41",
+      "Aquatic Panda",
+      "Chimera",
+      "Dragonfly",
+      "Earth Lusca",
+      "FIN10",
+      "FIN7",
+      "FIN8",
+      "GALLIUM",
+      "Gamaredon Group",
+      "HAFNIUM",
+      "HEXANE",
+      "Ke3chang",
+      "Kimsuky",
+      "Lazarus Group",
+      "LuminousMoth",
+      "Magic Hound",
+      "Medusa Group",
+      "MirrorFace",
+      "Moonstone Sleet",
+      "MuddyWater",
+      "OilRig",
+      "Patchwork",
+      "Sandworm Team",
+      "Sidewinder",
+      "Stealth Falcon",
+      "Storm-1811",
+      "Threat Group-3390",
+      "Tropic Trooper",
+      "Volt Typhoon",
+      "Windshift",
+      "Winter Vivern",
+      "Wizard Spider",
+      "ZIRCONIUM"
+    ],
+    "T1036": [
+      "APT28",
+      "APT32",
+      "Agrius",
+      "Aoqin Dragon",
+      "BRONZE BUTLER",
+      "Contagious Interview",
+      "Ember Bear",
+      "FIN13",
+      "LazyScripter",
+      "Nomadic Octopus",
+      "OilRig",
+      "PLATINUM",
+      "Sandworm Team",
+      "Storm-1811",
+      "TA551",
+      "TeamTNT",
+      "Windshift",
+      "Winter Vivern",
+      "ZIRCONIUM",
+      "menuPass"
+    ],
+    "T1036.001": [
+      "APT37",
+      "Windshift"
+    ],
+    "T1036.002": [
+      "BRONZE BUTLER",
+      "BlackTech",
+      "Ferocious Kitten",
+      "Ke3chang",
+      "Scarlet Mimic"
+    ],
+    "T1036.003": [
+      "APT32",
+      "APT38",
+      "Daggerfly",
+      "GALLIUM",
+      "Lazarus Group",
+      "menuPass"
+    ],
+    "T1036.004": [
+      "APT-C-36",
+      "APT32",
+      "APT41",
+      "Aquatic Panda",
+      "BITTER",
+      "BackdoorDiplomacy",
+      "Carbanak",
+      "FIN13",
+      "FIN6",
+      "FIN7",
+      "Fox Kitten",
+      "Higaisa",
+      "Kimsuky",
+      "Lazarus Group",
+      "Magic Hound",
+      "Naikon",
+      "PROMETHIUM",
+      "Storm-0501",
+      "UNC3886",
+      "VOID MANTICORE",
+      "Winter Vivern",
+      "Wizard Spider",
+      "ZIRCONIUM"
+    ],
+    "T1036.005": [
+      "APT-C-36",
+      "APT1",
+      "APT28",
+      "APT29",
+      "APT32",
+      "APT39",
+      "APT41",
+      "APT42",
+      "APT5",
+      "Akira",
+      "Aquatic Panda",
+      "BRONZE BUTLER",
+      "BackdoorDiplomacy",
+      "Blue Mockingbird",
+      "Carbanak",
+      "Chimera",
+      "Darkhotel",
+      "Earth Lusca",
+      "Ember Bear",
+      "FIN13",
+      "FIN7",
+      "Ferocious Kitten",
+      "Fox Kitten",
+      "Gamaredon Group",
+      "INC Ransom",
+      "Indrik Spider",
+      "Ke3chang",
+      "Kimsuky",
+      "Lazarus Group",
+      "LuminousMoth",
+      "Machete",
+      "Magic Hound",
+      "MuddyWater",
+      "Mustang Panda",
+      "Mustard Tempest",
+      "Naikon",
+      "OilRig",
+      "PROMETHIUM",
+      "Patchwork",
+      "Poseidon Group",
+      "RedCurl",
+      "Rocke",
+      "Sandworm Team",
+      "SideCopy",
+      "Sidewinder",
+      "Silence",
+      "Sowbug",
+      "Storm-1811",
+      "TA2541",
+      "TeamTNT",
+      "ToddyCat",
+      "Transparent Tribe",
+      "Tropic Trooper",
+      "Turla",
+      "VOID MANTICORE",
+      "Velvet Ant",
+      "Volt Typhoon",
+      "WIRTE",
+      "Whitefly",
+      "admin@338",
+      "menuPass"
+    ],
+    "T1036.006": [
+      "APT38"
+    ],
+    "T1036.007": [
+      "Kimsuky",
+      "Mustang Panda"
+    ],
+    "T1036.008": [
+      "BlackByte",
+      "MirrorFace",
+      "Mustang Panda",
+      "Volt Typhoon"
+    ],
+    "T1036.010": [
+      "APT3",
+      "Dragonfly",
+      "Magic Hound",
+      "Storm-1811"
+    ],
+    "T1037": [
+      "APT29",
+      "APT41",
+      "Rocke",
+      "UNC3886"
+    ],
+    "T1037.001": [
+      "APT28",
+      "Cobalt Group"
+    ],
+    "T1037.004": [
+      "APT29",
+      "UNC3886",
+      "Velvet Ant"
+    ],
+    "T1039": [
+      "APT28",
+      "BRONZE BUTLER",
+      "Chimera",
+      "Fox Kitten",
+      "Gamaredon Group",
+      "RedCurl",
+      "Sowbug",
+      "menuPass"
+    ],
+    "T1040": [
+      "APT28",
+      "APT33",
+      "DarkVishnya",
+      "Kimsuky",
+      "Salt Typhoon",
+      "Sandworm Team",
+      "UNC3886",
+      "Velvet Ant"
+    ],
+    "T1041": [
+      "APT3",
+      "APT32",
+      "APT39",
+      "Agrius",
+      "BlackByte",
+      "CURIUM",
+      "Chimera",
+      "Confucius",
+      "Contagious Interview",
+      "GALLIUM",
+      "Gamaredon Group",
+      "Higaisa",
+      "Ke3chang",
+      "Kimsuky",
+      "Lazarus Group",
+      "Leviathan",
+      "LuminousMoth",
+      "MuddyWater",
+      "Mustang Panda",
+      "Sandworm Team",
+      "Scattered Spider",
+      "Stealth Falcon",
+      "VOID MANTICORE",
+      "WIRTE",
+      "Winter Vivern",
+      "Wizard Spider",
+      "ZIRCONIUM"
+    ],
+    "T1046": [
+      "APT32",
+      "APT39",
+      "APT41",
+      "Agrius",
+      "BackdoorDiplomacy",
+      "BlackByte",
+      "BlackTech",
+      "Chimera",
+      "Cobalt Group",
+      "DarkVishnya",
+      "Ember Bear",
+      "FIN13",
+      "FIN6",
+      "Fox Kitten",
+      "INC Ransom",
+      "Lazarus Group",
+      "Leafminer",
+      "Lotus Blossom",
+      "Magic Hound",
+      "Medusa Group",
+      "Mustang Panda",
+      "Naikon",
+      "OilRig",
+      "RedCurl",
+      "Rocke",
+      "Suckfly",
+      "TeamTNT",
+      "Threat Group-3390",
+      "Tropic Trooper",
+      "Volt Typhoon",
+      "menuPass"
+    ],
+    "T1047": [
+      "APT-C-36",
+      "APT29",
+      "APT32",
+      "APT41",
+      "APT42",
+      "Aquatic Panda",
+      "BlackByte",
+      "Blue Mockingbird",
+      "Chimera",
+      "Cinnamon Tempest",
+      "Deep Panda",
+      "Earth Lusca",
+      "Ember Bear",
+      "FIN13",
+      "FIN6",
+      "FIN7",
+      "FIN8",
+      "GALLIUM",
+      "Gamaredon Group",
+      "INC Ransom",
+      "Indrik Spider",
+      "Lazarus Group",
+      "Leviathan",
+      "Lotus Blossom",
+      "Magic Hound",
+      "Medusa Group",
+      "MirrorFace",
+      "MuddyWater",
+      "Mustang Panda",
+      "Naikon",
+      "OilRig",
+      "Sandworm Team",
+      "Stealth Falcon",
+      "TA2541",
+      "Threat Group-3390",
+      "ToddyCat",
+      "VOID MANTICORE",
+      "Velvet Ant",
+      "Volt Typhoon",
+      "Windshift",
+      "Wizard Spider",
+      "menuPass"
+    ],
+    "T1048": [
+      "Play",
+      "TeamTNT"
+    ],
+    "T1048.002": [
+      "APT28",
+      "CURIUM",
+      "MirrorFace",
+      "Storm-1811"
+    ],
+    "T1048.003": [
+      "APT32",
+      "APT33",
+      "Contagious Interview",
+      "FIN6",
+      "FIN8",
+      "Lazarus Group",
+      "Mustang Panda",
+      "OilRig",
+      "Salt Typhoon",
+      "Thrip",
+      "Wizard Spider"
+    ],
+    "T1049": [
+      "APT1",
+      "APT3",
+      "APT32",
+      "APT38",
+      "APT41",
+      "APT5",
+      "Andariel",
+      "BackdoorDiplomacy",
+      "Chimera",
+      "Earth Lusca",
+      "FIN13",
+      "GALLIUM",
+      "HEXANE",
+      "INC Ransom",
+      "Ke3chang",
+      "Lazarus Group",
+      "Lotus Blossom",
+      "Magic Hound",
+      "MuddyWater",
+      "Mustang Panda",
+      "OilRig",
+      "Poseidon Group",
+      "Sandworm Team",
+      "TeamTNT",
+      "Threat Group-3390",
+      "ToddyCat",
+      "Tropic Trooper",
+      "Turla",
+      "Velvet Ant",
+      "Volt Typhoon",
+      "admin@338",
+      "menuPass"
+    ],
+    "T1052.001": [
+      "Mustang Panda",
+      "Tropic Trooper"
+    ],
+    "T1053.002": [
+      "APT18",
+      "BRONZE BUTLER",
+      "Threat Group-3390"
+    ],
+    "T1053.003": [
+      "APT38",
+      "APT5",
+      "Rocke"
+    ],
+    "T1053.005": [
+      "APT-C-36",
+      "APT29",
+      "APT3",
+      "APT32",
+      "APT33",
+      "APT37",
+      "APT38",
+      "APT39",
+      "APT41",
+      "APT42",
+      "BITTER",
+      "BRONZE BUTLER",
+      "BlackByte",
+      "Blue Mockingbird",
+      "Chimera",
+      "Cobalt Group",
+      "Confucius",
+      "Daggerfly",
+      "Dragonfly",
+      "Earth Lusca",
+      "Ember Bear",
+      "FIN10",
+      "FIN13",
+      "FIN6",
+      "FIN7",
+      "FIN8",
+      "Fox Kitten",
+      "GALLIUM",
+      "Gamaredon Group",
+      "HEXANE",
+      "Higaisa",
+      "Kimsuky",
+      "Lazarus Group",
+      "LuminousMoth",
+      "Machete",
+      "Magic Hound",
+      "Molerats",
+      "Moonstone Sleet",
+      "MuddyWater",
+      "Mustang Panda",
+      "Naikon",
+      "OilRig",
+      "Patchwork",
+      "Rancor",
+      "RedCurl",
+      "Sandworm Team",
+      "Silence",
+      "Stealth Falcon",
+      "Storm-0501",
+      "TA2541",
+      "ToddyCat",
+      "Winter Vivern",
+      "Wizard Spider",
+      "menuPass"
+    ],
+    "T1055": [
+      "APT32",
+      "APT37",
+      "APT38",
+      "APT41",
+      "APT5",
+      "BlackByte",
+      "Cobalt Group",
+      "Gamaredon Group",
+      "Kimsuky",
+      "PLATINUM",
+      "Silence",
+      "TA2541",
+      "Turla",
+      "Velvet Ant",
+      "Wizard Spider"
+    ],
+    "T1055.001": [
+      "BackdoorDiplomacy",
+      "Kimsuky",
+      "Lazarus Group",
+      "Leviathan",
+      "Malteiro",
+      "Putter Panda",
+      "TA505",
+      "Tropic Trooper",
+      "Turla",
+      "Wizard Spider"
+    ],
+    "T1055.002": [
+      "Gorgon Group",
+      "Rocke"
+    ],
+    "T1055.004": [
+      "FIN8"
+    ],
+    "T1055.012": [
+      "APT-C-36",
+      "BlackByte",
+      "Gorgon Group",
+      "Kimsuky",
+      "Patchwork",
+      "TA2541",
+      "Threat Group-3390",
+      "menuPass"
+    ],
+    "T1055.013": [
+      "Leafminer"
+    ],
+    "T1056": [
+      "APT39",
+      "APT42",
+      "Storm-1811"
+    ],
+    "T1056.001": [
+      "APT28",
+      "APT3",
+      "APT32",
+      "APT38",
+      "APT39",
+      "APT41",
+      "APT42",
+      "APT5",
+      "Ajax Security Team",
+      "Darkhotel",
+      "FIN13",
+      "FIN4",
+      "Group5",
+      "HEXANE",
+      "Ke3chang",
+      "Kimsuky",
+      "Lazarus Group",
+      "Magic Hound",
+      "OilRig",
+      "PLATINUM",
+      "Sandworm Team",
+      "Sowbug",
+      "Threat Group-3390",
+      "Tonto Team",
+      "Volt Typhoon",
+      "menuPass"
+    ],
+    "T1056.002": [
+      "FIN4",
+      "RedCurl"
+    ],
+    "T1056.003": [
+      "Kimsuky",
+      "Winter Vivern"
+    ],
+    "T1056.004": [
+      "PLATINUM"
+    ],
+    "T1057": [
+      "APT1",
+      "APT28",
+      "APT3",
+      "APT37",
+      "APT38",
+      "APT5",
+      "Andariel",
+      "Chimera",
+      "Darkhotel",
+      "Deep Panda",
+      "Earth Lusca",
+      "FIN7",
+      "Gamaredon Group",
+      "HAFNIUM",
+      "HEXANE",
+      "Higaisa",
+      "Inception",
+      "Ke3chang",
+      "Kimsuky",
+      "Lazarus Group",
+      "Magic Hound",
+      "Medusa Group",
+      "MirrorFace",
+      "Molerats",
+      "MuddyWater",
+      "Mustang Panda",
+      "OilRig",
+      "Play",
+      "Poseidon Group",
+      "Rocke",
+      "Sidewinder",
+      "Stealth Falcon",
+      "Storm-0501",
+      "TeamTNT",
+      "ToddyCat",
+      "Tropic Trooper",
+      "Turla",
+      "UNC3886",
+      "Volt Typhoon",
+      "Windshift",
+      "Winnti Group"
+    ],
+    "T1059": [
+      "APT19",
+      "APT32",
+      "APT37",
+      "APT39",
+      "Dragonfly",
+      "FIN5",
+      "FIN6",
+      "FIN7",
+      "Fox Kitten",
+      "Ke3chang",
+      "Mustang Panda",
+      "OilRig",
+      "Saint Bear",
+      "Stealth Falcon",
+      "Whitefly",
+      "Windigo",
+      "Winter Vivern"
+    ],
+    "T1059.001": [
+      "APT-C-36",
+      "APT19",
+      "APT28",
+      "APT29",
+      "APT3",
+      "APT32",
+      "APT33",
+      "APT38",
+      "APT39",
+      "APT41",
+      "APT42",
+      "APT5",
+      "Akira",
+      "Aquatic Panda",
+      "BRONZE BUTLER",
+      "BlackByte",
+      "Blue Mockingbird",
+      "CURIUM",
+      "Chimera",
+      "Cinnamon Tempest",
+      "Cobalt Group",
+      "Confucius",
+      "CopyKittens",
+      "Daggerfly",
+      "DarkHydrus",
+      "DarkVishnya",
+      "Deep Panda",
+      "Dragonfly",
+      "Earth Lusca",
+      "Ember Bear",
+      "FIN10",
+      "FIN13",
+      "FIN6",
+      "FIN7",
+      "FIN8",
+      "Fox Kitten",
+      "GALLIUM",
+      "GOLD SOUTHFIELD",
+      "Gallmaker",
+      "Gamaredon Group",
+      "Gorgon Group",
+      "HAFNIUM",
+      "HEXANE",
+      "Inception",
+      "Indrik Spider",
+      "Kimsuky",
+      "Lazarus Group",
+      "LazyScripter",
+      "Leviathan",
+      "Magic Hound",
+      "Medusa Group",
+      "Molerats",
+      "MoustachedBouncer",
+      "MuddyWater",
+      "Mustang Panda",
+      "Nomadic Octopus",
+      "OilRig",
+      "Patchwork",
+      "Play",
+      "Poseidon Group",
+      "RedCurl",
+      "Saint Bear",
+      "Sandworm Team",
+      "Scattered Spider",
+      "Sidewinder",
+      "Silence",
+      "Stealth Falcon",
+      "Storm-0501",
+      "Storm-1811",
+      "TA2541",
+      "TA459",
+      "TA505",
+      "TeamTNT",
+      "Threat Group-3390",
+      "Thrip",
+      "ToddyCat",
+      "Tonto Team",
+      "Turla",
+      "UNC3886",
+      "VOID MANTICORE",
+      "Volt Typhoon",
+      "WIRTE",
+      "Winter Vivern",
+      "Wizard Spider",
+      "menuPass"
+    ],
+    "T1059.003": [
+      "APT1",
+      "APT18",
+      "APT28",
+      "APT3",
+      "APT32",
+      "APT37",
+      "APT38",
+      "APT41",
+      "APT5",
+      "Agrius",
+      "Aquatic Panda",
+      "BRONZE BUTLER",
+      "BlackByte",
+      "Blue Mockingbird",
+      "Chimera",
+      "Cinnamon Tempest",
+      "Cobalt Group",
+      "Contagious Interview",
+      "Dark Caracal",
+      "Darkhotel",
+      "Dragonfly",
+      "FIN10",
+      "FIN13",
+      "FIN6",
+      "FIN7",
+      "FIN8",
+      "Fox Kitten",
+      "GALLIUM",
+      "Gamaredon Group",
+      "Gorgon Group",
+      "HAFNIUM",
+      "Higaisa",
+      "INC Ransom",
+      "Indrik Spider",
+      "Ke3chang",
+      "Kimsuky",
+      "Lazarus Group",
+      "LazyScripter",
+      "Machete",
+      "Magic Hound",
+      "Medusa Group",
+      "Metador",
+      "MirrorFace",
+      "MuddyWater",
+      "Mustang Panda",
+      "Nomadic Octopus",
+      "OilRig",
+      "Patchwork",
+      "Play",
+      "Rancor",
+      "RedCurl",
+      "Saint Bear",
+      "Silence",
+      "Sowbug",
+      "Storm-1811",
+      "Suckfly",
+      "TA505",
+      "TA551",
+      "TA577",
+      "TeamTNT",
+      "Threat Group-1314",
+      "Threat Group-3390",
+      "ToddyCat",
+      "Tropic Trooper",
+      "Turla",
+      "UNC3886",
+      "Volt Typhoon",
+      "WIRTE",
+      "Winter Vivern",
+      "Wizard Spider",
+      "ZIRCONIUM",
+      "admin@338",
+      "menuPass"
+    ],
+    "T1059.004": [
+      "APT41",
+      "Aquatic Panda",
+      "Contagious Interview",
+      "Rocke",
+      "Scattered Spider",
+      "Sea Turtle",
+      "TeamTNT",
+      "UNC3886",
+      "Velvet Ant",
+      "Volt Typhoon"
+    ],
+    "T1059.005": [
+      "APT-C-36",
+      "APT32",
+      "APT33",
+      "APT37",
+      "APT38",
+      "APT39",
+      "APT42",
+      "BRONZE BUTLER",
+      "Cobalt Group",
+      "Confucius",
+      "Contagious Interview",
+      "Earth Lusca",
+      "FIN13",
+      "FIN4",
+      "FIN7",
+      "Gamaredon Group",
+      "Gorgon Group",
+      "HEXANE",
+      "Higaisa",
+      "Inception",
+      "Kimsuky",
+      "Lazarus Group",
+      "LazyScripter",
+      "Leviathan",
+      "Machete",
+      "Magic Hound",
+      "Malteiro",
+      "MirrorFace",
+      "Molerats",
+      "MuddyWater",
+      "Mustang Panda",
+      "OilRig",
+      "Patchwork",
+      "Rancor",
+      "RedCurl",
+      "Sandworm Team",
+      "SideCopy",
+      "Sidewinder",
+      "Silence",
+      "TA2541",
+      "TA459",
+      "TA505",
+      "Transparent Tribe",
+      "Turla",
+      "WIRTE",
+      "Windshift"
+    ],
+    "T1059.006": [
+      "APT29",
+      "APT37",
+      "APT39",
+      "BRONZE BUTLER",
+      "Cinnamon Tempest",
+      "Contagious Interview",
+      "Dragonfly",
+      "Earth Lusca",
+      "Kimsuky",
+      "Machete",
+      "MuddyWater",
+      "RedCurl",
+      "Rocke",
+      "Tonto Team",
+      "Turla",
+      "UNC3886",
+      "VOID MANTICORE",
+      "ZIRCONIUM"
+    ],
+    "T1059.007": [
+      "APT-C-36",
+      "APT32",
+      "Cobalt Group",
+      "Contagious Interview",
+      "Earth Lusca",
+      "Evilnum",
+      "FIN6",
+      "FIN7",
+      "Higaisa",
+      "Indrik Spider",
+      "Kimsuky",
+      "LazyScripter",
+      "Leafminer",
+      "Molerats",
+      "MoustachedBouncer",
+      "MuddyWater",
+      "Mustang Panda",
+      "Saint Bear",
+      "Sidewinder",
+      "Silence",
+      "Star Blizzard",
+      "TA505",
+      "TA577",
+      "TA578",
+      "Turla",
+      "Winter Vivern"
+    ],
+    "T1059.009": [
+      "APT29",
+      "Storm-0501",
+      "TeamTNT"
+    ],
+    "T1059.010": [
+      "APT39"
+    ],
+    "T1059.012": [
+      "UNC3886"
+    ],
+    "T1059.013": [
+      "TeamTNT"
+    ],
+    "T1068": [
+      "APT28",
+      "APT29",
+      "APT32",
+      "APT33",
+      "BITTER",
+      "BlackByte",
+      "Cobalt Group",
+      "FIN6",
+      "FIN8",
+      "HAFNIUM",
+      "LAPSUS$",
+      "MoustachedBouncer",
+      "OilRig",
+      "PLATINUM",
+      "Scattered Spider",
+      "Threat Group-3390",
+      "Tonto Team",
+      "Turla",
+      "UNC3886",
+      "Volt Typhoon",
+      "Whitefly",
+      "ZIRCONIUM"
+    ],
+    "T1069": [
+      "APT3",
+      "APT41",
+      "FIN13",
+      "Scattered Spider",
+      "TA505",
+      "Volt Typhoon"
+    ],
+    "T1069.001": [
+      "Chimera",
+      "HEXANE",
+      "OilRig",
+      "Tonto Team",
+      "Turla",
+      "Volt Typhoon",
+      "admin@338"
+    ],
+    "T1069.002": [
+      "Dragonfly",
+      "FIN7",
+      "INC Ransom",
+      "Inception",
+      "Ke3chang",
+      "LAPSUS$",
+      "Medusa Group",
+      "Mustang Panda",
+      "OilRig",
+      "Scattered Spider",
+      "ToddyCat",
+      "Turla",
+      "Volt Typhoon"
+    ],
+    "T1070": [
+      "APT42",
+      "APT5",
+      "Lazarus Group",
+      "Mustang Panda"
+    ],
+    "T1070.003": [
+      "APT41",
+      "APT5",
+      "Aquatic Panda",
+      "Lazarus Group",
+      "Magic Hound",
+      "Medusa Group",
+      "TeamTNT",
+      "menuPass"
+    ],
+    "T1070.004": [
+      "APT18",
+      "APT28",
+      "APT29",
+      "APT3",
+      "APT32",
+      "APT38",
+      "APT39",
+      "APT41",
+      "APT5",
+      "Aquatic Panda",
+      "BRONZE BUTLER",
+      "BlackByte",
+      "Chimera",
+      "Cobalt Group",
+      "Contagious Interview",
+      "Dragonfly",
+      "Ember Bear",
+      "Evilnum",
+      "FIN10",
+      "FIN5",
+      "FIN6",
+      "FIN8",
+      "Gamaredon Group",
+      "Group5",
+      "INC Ransom",
+      "Kimsuky",
+      "Lazarus Group",
+      "Magic Hound",
+      "Medusa Group",
+      "Metador",
+      "MirrorFace",
+      "Mustang Panda",
+      "OilRig",
+      "Patchwork",
+      "Play",
+      "RedCurl",
+      "Rocke",
+      "Sandworm Team",
+      "Silence",
+      "TeamTNT",
+      "The White Company",
+      "Threat Group-3390",
+      "Tropic Trooper",
+      "UNC3886",
+      "Volt Typhoon",
+      "Wizard Spider",
+      "menuPass"
+    ],
+    "T1070.005": [
+      "Threat Group-3390"
+    ],
+    "T1070.006": [
+      "APT28",
+      "APT29",
+      "APT32",
+      "APT38",
+      "APT5",
+      "Chimera",
+      "Kimsuky",
+      "Lazarus Group",
+      "Mustang Panda",
+      "Rocke",
+      "UNC3886"
+    ],
+    "T1070.007": [
+      "UNC3886",
+      "Volt Typhoon"
+    ],
+    "T1070.008": [
+      "APT42",
+      "Scattered Spider"
+    ],
+    "T1071": [
+      "INC Ransom",
+      "Magic Hound",
+      "Rocke",
+      "TeamTNT",
+      "Velvet Ant"
+    ],
+    "T1071.001": [
+      "APT18",
+      "APT19",
+      "APT28",
+      "APT32",
+      "APT33",
+      "APT37",
+      "APT38",
+      "APT39",
+      "APT41",
+      "APT42",
+      "BITTER",
+      "BRONZE BUTLER",
+      "BlackByte",
+      "Chimera",
+      "Cobalt Group",
+      "Confucius",
+      "Daggerfly",
+      "Dark Caracal",
+      "FIN13",
+      "FIN4",
+      "FIN8",
+      "Gamaredon Group",
+      "HAFNIUM",
+      "Higaisa",
+      "Inception",
+      "Ke3chang",
+      "Kimsuky",
+      "Lazarus Group",
+      "LuminousMoth",
+      "Magic Hound",
+      "Medusa Group",
+      "Metador",
+      "Moonstone Sleet",
+      "MuddyWater",
+      "Mustang Panda",
+      "OilRig",
+      "Orangeworm",
+      "Rancor",
+      "RedCurl",
+      "RedEcho",
+      "Rocke",
+      "Sandworm Team",
+      "Sea Turtle",
+      "Sidewinder",
+      "SilverTerrier",
+      "Stealth Falcon",
+      "TA505",
+      "TA551",
+      "TeamTNT",
+      "Threat Group-3390",
+      "Tropic Trooper",
+      "Turla",
+      "VOID MANTICORE",
+      "WIRTE",
+      "Windshift",
+      "Winter Vivern",
+      "Wizard Spider"
+    ],
+    "T1071.002": [
+      "APT41",
+      "Dragonfly",
+      "Kimsuky",
+      "MirrorFace",
+      "SilverTerrier"
+    ],
+    "T1071.003": [
+      "APT28",
+      "APT32",
+      "Contagious Interview",
+      "Kimsuky",
+      "SilverTerrier",
+      "Turla"
+    ],
+    "T1071.004": [
+      "APT18",
+      "APT39",
+      "APT41",
+      "Chimera",
+      "Cobalt Group",
+      "Ember Bear",
+      "FIN7",
+      "Ke3chang",
+      "LazyScripter",
+      "OilRig",
+      "Tropic Trooper"
+    ],
+    "T1072": [
+      "APT32",
+      "Medusa Group",
+      "Mustang Panda",
+      "Sandworm Team",
+      "Silence",
+      "Threat Group-1314",
+      "VOID MANTICORE"
+    ],
+    "T1074": [
+      "INC Ransom",
+      "Scattered Spider",
+      "VOID MANTICORE",
+      "Volt Typhoon",
+      "Wizard Spider"
+    ],
+    "T1074.001": [
+      "APT28",
+      "APT3",
+      "APT39",
+      "APT5",
+      "Agrius",
+      "BackdoorDiplomacy",
+      "Chimera",
+      "Dragonfly",
+      "FIN13",
+      "FIN5",
+      "GALLIUM",
+      "Indrik Spider",
+      "Kimsuky",
+      "Lazarus Group",
+      "Leviathan",
+      "Lotus Blossom",
+      "MuddyWater",
+      "Mustang Panda",
+      "Patchwork",
+      "Sidewinder",
+      "Storm-1811",
+      "TeamTNT",
+      "Threat Group-3390",
+      "UNC3886",
+      "Volt Typhoon",
+      "WIRTE",
+      "Wizard Spider",
+      "menuPass"
+    ],
+    "T1074.002": [
+      "APT28",
+      "Chimera",
+      "FIN6",
+      "FIN8",
+      "Leviathan",
+      "MirrorFace",
+      "MoustachedBouncer",
+      "Sea Turtle",
+      "Threat Group-3390",
+      "ToddyCat",
+      "menuPass"
+    ],
+    "T1078": [
+      "APT18",
+      "APT28",
+      "APT29",
+      "APT33",
+      "APT39",
+      "APT41",
+      "Akira",
+      "Axiom",
+      "BlackByte",
+      "Carbanak",
+      "Chimera",
+      "Cinnamon Tempest",
+      "Dragonfly",
+      "FIN10",
+      "FIN4",
+      "FIN5",
+      "FIN6",
+      "FIN7",
+      "FIN8",
+      "Fox Kitten",
+      "GALLIUM",
+      "INC Ransom",
+      "Indrik Spider",
+      "Ke3chang",
+      "LAPSUS$",
+      "Lazarus Group",
+      "Leviathan",
+      "Medusa Group",
+      "OilRig",
+      "POLONIUM",
+      "PittyTiger",
+      "Play",
+      "Sandworm Team",
+      "Scattered Spider",
+      "Sea Turtle",
+      "Silence",
+      "Silent Librarian",
+      "Star Blizzard",
+      "Suckfly",
+      "Threat Group-3390",
+      "UNC3886",
+      "VOID MANTICORE",
+      "Volt Typhoon",
+      "Wizard Spider",
+      "menuPass"
+    ],
+    "T1078.001": [
+      "Ember Bear",
+      "FIN13",
+      "Magic Hound",
+      "UNC3886"
+    ],
+    "T1078.002": [
+      "APT3",
+      "APT5",
+      "Agrius",
+      "Aquatic Panda",
+      "BlackByte",
+      "Chimera",
+      "Cinnamon Tempest",
+      "Indrik Spider",
+      "Magic Hound",
+      "Naikon",
+      "OilRig",
+      "Play",
+      "Sandworm Team",
+      "TA505",
+      "Threat Group-1314",
+      "ToddyCat",
+      "VOID MANTICORE",
+      "Volt Typhoon",
+      "Wizard Spider"
+    ],
+    "T1078.003": [
+      "APT29",
+      "APT32",
+      "FIN10",
+      "FIN7",
+      "HAFNIUM",
+      "Kimsuky",
+      "PROMETHIUM",
+      "Play",
+      "Sea Turtle",
+      "Tropic Trooper",
+      "Turla",
+      "Velvet Ant"
+    ],
+    "T1078.004": [
+      "APT28",
+      "APT29",
+      "APT33",
+      "APT5",
+      "HAFNIUM",
+      "Ke3chang",
+      "LAPSUS$",
+      "Scattered Spider",
+      "Storm-0501",
+      "VOID MANTICORE"
+    ],
+    "T1080": [
+      "BRONZE BUTLER",
+      "Cinnamon Tempest",
+      "Darkhotel",
+      "Gamaredon Group",
+      "RedCurl"
+    ],
+    "T1082": [
+      "APT18",
+      "APT19",
+      "APT3",
+      "APT32",
+      "APT37",
+      "APT38",
+      "APT41",
+      "APT42",
+      "Aquatic Panda",
+      "BlackByte",
+      "Blue Mockingbird",
+      "CURIUM",
+      "Contagious Interview",
+      "Daggerfly",
+      "Darkhotel",
+      "FIN13",
+      "FIN7",
+      "FIN8",
+      "Gamaredon Group",
+      "HEXANE",
+      "Higaisa",
+      "Inception",
+      "Ke3chang",
+      "Kimsuky",
+      "Lazarus Group",
+      "Magic Hound",
+      "Malteiro",
+      "Medusa Group",
+      "MirrorFace",
+      "Moonstone Sleet",
+      "Moses Staff",
+      "MuddyWater",
+      "Mustang Panda",
+      "Mustard Tempest",
+      "OilRig",
+      "Patchwork",
+      "Play",
+      "RedCurl",
+      "Rocke",
+      "Sandworm Team",
+      "Scattered Spider",
+      "SideCopy",
+      "Sidewinder",
+      "Sowbug",
+      "Stealth Falcon",
+      "Storm-0501",
+      "TA2541",
+      "TeamTNT",
+      "Tropic Trooper",
+      "Turla",
+      "VOID MANTICORE",
+      "Windigo",
+      "Windshift",
+      "Winter Vivern",
+      "Wizard Spider",
+      "ZIRCONIUM",
+      "admin@338"
+    ],
+    "T1083": [
+      "APT18",
+      "APT28",
+      "APT3",
+      "APT32",
+      "APT38",
+      "APT39",
+      "APT41",
+      "APT5",
+      "Aoqin Dragon",
+      "BRONZE BUTLER",
+      "Chimera",
+      "Confucius",
+      "Contagious Interview",
+      "Dark Caracal",
+      "Darkhotel",
+      "Dragonfly",
+      "FIN13",
+      "Fox Kitten",
+      "Gamaredon Group",
+      "HAFNIUM",
+      "Inception",
+      "Ke3chang",
+      "Kimsuky",
+      "Lazarus Group",
+      "Leafminer",
+      "Lotus Blossom",
+      "LuminousMoth",
+      "Magic Hound",
+      "Medusa Group",
+      "MirrorFace",
+      "MuddyWater",
+      "Mustang Panda",
+      "Patchwork",
+      "Play",
+      "RedCurl",
+      "Sandworm Team",
+      "Scattered Spider",
+      "Sidewinder",
+      "Sowbug",
+      "TeamTNT",
+      "ToddyCat",
+      "Tropic Trooper",
+      "Turla",
+      "UNC3886",
+      "Velvet Ant",
+      "Volt Typhoon",
+      "Windigo",
+      "Winnti Group",
+      "Winter Vivern",
+      "admin@338",
+      "menuPass"
+    ],
+    "T1087": [
+      "Aquatic Panda",
+      "FIN13",
+      "Scattered Spider"
+    ],
+    "T1087.001": [
+      "APT1",
+      "APT3",
+      "APT32",
+      "APT41",
+      "APT42",
+      "Chimera",
+      "Fox Kitten",
+      "Ke3chang",
+      "Lotus Blossom",
+      "Medusa Group",
+      "Moses Staff",
+      "OilRig",
+      "Poseidon Group",
+      "RedCurl",
+      "Threat Group-3390",
+      "Turla",
+      "Volt Typhoon",
+      "admin@338"
+    ],
+    "T1087.002": [
+      "APT41",
+      "BRONZE BUTLER",
+      "BlackByte",
+      "Chimera",
+      "Dragonfly",
+      "FIN13",
+      "FIN6",
+      "FIN7",
+      "Fox Kitten",
+      "INC Ransom",
+      "Ke3chang",
+      "LAPSUS$",
+      "Lotus Blossom",
+      "MirrorFace",
+      "MuddyWater",
+      "Mustang Panda",
+      "OilRig",
+      "Poseidon Group",
+      "RedCurl",
+      "Sandworm Team",
+      "Scattered Spider",
+      "Storm-0501",
+      "Storm-1811",
+      "ToddyCat",
+      "Turla",
+      "VOID MANTICORE",
+      "Volt Typhoon",
+      "Wizard Spider",
+      "menuPass"
+    ],
+    "T1087.003": [
+      "Magic Hound",
+      "RedCurl",
+      "Sandworm Team",
+      "TA505"
+    ],
+    "T1087.004": [
+      "APT29",
+      "Storm-0501"
+    ],
+    "T1090": [
+      "APT41",
+      "Blue Mockingbird",
+      "Cinnamon Tempest",
+      "Contagious Interview",
+      "CopyKittens",
+      "Earth Lusca",
+      "Fox Kitten",
+      "Gamaredon Group",
+      "LAPSUS$",
+      "Magic Hound",
+      "MirrorFace",
+      "MoustachedBouncer",
+      "MuddyWater",
+      "POLONIUM",
+      "Sandworm Team",
+      "Scattered Spider",
+      "Turla",
+      "Volt Typhoon",
+      "Windigo"
+    ],
+    "T1090.001": [
+      "APT39",
+      "FIN13",
+      "Higaisa",
+      "Lazarus Group",
+      "Lotus Blossom",
+      "Strider",
+      "Turla",
+      "Velvet Ant",
+      "Volt Typhoon"
+    ],
+    "T1090.002": [
+      "APT28",
+      "APT29",
+      "APT3",
+      "APT39",
+      "FIN5",
+      "GALLIUM",
+      "Lazarus Group",
+      "MuddyWater",
+      "Silence",
+      "Tonto Team",
+      "menuPass"
+    ],
+    "T1090.003": [
+      "APT28",
+      "APT29",
+      "Ember Bear",
+      "FIN4",
+      "Gamaredon Group",
+      "Inception",
+      "Leviathan",
+      "Lotus Blossom",
+      "Medusa Group",
+      "Volt Typhoon",
+      "ZIRCONIUM"
+    ],
+    "T1090.004": [
+      "APT29"
+    ],
+    "T1091": [
+      "APT28",
+      "Aoqin Dragon",
+      "Darkhotel",
+      "FIN7",
+      "Gamaredon Group",
+      "LuminousMoth",
+      "Mustang Panda",
+      "Tropic Trooper"
+    ],
+    "T1092": [
+      "APT28"
+    ],
+    "T1095": [
+      "APT3",
+      "BITTER",
+      "BackdoorDiplomacy",
+      "Ember Bear",
+      "FIN6",
+      "Gamaredon Group",
+      "HAFNIUM",
+      "Metador",
+      "Mustang Panda",
+      "PLATINUM",
+      "ToddyCat",
+      "UNC3886"
+    ],
+    "T1098": [
+      "HAFNIUM",
+      "Lazarus Group",
+      "Scattered Spider",
+      "VOID MANTICORE"
+    ],
+    "T1098.001": [
+      "Storm-0501"
+    ],
+    "T1098.002": [
+      "APT28",
+      "APT29",
+      "Magic Hound"
+    ],
+    "T1098.003": [
+      "LAPSUS$",
+      "Scattered Spider",
+      "Storm-0501"
+    ],
+    "T1098.004": [
+      "Earth Lusca",
+      "Salt Typhoon",
+      "TeamTNT"
+    ],
+    "T1098.005": [
+      "APT29"
+    ],
+    "T1098.007": [
+      "APT3",
+      "APT41",
+      "APT5",
+      "Dragonfly",
+      "FIN13",
+      "Kimsuky",
+      "Magic Hound"
+    ],
+    "T1102": [
+      "APT32",
+      "APT42",
+      "EXOTIC LILY",
+      "FIN6",
+      "FIN8",
+      "Fox Kitten",
+      "Gamaredon Group",
+      "Inception",
+      "LazyScripter",
+      "Mustang Panda",
+      "RedCurl",
+      "Rocke",
+      "TeamTNT",
+      "Turla",
+      "VOID MANTICORE"
+    ],
+    "T1102.001": [
+      "APT41",
+      "BRONZE BUTLER",
+      "Kimsuky",
+      "Patchwork",
+      "RTM",
+      "Rocke"
+    ],
+    "T1102.002": [
+      "APT12",
+      "APT28",
+      "APT37",
+      "APT39",
+      "Carbanak",
+      "FIN7",
+      "Gamaredon Group",
+      "HEXANE",
+      "Kimsuky",
+      "Lazarus Group",
+      "Magic Hound",
+      "MuddyWater",
+      "POLONIUM",
+      "Sandworm Team",
+      "Turla",
+      "ZIRCONIUM"
+    ],
+    "T1102.003": [
+      "Gamaredon Group",
+      "Leviathan"
+    ],
+    "T1104": [
+      "APT3",
+      "APT41",
+      "Lazarus Group",
+      "MuddyWater"
+    ],
+    "T1105": [
+      "APT-C-36",
+      "APT18",
+      "APT28",
+      "APT29",
+      "APT3",
+      "APT32",
+      "APT33",
+      "APT37",
+      "APT38",
+      "APT39",
+      "APT41",
+      "Ajax Security Team",
+      "Andariel",
+      "Aquatic Panda",
+      "BITTER",
+      "BRONZE BUTLER",
+      "BackdoorDiplomacy",
+      "BlackByte",
+      "Chimera",
+      "Cinnamon Tempest",
+      "Cobalt Group",
+      "Confucius",
+      "Daggerfly",
+      "Darkhotel",
+      "Dragonfly",
+      "Elderwood",
+      "Evilnum",
+      "FIN13",
+      "FIN7",
+      "FIN8",
+      "Fox Kitten",
+      "GALLIUM",
+      "Gamaredon Group",
+      "Gorgon Group",
+      "HAFNIUM",
+      "HEXANE",
+      "INC Ransom",
+      "IndigoZebra",
+      "Indrik Spider",
+      "Ke3chang",
+      "Kimsuky",
+      "Lazarus Group",
+      "LazyScripter",
+      "Leviathan",
+      "LuminousMoth",
+      "Magic Hound",
+      "Medusa Group",
+      "Metador",
+      "Molerats",
+      "Moonstone Sleet",
+      "Moses Staff",
+      "MuddyWater",
+      "Mustang Panda",
+      "Mustard Tempest",
+      "Nomadic Octopus",
+      "OilRig",
+      "PLATINUM",
+      "Patchwork",
+      "Play",
+      "Rancor",
+      "Rocke",
+      "Sandworm Team",
+      "Scattered Spider",
+      "SideCopy",
+      "Sidewinder",
+      "Silence",
+      "Storm-1811",
+      "TA2541",
+      "TA505",
+      "TA551",
+      "TeamTNT",
+      "Threat Group-3390",
+      "Tonto Team",
+      "Tropic Trooper",
+      "Turla",
+      "VOID MANTICORE",
+      "Volatile Cedar",
+      "Volt Typhoon",
+      "WIRTE",
+      "Whitefly",
+      "Windshift",
+      "Winnti Group",
+      "Winter Vivern",
+      "Wizard Spider",
+      "ZIRCONIUM",
+      "menuPass"
+    ],
+    "T1106": [
+      "APT37",
+      "APT38",
+      "BlackTech",
+      "Chimera",
+      "Gamaredon Group",
+      "Gorgon Group",
+      "Higaisa",
+      "Kimsuky",
+      "Lazarus Group",
+      "Medusa Group",
+      "Mustang Panda",
+      "Sandworm Team",
+      "SideCopy",
+      "Silence",
+      "TA505",
+      "ToddyCat",
+      "Tropic Trooper",
+      "Turla",
+      "WIRTE",
+      "menuPass"
+    ],
+    "T1110": [
+      "APT28",
+      "APT38",
+      "APT39",
+      "APT41",
+      "Agrius",
+      "DarkVishnya",
+      "Dragonfly",
+      "Ember Bear",
+      "FIN5",
+      "Fox Kitten",
+      "HEXANE",
+      "OilRig",
+      "Storm-0501",
+      "Turla",
+      "VOID MANTICORE"
+    ],
+    "T1110.001": [
+      "APT28",
+      "APT29",
+      "VOID MANTICORE"
+    ],
+    "T1110.002": [
+      "APT3",
+      "Dragonfly",
+      "FIN6",
+      "Salt Typhoon"
+    ],
+    "T1110.003": [
+      "APT28",
+      "APT29",
+      "APT33",
+      "Agrius",
+      "Chimera",
+      "Ember Bear",
+      "HAFNIUM",
+      "HEXANE",
+      "Lazarus Group",
+      "Leafminer",
+      "Silent Librarian"
+    ],
+    "T1110.004": [
+      "Chimera",
+      "VOID MANTICORE"
+    ],
+    "T1111": [
+      "APT42",
+      "Chimera",
+      "Kimsuky",
+      "LAPSUS$"
+    ],
+    "T1112": [
+      "APT19",
+      "APT32",
+      "APT38",
+      "APT41",
+      "APT42",
+      "Aquatic Panda",
+      "BlackByte",
+      "Blue Mockingbird",
+      "Dragonfly",
+      "Earth Lusca",
+      "Ember Bear",
+      "FIN8",
+      "Gamaredon Group",
+      "Gorgon Group",
+      "Indrik Spider",
+      "Kimsuky",
+      "Lotus Blossom",
+      "LuminousMoth",
+      "Magic Hound",
+      "Medusa Group",
+      "OilRig",
+      "Patchwork",
+      "Saint Bear",
+      "Silence",
+      "TA505",
+      "Threat Group-3390",
+      "Turla",
+      "Volt Typhoon",
+      "Wizard Spider"
+    ],
+    "T1113": [
+      "APT28",
+      "APT39",
+      "APT42",
+      "BRONZE BUTLER",
+      "Dark Caracal",
+      "Dragonfly",
+      "FIN7",
+      "GOLD SOUTHFIELD",
+      "Gamaredon Group",
+      "Group5",
+      "Kimsuky",
+      "Magic Hound",
+      "MoustachedBouncer",
+      "MuddyWater",
+      "OilRig",
+      "Silence",
+      "VOID MANTICORE",
+      "Volt Typhoon",
+      "Winter Vivern"
+    ],
+    "T1114": [
+      "Ember Bear",
+      "Magic Hound",
+      "Scattered Spider",
+      "Silent Librarian"
+    ],
+    "T1114.001": [
+      "APT1",
+      "Chimera",
+      "Magic Hound",
+      "MirrorFace",
+      "RedCurl",
+      "Sea Turtle",
+      "WIRTE",
+      "Winter Vivern"
+    ],
+    "T1114.002": [
+      "APT1",
+      "APT28",
+      "APT29",
+      "Chimera",
+      "Dragonfly",
+      "FIN4",
+      "HAFNIUM",
+      "Ke3chang",
+      "Kimsuky",
+      "Leafminer",
+      "Magic Hound",
+      "Star Blizzard",
+      "VOID MANTICORE"
+    ],
+    "T1114.003": [
+      "Kimsuky",
+      "LAPSUS$",
+      "Scattered Spider",
+      "Silent Librarian",
+      "Star Blizzard"
+    ],
+    "T1115": [
+      "APT38",
+      "APT39",
+      "Kimsuky",
+      "OilRig"
+    ],
+    "T1119": [
+      "APT1",
+      "APT28",
+      "Agrius",
+      "Chimera",
+      "Confucius",
+      "Ember Bear",
+      "FIN5",
+      "FIN6",
+      "Gamaredon Group",
+      "HAFNIUM",
+      "Ke3chang",
+      "Mustang Panda",
+      "OilRig",
+      "Patchwork",
+      "RedCurl",
+      "Sidewinder",
+      "Threat Group-3390",
+      "Tropic Trooper",
+      "VOID MANTICORE",
+      "Winter Vivern",
+      "menuPass"
+    ],
+    "T1120": [
+      "APT28",
+      "APT37",
+      "BackdoorDiplomacy",
+      "Equation",
+      "Gamaredon Group",
+      "OilRig",
+      "TeamTNT",
+      "Turla",
+      "Volt Typhoon"
+    ],
+    "T1123": [
+      "APT37",
+      "VOID MANTICORE"
+    ],
+    "T1124": [
+      "BRONZE BUTLER",
+      "CURIUM",
+      "Chimera",
+      "Darkhotel",
+      "FIN7",
+      "Higaisa",
+      "Kimsuky",
+      "Lazarus Group",
+      "Sidewinder",
+      "The White Company",
+      "Turla",
+      "UNC3886",
+      "Volt Typhoon",
+      "ZIRCONIUM"
+    ],
+    "T1125": [
+      "Ember Bear",
+      "FIN7",
+      "Silence",
+      "VOID MANTICORE"
+    ],
+    "T1129": [
+      "Mustang Panda"
+    ],
+    "T1132": [
+      "Velvet Ant"
+    ],
+    "T1132.001": [
+      "APT19",
+      "APT33",
+      "APT42",
+      "BRONZE BUTLER",
+      "HAFNIUM",
+      "Lazarus Group",
+      "MuddyWater",
+      "Patchwork",
+      "Sandworm Team",
+      "TA551",
+      "Tropic Trooper"
+    ],
+    "T1132.002": [
+      "Kimsuky"
+    ],
+    "T1133": [
+      "APT-C-36",
+      "APT18",
+      "APT28",
+      "APT29",
+      "APT41",
+      "Akira",
+      "Chimera",
+      "Dragonfly",
+      "Ember Bear",
+      "FIN13",
+      "FIN5",
+      "GALLIUM",
+      "GOLD SOUTHFIELD",
+      "Ke3chang",
+      "Kimsuky",
+      "LAPSUS$",
+      "Leviathan",
+      "OilRig",
+      "Play",
+      "Sandworm Team",
+      "Scattered Spider",
+      "Sea Turtle",
+      "TeamTNT",
+      "Threat Group-3390",
+      "VOID MANTICORE",
+      "Velvet Ant",
+      "Volt Typhoon",
+      "Wizard Spider"
+    ],
+    "T1134": [
+      "Blue Mockingbird",
+      "FIN6",
+      "Lotus Blossom"
+    ],
+    "T1134.001": [
+      "APT28",
+      "FIN8"
+    ],
+    "T1134.002": [
+      "Lazarus Group",
+      "Turla"
+    ],
+    "T1134.003": [
+      "BlackByte",
+      "FIN13"
+    ],
+    "T1135": [
+      "APT1",
+      "APT32",
+      "APT38",
+      "APT39",
+      "APT41",
+      "BlackByte",
+      "Chimera",
+      "DarkVishnya",
+      "Dragonfly",
+      "FIN13",
+      "INC Ransom",
+      "Medusa Group",
+      "Sowbug",
+      "Tonto Team",
+      "Tropic Trooper",
+      "Wizard Spider"
+    ],
+    "T1136": [
+      "Indrik Spider",
+      "Salt Typhoon",
+      "Scattered Spider"
+    ],
+    "T1136.001": [
+      "APT3",
+      "APT39",
+      "APT41",
+      "APT5",
+      "Daggerfly",
+      "Dragonfly",
+      "FIN13",
+      "Fox Kitten",
+      "Indrik Spider",
+      "Kimsuky",
+      "Leafminer",
+      "Magic Hound",
+      "TeamTNT",
+      "Wizard Spider"
+    ],
+    "T1136.002": [
+      "BlackByte",
+      "GALLIUM",
+      "HAFNIUM",
+      "Medusa Group",
+      "Wizard Spider"
+    ],
+    "T1136.003": [
+      "APT29",
+      "LAPSUS$"
+    ],
+    "T1137": [
+      "APT32",
+      "Gamaredon Group"
+    ],
+    "T1137.001": [
+      "MuddyWater"
+    ],
+    "T1137.002": [
+      "APT28"
+    ],
+    "T1137.004": [
+      "OilRig"
+    ],
+    "T1137.006": [
+      "Naikon"
+    ],
+    "T1140": [
+      "APT19",
+      "APT28",
+      "APT38",
+      "APT39",
+      "Agrius",
+      "BRONZE BUTLER",
+      "BlackByte",
+      "Cinnamon Tempest",
+      "Darkhotel",
+      "Earth Lusca",
+      "FIN13",
+      "FIN7",
+      "Gamaredon Group",
+      "Gorgon Group",
+      "Higaisa",
+      "Ke3chang",
+      "Kimsuky",
+      "Lazarus Group",
+      "Leviathan",
+      "Malteiro",
+      "Molerats",
+      "Moonstone Sleet",
+      "MuddyWater",
+      "Mustang Panda",
+      "OilRig",
+      "Rocke",
+      "Sandworm Team",
+      "Storm-1811",
+      "TA505",
+      "TeamTNT",
+      "Threat Group-3390",
+      "Tropic Trooper",
+      "Turla",
+      "Volt Typhoon",
+      "WIRTE",
+      "Winter Vivern",
+      "ZIRCONIUM",
+      "menuPass"
+    ],
+    "T1176.001": [
+      "Kimsuky"
+    ],
+    "T1176.002": [
+      "Mustang Panda"
+    ],
+    "T1185": [
+      "Kimsuky"
+    ],
+    "T1187": [
+      "DarkHydrus",
+      "Dragonfly"
+    ],
+    "T1189": [
+      "APT19",
+      "APT28",
+      "APT32",
+      "APT37",
+      "APT38",
+      "Andariel",
+      "Axiom",
+      "BRONZE BUTLER",
+      "CURIUM",
+      "Daggerfly",
+      "Dark Caracal",
+      "Darkhotel",
+      "Dragonfly",
+      "Earth Lusca",
+      "Elderwood",
+      "Lazarus Group",
+      "Leafminer",
+      "Leviathan",
+      "Machete",
+      "Magic Hound",
+      "Mustard Tempest",
+      "PLATINUM",
+      "PROMETHIUM",
+      "Patchwork",
+      "RTM",
+      "Threat Group-3390",
+      "Transparent Tribe",
+      "Turla",
+      "Windigo",
+      "Windshift",
+      "Winter Vivern"
+    ],
+    "T1190": [
+      "APT28",
+      "APT29",
+      "APT39",
+      "APT41",
+      "APT5",
+      "Agrius",
+      "Axiom",
+      "BackdoorDiplomacy",
+      "BlackByte",
+      "BlackTech",
+      "Blue Mockingbird",
+      "Cinnamon Tempest",
+      "Dragonfly",
+      "Earth Lusca",
+      "Ember Bear",
+      "FIN13",
+      "FIN7",
+      "Fox Kitten",
+      "GALLIUM",
+      "GOLD SOUTHFIELD",
+      "HAFNIUM",
+      "INC Ransom",
+      "Ke3chang",
+      "Kimsuky",
+      "Leviathan",
+      "Magic Hound",
+      "Medusa Group",
+      "MirrorFace",
+      "Moses Staff",
+      "MuddyWater",
+      "Play",
+      "Rocke",
+      "Salt Typhoon",
+      "Sandworm Team",
+      "Sea Turtle",
+      "Storm-0501",
+      "Threat Group-3390",
+      "ToddyCat",
+      "UNC3886",
+      "VOID MANTICORE",
+      "Volatile Cedar",
+      "Volt Typhoon",
+      "Winter Vivern",
+      "menuPass"
+    ],
+    "T1195": [
+      "Ember Bear",
+      "OilRig",
+      "Sandworm Team"
+    ],
+    "T1195.002": [
+      "APT41",
+      "Cobalt Group",
+      "Daggerfly",
+      "Dragonfly",
+      "FIN7",
+      "GOLD SOUTHFIELD",
+      "Moonstone Sleet",
+      "Sandworm Team",
+      "Threat Group-3390"
+    ],
+    "T1197": [
+      "APT39",
+      "APT41",
+      "Leviathan",
+      "Patchwork",
+      "Wizard Spider"
+    ],
+    "T1199": [
+      "APT28",
+      "APT29",
+      "GOLD SOUTHFIELD",
+      "HAFNIUM",
+      "LAPSUS$",
+      "POLONIUM",
+      "RedCurl",
+      "Sandworm Team",
+      "Sea Turtle",
+      "Threat Group-3390",
+      "VOID MANTICORE",
+      "menuPass"
+    ],
+    "T1200": [
+      "DarkVishnya"
+    ],
+    "T1201": [
+      "Chimera",
+      "OilRig",
+      "Turla"
+    ],
+    "T1202": [
+      "Lazarus Group",
+      "RedCurl"
+    ],
+    "T1203": [
+      "APT12",
+      "APT28",
+      "APT29",
+      "APT3",
+      "APT32",
+      "APT33",
+      "APT37",
+      "APT41",
+      "Andariel",
+      "Aoqin Dragon",
+      "Axiom",
+      "BITTER",
+      "BRONZE BUTLER",
+      "BlackTech",
+      "Cobalt Group",
+      "Confucius",
+      "Darkhotel",
+      "Dragonfly",
+      "EXOTIC LILY",
+      "Elderwood",
+      "Ember Bear",
+      "Higaisa",
+      "Inception",
+      "Lazarus Group",
+      "Leviathan",
+      "MuddyWater",
+      "Mustang Panda",
+      "OilRig",
+      "Patchwork",
+      "Saint Bear",
+      "Sandworm Team",
+      "Sea Turtle",
+      "Sidewinder",
+      "TA459",
+      "The White Company",
+      "Threat Group-3390",
+      "Tonto Team",
+      "Transparent Tribe",
+      "Tropic Trooper",
+      "UNC3886",
+      "admin@338"
+    ],
+    "T1204": [
+      "LAPSUS$",
+      "Scattered Spider"
+    ],
+    "T1204.001": [
+      "APT-C-36",
+      "APT28",
+      "APT29",
+      "APT3",
+      "APT32",
+      "APT33",
+      "APT38",
+      "APT39",
+      "BlackTech",
+      "Cobalt Group",
+      "Confucius",
+      "Contagious Interview",
+      "Daggerfly",
+      "EXOTIC LILY",
+      "Earth Lusca",
+      "Elderwood",
+      "Evilnum",
+      "FIN4",
+      "FIN7",
+      "FIN8",
+      "Gamaredon Group",
+      "Kimsuky",
+      "LazyScripter",
+      "Leviathan",
+      "LuminousMoth",
+      "Machete",
+      "Magic Hound",
+      "Mofang",
+      "Molerats",
+      "MuddyWater",
+      "Mustang Panda",
+      "Mustard Tempest",
+      "OilRig",
+      "Patchwork",
+      "RedCurl",
+      "Saint Bear",
+      "Sandworm Team",
+      "Sidewinder",
+      "TA2541",
+      "TA505",
+      "TA577",
+      "TA578",
+      "Transparent Tribe",
+      "Turla",
+      "WIRTE",
+      "Windshift",
+      "Winter Vivern",
+      "Wizard Spider",
+      "ZIRCONIUM"
+    ],
+    "T1204.002": [
+      "APT-C-36",
+      "APT12",
+      "APT19",
+      "APT28",
+      "APT29",
+      "APT30",
+      "APT32",
+      "APT33",
+      "APT37",
+      "APT38",
+      "APT39",
+      "Ajax Security Team",
+      "Andariel",
+      "Aoqin Dragon",
+      "BITTER",
+      "BRONZE BUTLER",
+      "BlackTech",
+      "CURIUM",
+      "Cobalt Group",
+      "Confucius",
+      "Contagious Interview",
+      "Dark Caracal",
+      "DarkHydrus",
+      "Darkhotel",
+      "Dragonfly",
+      "EXOTIC LILY",
+      "Earth Lusca",
+      "Elderwood",
+      "FIN4",
+      "FIN6",
+      "FIN7",
+      "FIN8",
+      "Ferocious Kitten",
+      "Gallmaker",
+      "Gamaredon Group",
+      "Gorgon Group",
+      "HEXANE",
+      "Higaisa",
+      "Inception",
+      "IndigoZebra",
+      "Indrik Spider",
+      "Kimsuky",
+      "Lazarus Group",
+      "LazyScripter",
+      "Leviathan",
+      "Machete",
+      "Magic Hound",
+      "Malteiro",
+      "MirrorFace",
+      "Mofang",
+      "Molerats",
+      "Moonstone Sleet",
+      "MuddyWater",
+      "Mustang Panda",
+      "Naikon",
+      "Nomadic Octopus",
+      "OilRig",
+      "PLATINUM",
+      "PROMETHIUM",
+      "Patchwork",
+      "RTM",
+      "Rancor",
+      "RedCurl",
+      "Saint Bear",
+      "Sandworm Team",
+      "SideCopy",
+      "Sidewinder",
+      "Silence",
+      "Star Blizzard",
+      "Storm-1811",
+      "TA2541",
+      "TA459",
+      "TA505",
+      "TA551",
+      "The White Company",
+      "Threat Group-3390",
+      "Tonto Team",
+      "Transparent Tribe",
+      "Tropic Trooper",
+      "VOID MANTICORE",
+      "WIRTE",
+      "Whitefly",
+      "Windshift",
+      "Wizard Spider",
+      "admin@338",
+      "menuPass"
+    ],
+    "T1204.003": [
+      "TeamTNT"
+    ],
+    "T1204.004": [
+      "Contagious Interview",
+      "Kimsuky",
+      "MuddyWater"
+    ],
+    "T1204.005": [
+      "Contagious Interview"
+    ],
+    "T1205": [
+      "Kimsuky",
+      "Mustang Panda",
+      "UNC3886"
+    ],
+    "T1205.001": [
+      "PROMETHIUM",
+      "UNC3886"
+    ],
+    "T1210": [
+      "APT28",
+      "Dragonfly",
+      "Earth Lusca",
+      "Ember Bear",
+      "FIN7",
+      "Fox Kitten",
+      "MuddyWater",
+      "Threat Group-3390",
+      "Tonto Team",
+      "Wizard Spider",
+      "menuPass"
+    ],
+    "T1211": [
+      "APT28",
+      "Velvet Ant"
+    ],
+    "T1212": [
+      "UNC3886"
+    ],
+    "T1213": [
+      "APT28"
+    ],
+    "T1213.001": [
+      "LAPSUS$"
+    ],
+    "T1213.002": [
+      "APT28",
+      "Akira",
+      "Chimera",
+      "HAFNIUM",
+      "Ke3chang",
+      "LAPSUS$",
+      "VOID MANTICORE"
+    ],
+    "T1213.003": [
+      "APT41",
+      "LAPSUS$",
+      "Scattered Spider"
+    ],
+    "T1213.005": [
+      "Fox Kitten",
+      "LAPSUS$",
+      "Scattered Spider"
+    ],
+    "T1213.006": [
+      "FIN6",
+      "Sandworm Team",
+      "Sea Turtle",
+      "Turla"
+    ],
+    "T1216.001": [
+      "APT32"
+    ],
+    "T1217": [
+      "APT38",
+      "Chimera",
+      "Fox Kitten",
+      "Kimsuky",
+      "Moonstone Sleet",
+      "Scattered Spider",
+      "Volt Typhoon"
+    ],
+    "T1218": [
+      "Lazarus Group",
+      "Volt Typhoon"
+    ],
+    "T1218.001": [
+      "APT38",
+      "APT41",
+      "Dark Caracal",
+      "OilRig",
+      "Silence"
+    ],
+    "T1218.003": [
+      "Cobalt Group",
+      "MuddyWater"
+    ],
+    "T1218.004": [
+      "Mustang Panda",
+      "menuPass"
+    ],
+    "T1218.005": [
+      "APT29",
+      "APT32",
+      "APT38",
+      "Confucius",
+      "Earth Lusca",
+      "FIN7",
+      "Gamaredon Group",
+      "Inception",
+      "Kimsuky",
+      "Lazarus Group",
+      "LazyScripter",
+      "MuddyWater",
+      "Mustang Panda",
+      "SideCopy",
+      "Sidewinder",
+      "TA2541",
+      "TA551"
+    ],
+    "T1218.007": [
+      "APT38",
+      "Machete",
+      "Molerats",
+      "Rancor",
+      "TA505",
+      "ZIRCONIUM"
+    ],
+    "T1218.008": [
+      "Cobalt Group"
+    ],
+    "T1218.010": [
+      "APT19",
+      "APT32",
+      "Blue Mockingbird",
+      "Cobalt Group",
+      "Deep Panda",
+      "Inception",
+      "Kimsuky",
+      "Leviathan",
+      "Storm-0501",
+      "TA551",
+      "WIRTE"
+    ],
+    "T1218.011": [
+      "APT19",
+      "APT28",
+      "APT3",
+      "APT32",
+      "APT38",
+      "APT41",
+      "Aquatic Panda",
+      "Blue Mockingbird",
+      "Carbanak",
+      "CopyKittens",
+      "Daggerfly",
+      "FIN7",
+      "Gamaredon Group",
+      "HAFNIUM",
+      "Kimsuky",
+      "Lazarus Group",
+      "LazyScripter",
+      "Magic Hound",
+      "MuddyWater",
+      "RedCurl",
+      "Sandworm Team",
+      "Storm-0501",
+      "TA505",
+      "TA551",
+      "UNC3886",
+      "Wizard Spider"
+    ],
+    "T1218.014": [
+      "Medusa Group"
+    ],
+    "T1219": [
+      "Akira",
+      "BlackByte",
+      "Carbanak",
+      "Cobalt Group",
+      "DarkVishnya",
+      "FIN7",
+      "GOLD SOUTHFIELD",
+      "INC Ransom",
+      "Medusa Group",
+      "OilRig",
+      "Sandworm Team",
+      "TeamTNT"
+    ],
+    "T1219.001": [
+      "Mustang Panda"
+    ],
+    "T1219.002": [
+      "Contagious Interview",
+      "Evilnum",
+      "Kimsuky",
+      "MuddyWater",
+      "Mustang Panda",
+      "RTM",
+      "Scattered Spider",
+      "Storm-0501",
+      "Storm-1811",
+      "Thrip",
+      "VOID MANTICORE"
+    ],
+    "T1220": [
+      "Cobalt Group",
+      "Higaisa"
+    ],
+    "T1221": [
+      "APT28",
+      "Confucius",
+      "DarkHydrus",
+      "Dragonfly",
+      "Gamaredon Group",
+      "Inception",
+      "MirrorFace",
+      "Tropic Trooper"
+    ],
+    "T1222.001": [
+      "Storm-1811",
+      "Wizard Spider"
+    ],
+    "T1222.002": [
+      "APT32",
+      "Rocke",
+      "TeamTNT"
+    ],
+    "T1480": [
+      "APT-C-36",
+      "BlackByte",
+      "Contagious Interview",
+      "Gamaredon Group"
+    ],
+    "T1480.001": [
+      "APT41",
+      "Equation"
+    ],
+    "T1480.002": [
+      "APT38",
+      "Kimsuky"
+    ],
+    "T1482": [
+      "Akira",
+      "BlackByte",
+      "Chimera",
+      "Earth Lusca",
+      "FIN8",
+      "Lotus Blossom",
+      "Magic Hound",
+      "MirrorFace",
+      "Storm-0501",
+      "Storm-1811"
+    ],
+    "T1484.001": [
+      "APT41",
+      "Cinnamon Tempest",
+      "Indrik Spider",
+      "Storm-0501",
+      "VOID MANTICORE"
+    ],
+    "T1484.002": [
+      "Scattered Spider",
+      "Storm-0501"
+    ],
+    "T1485": [
+      "APT38",
+      "LAPSUS$",
+      "Lazarus Group",
+      "Sandworm Team",
+      "Storm-0501",
+      "VOID MANTICORE"
+    ],
+    "T1486": [
+      "APT38",
+      "APT41",
+      "Akira",
+      "BlackByte",
+      "FIN7",
+      "FIN8",
+      "INC Ransom",
+      "Indrik Spider",
+      "Magic Hound",
+      "Medusa Group",
+      "Moonstone Sleet",
+      "Sandworm Team",
+      "Scattered Spider",
+      "Storm-0501",
+      "Storm-1811",
+      "TA505",
+      "VOID MANTICORE",
+      "Water Galura"
+    ],
+    "T1489": [
+      "Indrik Spider",
+      "Kimsuky",
+      "LAPSUS$",
+      "Lazarus Group",
+      "Medusa Group",
+      "Sandworm Team",
+      "Wizard Spider"
+    ],
+    "T1490": [
+      "BlackByte",
+      "Medusa Group",
+      "Sandworm Team",
+      "Scattered Spider",
+      "Storm-0501",
+      "VOID MANTICORE",
+      "Wizard Spider"
+    ],
+    "T1491.001": [
+      "BlackByte",
+      "Gamaredon Group",
+      "Lazarus Group"
+    ],
+    "T1491.002": [
+      "Ember Bear",
+      "Sandworm Team"
+    ],
+    "T1496.001": [
+      "APT41",
+      "Blue Mockingbird",
+      "Rocke",
+      "TeamTNT"
+    ],
+    "T1497": [
+      "Contagious Interview",
+      "Darkhotel",
+      "Saint Bear"
+    ],
+    "T1497.001": [
+      "Darkhotel",
+      "Evilnum",
+      "Gamaredon Group",
+      "Kimsuky",
+      "OilRig",
+      "Volt Typhoon",
+      "WIRTE"
+    ],
+    "T1497.002": [
+      "Darkhotel",
+      "FIN7"
+    ],
+    "T1498": [
+      "APT28"
+    ],
+    "T1499": [
+      "Sandworm Team"
+    ],
+    "T1505.003": [
+      "APT28",
+      "APT29",
+      "APT32",
+      "APT38",
+      "APT39",
+      "APT5",
+      "Agrius",
+      "BackdoorDiplomacy",
+      "BlackByte",
+      "CURIUM",
+      "Deep Panda",
+      "Dragonfly",
+      "Ember Bear",
+      "FIN13",
+      "Fox Kitten",
+      "GALLIUM",
+      "HAFNIUM",
+      "Kimsuky",
+      "Leviathan",
+      "Magic Hound",
+      "Medusa Group",
+      "Moses Staff",
+      "Mustang Panda",
+      "OilRig",
+      "Sandworm Team",
+      "Sea Turtle",
+      "Threat Group-3390",
+      "Tonto Team",
+      "Tropic Trooper",
+      "Volatile Cedar",
+      "Volt Typhoon"
+    ],
+    "T1505.006": [
+      "UNC3886"
+    ],
+    "T1518": [
+      "BRONZE BUTLER",
+      "HEXANE",
+      "Inception",
+      "MuddyWater",
+      "Mustang Panda",
+      "SideCopy",
+      "Sidewinder",
+      "Tropic Trooper",
+      "Volt Typhoon",
+      "Windigo",
+      "Windshift"
+    ],
+    "T1518.001": [
+      "APT38",
+      "APT42",
+      "Aquatic Panda",
+      "BlackByte",
+      "Cobalt Group",
+      "Darkhotel",
+      "FIN8",
+      "Gamaredon Group",
+      "Kimsuky",
+      "Malteiro",
+      "Medusa Group",
+      "MuddyWater",
+      "Naikon",
+      "Patchwork",
+      "Play",
+      "Rocke",
+      "SideCopy",
+      "Sidewinder",
+      "Storm-0501",
+      "TA2541",
+      "TeamTNT",
+      "The White Company",
+      "ToddyCat",
+      "Tropic Trooper",
+      "Turla",
+      "Windshift",
+      "Wizard Spider"
+    ],
+    "T1518.002": [
+      "Wizard Spider"
+    ],
+    "T1526": [
+      "Storm-0501"
+    ],
+    "T1528": [
+      "APT28",
+      "APT29"
+    ],
+    "T1529": [
+      "APT37",
+      "APT38",
+      "Lazarus Group",
+      "Medusa Group"
+    ],
+    "T1530": [
+      "APT42",
+      "Fox Kitten",
+      "HAFNIUM",
+      "Scattered Spider",
+      "Storm-0501"
+    ],
+    "T1531": [
+      "Akira",
+      "LAPSUS$"
+    ],
+    "T1534": [
+      "APT-C-36",
+      "Gamaredon Group",
+      "HEXANE",
+      "Kimsuky",
+      "Leviathan",
+      "MuddyWater"
+    ],
+    "T1537": [
+      "INC Ransom",
+      "RedCurl",
+      "Storm-0501"
+    ],
+    "T1538": [
+      "Scattered Spider"
+    ],
+    "T1539": [
+      "APT42",
+      "Evilnum",
+      "Kimsuky",
+      "Lotus Blossom",
+      "LuminousMoth",
+      "Sandworm Team",
+      "Scattered Spider",
+      "Star Blizzard"
+    ],
+    "T1542.002": [
+      "Equation"
+    ],
+    "T1542.003": [
+      "APT28",
+      "APT41",
+      "Lazarus Group"
+    ],
+    "T1543.001": [
+      "Contagious Interview"
+    ],
+    "T1543.002": [
+      "Rocke",
+      "Scattered Spider",
+      "TeamTNT"
+    ],
+    "T1543.003": [
+      "APT19",
+      "APT3",
+      "APT32",
+      "APT38",
+      "APT41",
+      "Agrius",
+      "Aquatic Panda",
+      "BlackByte",
+      "Blue Mockingbird",
+      "Carbanak",
+      "Cinnamon Tempest",
+      "Cobalt Group",
+      "DarkVishnya",
+      "Earth Lusca",
+      "FIN7",
+      "Ke3chang",
+      "Kimsuky",
+      "Lazarus Group",
+      "Lotus Blossom",
+      "Medusa Group",
+      "OilRig",
+      "PROMETHIUM",
+      "TeamTNT",
+      "Threat Group-3390",
+      "Tropic Trooper",
+      "Wizard Spider"
+    ],
+    "T1546.001": [
+      "Kimsuky"
+    ],
+    "T1546.003": [
+      "APT29",
+      "APT33",
+      "Blue Mockingbird",
+      "FIN8",
+      "HEXANE",
+      "Leviathan",
+      "Metador",
+      "Mustang Panda",
+      "Rancor",
+      "Turla"
+    ],
+    "T1546.004": [
+      "Contagious Interview"
+    ],
+    "T1546.008": [
+      "APT29",
+      "APT3",
+      "APT41",
+      "Axiom",
+      "Deep Panda",
+      "Fox Kitten"
+    ],
+    "T1546.010": [
+      "APT39"
+    ],
+    "T1546.011": [
+      "FIN7"
+    ],
+    "T1546.013": [
+      "Turla"
+    ],
+    "T1546.015": [
+      "APT28"
+    ],
+    "T1547": [
+      "APT42"
+    ],
+    "T1547.001": [
+      "APT18",
+      "APT19",
+      "APT28",
+      "APT29",
+      "APT3",
+      "APT32",
+      "APT33",
+      "APT37",
+      "APT39",
+      "APT41",
+      "BRONZE BUTLER",
+      "BlackByte",
+      "Cobalt Group",
+      "Confucius",
+      "Contagious Interview",
+      "Dark Caracal",
+      "Darkhotel",
+      "Dragonfly",
+      "FIN10",
+      "FIN13",
+      "FIN6",
+      "FIN7",
+      "Gamaredon Group",
+      "Gorgon Group",
+      "Higaisa",
+      "Inception",
+      "Ke3chang",
+      "Kimsuky",
+      "Lazarus Group",
+      "LazyScripter",
+      "Leviathan",
+      "LuminousMoth",
+      "Magic Hound",
+      "Molerats",
+      "Moonstone Sleet",
+      "MuddyWater",
+      "Mustang Panda",
+      "Naikon",
+      "PROMETHIUM",
+      "Patchwork",
+      "Putter Panda",
+      "RTM",
+      "RedCurl",
+      "Rocke",
+      "Sidewinder",
+      "Silence",
+      "Storm-1811",
+      "TA2541",
+      "TeamTNT",
+      "Threat Group-3390",
+      "Tropic Trooper",
+      "Turla",
+      "VOID MANTICORE",
+      "Windshift",
+      "Wizard Spider",
+      "ZIRCONIUM"
+    ],
+    "T1547.004": [
+      "Tropic Trooper",
+      "Turla",
+      "Wizard Spider"
+    ],
+    "T1547.009": [
+      "APT39",
+      "Gorgon Group",
+      "Lazarus Group",
+      "Leviathan"
+    ],
+    "T1547.012": [
+      "Earth Lusca"
+    ],
+    "T1547.013": [
+      "Contagious Interview"
+    ],
+    "T1548": [
+      "UNC3886"
+    ],
+    "T1548.002": [
+      "APT29",
+      "APT37",
+      "APT38",
+      "BRONZE BUTLER",
+      "Cobalt Group",
+      "Earth Lusca",
+      "Evilnum",
+      "Medusa Group",
+      "MuddyWater",
+      "Patchwork",
+      "Threat Group-3390"
+    ],
+    "T1550.001": [
+      "APT28",
+      "HAFNIUM"
+    ],
+    "T1550.002": [
+      "APT1",
+      "APT28",
+      "APT32",
+      "APT41",
+      "Aquatic Panda",
+      "Chimera",
+      "Ember Bear",
+      "FIN13",
+      "GALLIUM",
+      "Kimsuky",
+      "Wizard Spider"
+    ],
+    "T1550.003": [
+      "APT29",
+      "APT32",
+      "BRONZE BUTLER"
+    ],
+    "T1550.004": [
+      "Star Blizzard"
+    ],
+    "T1552": [
+      "Volt Typhoon"
+    ],
+    "T1552.001": [
+      "APT3",
+      "APT33",
+      "Ember Bear",
+      "FIN13",
+      "Fox Kitten",
+      "Indrik Spider",
+      "Kimsuky",
+      "Leafminer",
+      "MuddyWater",
+      "OilRig",
+      "RedCurl",
+      "Scattered Spider",
+      "TA505",
+      "TeamTNT"
+    ],
+    "T1552.002": [
+      "APT32",
+      "RedCurl",
+      "VOID MANTICORE"
+    ],
+    "T1552.004": [
+      "Kimsuky",
+      "Rocke",
+      "Scattered Spider",
+      "Storm-0501",
+      "TeamTNT",
+      "Volt Typhoon"
+    ],
+    "T1552.005": [
+      "TeamTNT"
+    ],
+    "T1552.006": [
+      "APT33",
+      "Wizard Spider"
+    ],
+    "T1552.008": [
+      "LAPSUS$"
+    ],
+    "T1553": [
+      "Axiom"
+    ],
+    "T1553.002": [
+      "APT41",
+      "CopyKittens",
+      "Daggerfly",
+      "Darkhotel",
+      "FIN6",
+      "FIN7",
+      "GALLIUM",
+      "Kimsuky",
+      "Lazarus Group",
+      "Leviathan",
+      "LuminousMoth",
+      "Medusa Group",
+      "MirrorFace",
+      "Molerats",
+      "Moses Staff",
+      "Mustang Panda",
+      "OilRig",
+      "PROMETHIUM",
+      "Patchwork",
+      "Saint Bear",
+      "Scattered Spider",
+      "Silence",
+      "Suckfly",
+      "TA505",
+      "Winnti Group",
+      "Wizard Spider",
+      "menuPass"
+    ],
+    "T1553.005": [
+      "APT29",
+      "APT38",
+      "TA505"
+    ],
+    "T1553.006": [
+      "APT39",
+      "Turla"
+    ],
+    "T1554": [
+      "APT5",
+      "UNC3886"
+    ],
+    "T1555": [
+      "APT33",
+      "APT39",
+      "APT41",
+      "Evilnum",
+      "FIN6",
+      "HEXANE",
+      "Leafminer",
+      "Malteiro",
+      "MuddyWater",
+      "OilRig",
+      "Stealth Falcon",
+      "Volt Typhoon"
+    ],
+    "T1555.001": [
+      "Contagious Interview"
+    ],
+    "T1555.003": [
+      "APT3",
+      "APT33",
+      "APT37",
+      "APT41",
+      "APT42",
+      "Ajax Security Team",
+      "FIN6",
+      "HEXANE",
+      "Inception",
+      "Kimsuky",
+      "LAPSUS$",
+      "Leafminer",
+      "Malteiro",
+      "Molerats",
+      "MuddyWater",
+      "OilRig",
+      "Patchwork",
+      "RedCurl",
+      "Sandworm Team",
+      "Stealth Falcon",
+      "TA505",
+      "Volt Typhoon",
+      "ZIRCONIUM"
+    ],
+    "T1555.004": [
+      "OilRig",
+      "Stealth Falcon",
+      "Turla",
+      "Wizard Spider"
+    ],
+    "T1555.005": [
+      "Fox Kitten",
+      "Indrik Spider",
+      "LAPSUS$",
+      "Scattered Spider",
+      "Storm-0501",
+      "Threat Group-3390",
+      "UNC3886"
+    ],
+    "T1555.006": [
+      "HAFNIUM",
+      "Storm-0501"
+    ],
+    "T1556": [
+      "FIN13"
+    ],
+    "T1556.001": [
+      "Chimera"
+    ],
+    "T1556.002": [
+      "MirrorFace",
+      "OilRig",
+      "Strider"
+    ],
+    "T1556.006": [
+      "Scattered Spider"
+    ],
+    "T1556.007": [
+      "APT29"
+    ],
+    "T1556.009": [
+      "Scattered Spider",
+      "Storm-0501"
+    ],
+    "T1557": [
+      "Kimsuky",
+      "Mustang Panda",
+      "Sea Turtle"
+    ],
+    "T1557.001": [
+      "Lazarus Group",
+      "Wizard Spider"
+    ],
+    "T1557.002": [
+      "Cleaver",
+      "LuminousMoth"
+    ],
+    "T1557.004": [
+      "APT28"
+    ],
+    "T1558": [
+      "Akira"
+    ],
+    "T1558.001": [
+      "Ke3chang"
+    ],
+    "T1558.003": [
+      "FIN7",
+      "Indrik Spider",
+      "Wizard Spider"
+    ],
+    "T1559.001": [
+      "Gamaredon Group",
+      "Kimsuky",
+      "Medusa Group",
+      "MuddyWater"
+    ],
+    "T1559.002": [
+      "APT28",
+      "APT37",
+      "BITTER",
+      "Cobalt Group",
+      "FIN7",
+      "Gallmaker",
+      "Leviathan",
+      "MuddyWater",
+      "Patchwork",
+      "Sidewinder",
+      "TA505"
+    ],
+    "T1560": [
+      "APT28",
+      "APT32",
+      "Axiom",
+      "BlackByte",
+      "Dragonfly",
+      "Ember Bear",
+      "FIN6",
+      "Ke3chang",
+      "Lazarus Group",
+      "Leviathan",
+      "LuminousMoth",
+      "Patchwork",
+      "menuPass"
+    ],
+    "T1560.001": [
+      "APT1",
+      "APT28",
+      "APT3",
+      "APT33",
+      "APT39",
+      "APT41",
+      "APT5",
+      "Agrius",
+      "Akira",
+      "Aquatic Panda",
+      "BRONZE BUTLER",
+      "Chimera",
+      "CopyKittens",
+      "Earth Lusca",
+      "FIN13",
+      "FIN8",
+      "Fox Kitten",
+      "GALLIUM",
+      "Gallmaker",
+      "HAFNIUM",
+      "INC Ransom",
+      "Ke3chang",
+      "Kimsuky",
+      "Lotus Blossom",
+      "Magic Hound",
+      "MirrorFace",
+      "MuddyWater",
+      "Mustang Panda",
+      "Play",
+      "RedCurl",
+      "Sea Turtle",
+      "Sowbug",
+      "ToddyCat",
+      "Turla",
+      "UNC3886",
+      "VOID MANTICORE",
+      "Volt Typhoon",
+      "Wizard Spider",
+      "menuPass"
+    ],
+    "T1560.002": [
+      "Lazarus Group",
+      "Threat Group-3390"
+    ],
+    "T1560.003": [
+      "CopyKittens",
+      "FIN6",
+      "Kimsuky",
+      "Lazarus Group",
+      "Lotus Blossom",
+      "Mustang Panda",
+      "UNC3886"
+    ],
+    "T1561.001": [
+      "Gamaredon Group",
+      "Lazarus Group",
+      "VOID MANTICORE"
+    ],
+    "T1561.002": [
+      "APT37",
+      "APT38",
+      "Ember Bear",
+      "Lazarus Group",
+      "Sandworm Team",
+      "VOID MANTICORE"
+    ],
+    "T1563.002": [
+      "Axiom"
+    ],
+    "T1564.001": [
+      "APT28",
+      "APT32",
+      "FIN13",
+      "FIN7",
+      "HAFNIUM",
+      "Lazarus Group",
+      "LuminousMoth",
+      "Mustang Panda",
+      "RedCurl",
+      "Rocke",
+      "Transparent Tribe",
+      "Tropic Trooper"
+    ],
+    "T1564.002": [
+      "Dragonfly",
+      "Kimsuky"
+    ],
+    "T1564.003": [
+      "APT-C-36",
+      "APT19",
+      "APT28",
+      "APT3",
+      "APT32",
+      "CopyKittens",
+      "DarkHydrus",
+      "Deep Panda",
+      "FIN7",
+      "Gamaredon Group",
+      "Gorgon Group",
+      "Higaisa",
+      "Kimsuky",
+      "Magic Hound",
+      "Medusa Group",
+      "Nomadic Octopus",
+      "ToddyCat",
+      "VOID MANTICORE"
+    ],
+    "T1564.004": [
+      "APT32"
+    ],
+    "T1564.005": [
+      "Equation",
+      "Strider"
+    ],
+    "T1564.008": [
+      "FIN4",
+      "Scattered Spider"
+    ],
+    "T1564.011": [
+      "Kimsuky",
+      "Sea Turtle",
+      "UNC3886"
+    ],
+    "T1564.012": [
+      "Turla"
+    ],
+    "T1565": [
+      "FIN13"
+    ],
+    "T1565.001": [
+      "APT38"
+    ],
+    "T1565.002": [
+      "APT38"
+    ],
+    "T1565.003": [
+      "APT38"
+    ],
+    "T1566": [
+      "AppleJeus",
+      "Axiom",
+      "GOLD SOUTHFIELD",
+      "INC Ransom",
+      "Kimsuky",
+      "MuddyWater",
+      "Sea Turtle",
+      "VOID MANTICORE"
+    ],
+    "T1566.001": [
+      "APT-C-36",
+      "APT1",
+      "APT12",
+      "APT19",
+      "APT28",
+      "APT29",
+      "APT30",
+      "APT32",
+      "APT33",
+      "APT37",
+      "APT38",
+      "APT39",
+      "APT41",
+      "Ajax Security Team",
+      "Andariel",
+      "BITTER",
+      "BRONZE BUTLER",
+      "BlackTech",
+      "CURIUM",
+      "Cobalt Group",
+      "Confucius",
+      "DarkHydrus",
+      "Darkhotel",
+      "Dragonfly",
+      "EXOTIC LILY",
+      "Elderwood",
+      "FIN4",
+      "FIN6",
+      "FIN7",
+      "FIN8",
+      "Ferocious Kitten",
+      "Gallmaker",
+      "Gamaredon Group",
+      "Gorgon Group",
+      "Higaisa",
+      "Inception",
+      "IndigoZebra",
+      "Kimsuky",
+      "Lazarus Group",
+      "LazyScripter",
+      "Leviathan",
+      "Machete",
+      "Malteiro",
+      "MirrorFace",
+      "Mofang",
+      "Molerats",
+      "Moonstone Sleet",
+      "MuddyWater",
+      "Mustang Panda",
+      "Naikon",
+      "Nomadic Octopus",
+      "OilRig",
+      "PLATINUM",
+      "Patchwork",
+      "RTM",
+      "Rancor",
+      "RedCurl",
+      "Saint Bear",
+      "Sandworm Team",
+      "SideCopy",
+      "Sidewinder",
+      "Silence",
+      "Star Blizzard",
+      "TA2541",
+      "TA459",
+      "TA505",
+      "TA551",
+      "The White Company",
+      "Threat Group-3390",
+      "Tonto Team",
+      "Transparent Tribe",
+      "Tropic Trooper",
+      "WIRTE",
+      "Windshift",
+      "Winter Vivern",
+      "Wizard Spider",
+      "admin@338",
+      "menuPass"
+    ],
+    "T1566.002": [
+      "APT-C-36",
+      "APT1",
+      "APT29",
+      "APT3",
+      "APT32",
+      "APT33",
+      "APT39",
+      "APT42",
+      "BlackTech",
+      "Cobalt Group",
+      "Confucius",
+      "EXOTIC LILY",
+      "Earth Lusca",
+      "Elderwood",
+      "Evilnum",
+      "FIN4",
+      "FIN7",
+      "FIN8",
+      "Kimsuky",
+      "Lazarus Group",
+      "LazyScripter",
+      "Leviathan",
+      "LuminousMoth",
+      "Machete",
+      "Magic Hound",
+      "MirrorFace",
+      "Mofang",
+      "Molerats",
+      "MuddyWater",
+      "Mustang Panda",
+      "Mustard Tempest",
+      "OilRig",
+      "Patchwork",
+      "RedCurl",
+      "Sandworm Team",
+      "Sidewinder",
+      "Storm-1811",
+      "TA2541",
+      "TA505",
+      "TA577",
+      "Transparent Tribe",
+      "Turla",
+      "WIRTE",
+      "Windshift",
+      "Wizard Spider",
+      "ZIRCONIUM"
+    ],
+    "T1566.003": [
+      "APT29",
+      "Ajax Security Team",
+      "CURIUM",
+      "Contagious Interview",
+      "Dark Caracal",
+      "EXOTIC LILY",
+      "FIN6",
+      "Lazarus Group",
+      "Magic Hound",
+      "Moonstone Sleet",
+      "OilRig",
+      "Storm-1811",
+      "ToddyCat",
+      "Windshift"
+    ],
+    "T1566.004": [
+      "Storm-1811"
+    ],
+    "T1567": [
+      "APT28",
+      "BlackByte",
+      "Contagious Interview",
+      "Magic Hound"
+    ],
+    "T1567.002": [
+      "Akira",
+      "Chimera",
+      "Cinnamon Tempest",
+      "Confucius",
+      "Contagious Interview",
+      "Earth Lusca",
+      "Ember Bear",
+      "FIN7",
+      "HAFNIUM",
+      "HEXANE",
+      "Indrik Spider",
+      "Kimsuky",
+      "Leviathan",
+      "LuminousMoth",
+      "Medusa Group",
+      "MuddyWater",
+      "Mustang Panda",
+      "POLONIUM",
+      "Scattered Spider",
+      "Storm-0501",
+      "Threat Group-3390",
+      "ToddyCat",
+      "Turla",
+      "Wizard Spider",
+      "ZIRCONIUM"
+    ],
+    "T1568": [
+      "APT-C-36",
+      "APT29",
+      "BITTER",
+      "Gamaredon Group",
+      "Kimsuky",
+      "RedEcho",
+      "TA2541",
+      "Transparent Tribe"
+    ],
+    "T1568.001": [
+      "Gamaredon Group",
+      "TA505",
+      "menuPass"
+    ],
+    "T1568.002": [
+      "APT41",
+      "TA551"
+    ],
+    "T1568.003": [
+      "APT12"
+    ],
+    "T1569.002": [
+      "APT32",
+      "APT38",
+      "APT39",
+      "APT41",
+      "BlackByte",
+      "Blue Mockingbird",
+      "Chimera",
+      "FIN6",
+      "FIN7",
+      "INC Ransom",
+      "Ke3chang",
+      "Medusa Group",
+      "Moonstone Sleet",
+      "Silence",
+      "Velvet Ant",
+      "Wizard Spider"
+    ],
+    "T1569.003": [
+      "TeamTNT"
+    ],
+    "T1570": [
+      "APT32",
+      "APT41",
+      "Agrius",
+      "Aoqin Dragon",
+      "BlackByte",
+      "Chimera",
+      "Ember Bear",
+      "FIN10",
+      "GALLIUM",
+      "INC Ransom",
+      "Magic Hound",
+      "Medusa Group",
+      "Sandworm Team",
+      "Storm-1811",
+      "Turla",
+      "UNC3886",
+      "Velvet Ant",
+      "Volt Typhoon",
+      "Wizard Spider"
+    ],
+    "T1571": [
+      "APT-C-36",
+      "APT32",
+      "APT33",
+      "Contagious Interview",
+      "DarkVishnya",
+      "Ember Bear",
+      "FIN7",
+      "Gamaredon Group",
+      "Lazarus Group",
+      "Magic Hound",
+      "MuddyWater",
+      "RedEcho",
+      "Rocke",
+      "Sandworm Team",
+      "Silence",
+      "Velvet Ant",
+      "WIRTE"
+    ],
+    "T1572": [
+      "Chimera",
+      "Cinnamon Tempest",
+      "Cobalt Group",
+      "Ember Bear",
+      "FIN13",
+      "FIN6",
+      "FIN7",
+      "Fox Kitten",
+      "Leviathan",
+      "Magic Hound",
+      "Mustang Panda",
+      "OilRig",
+      "Salt Typhoon",
+      "Scattered Spider",
+      "VOID MANTICORE"
+    ],
+    "T1573": [
+      "APT29",
+      "BITTER",
+      "Magic Hound",
+      "Tropic Trooper"
+    ],
+    "T1573.001": [
+      "APT28",
+      "APT33",
+      "BRONZE BUTLER",
+      "Contagious Interview",
+      "Darkhotel",
+      "Higaisa",
+      "Inception",
+      "Lazarus Group",
+      "MuddyWater",
+      "Mustang Panda",
+      "RedCurl",
+      "Stealth Falcon",
+      "Volt Typhoon",
+      "ZIRCONIUM"
+    ],
+    "T1573.002": [
+      "APT42",
+      "Cobalt Group",
+      "FIN6",
+      "FIN8",
+      "Medusa Group",
+      "OilRig",
+      "RedCurl",
+      "RedEcho",
+      "TA2541",
+      "Tropic Trooper",
+      "Velvet Ant"
+    ],
+    "T1574.001": [
+      "APT-C-36",
+      "APT19",
+      "APT3",
+      "APT32",
+      "APT41",
+      "Aquatic Panda",
+      "BRONZE BUTLER",
+      "BackdoorDiplomacy",
+      "BlackTech",
+      "Chimera",
+      "Cinnamon Tempest",
+      "Daggerfly",
+      "Earth Lusca",
+      "Evilnum",
+      "FIN13",
+      "GALLIUM",
+      "Higaisa",
+      "Lazarus Group",
+      "LuminousMoth",
+      "MirrorFace",
+      "MuddyWater",
+      "Mustang Panda",
+      "Naikon",
+      "Patchwork",
+      "RTM",
+      "SideCopy",
+      "Sidewinder",
+      "Storm-1811",
+      "Threat Group-3390",
+      "Tonto Team",
+      "Tropic Trooper",
+      "Velvet Ant",
+      "WIRTE",
+      "Whitefly",
+      "menuPass"
+    ],
+    "T1574.005": [
+      "Mustang Panda"
+    ],
+    "T1574.006": [
+      "APT41",
+      "Aquatic Panda",
+      "Rocke"
+    ],
+    "T1574.012": [
+      "Blue Mockingbird"
+    ],
+    "T1574.013": [
+      "Lazarus Group"
+    ],
+    "T1578.002": [
+      "LAPSUS$",
+      "Scattered Spider"
+    ],
+    "T1578.003": [
+      "LAPSUS$",
+      "Storm-0501"
+    ],
+    "T1580": [
+      "Scattered Spider",
+      "Storm-0501"
+    ],
+    "T1583": [
+      "Agrius",
+      "Contagious Interview",
+      "Ember Bear",
+      "Indrik Spider",
+      "Kimsuky",
+      "Sandworm Team",
+      "Sea Turtle",
+      "Star Blizzard"
+    ],
+    "T1583.001": [
+      "APT-C-36",
+      "APT1",
+      "APT28",
+      "APT32",
+      "APT38",
+      "APT42",
+      "BITTER",
+      "CURIUM",
+      "Contagious Interview",
+      "Dragonfly",
+      "EXOTIC LILY",
+      "Earth Lusca",
+      "FIN7",
+      "Ferocious Kitten",
+      "Gamaredon Group",
+      "HEXANE",
+      "IndigoZebra",
+      "Kimsuky",
+      "Lazarus Group",
+      "LazyScripter",
+      "Leviathan",
+      "Magic Hound",
+      "Moonstone Sleet",
+      "MuddyWater",
+      "Mustang Panda",
+      "OilRig",
+      "RedEcho",
+      "Sandworm Team",
+      "Scattered Spider",
+      "Sea Turtle",
+      "Silent Librarian",
+      "Star Blizzard",
+      "Storm-1811",
+      "TA2541",
+      "TA505",
+      "TeamTNT",
+      "Threat Group-3390",
+      "Transparent Tribe",
+      "VOID MANTICORE",
+      "WIRTE",
+      "Winnti Group",
+      "Winter Vivern",
+      "ZIRCONIUM",
+      "menuPass"
+    ],
+    "T1583.002": [
+      "Axiom",
+      "HEXANE",
+      "Sea Turtle"
+    ],
+    "T1583.003": [
+      "APT-C-36",
+      "APT28",
+      "APT42",
+      "Axiom",
+      "BlackByte",
+      "CURIUM",
+      "Contagious Interview",
+      "Dragonfly",
+      "Ember Bear",
+      "Gamaredon Group",
+      "HAFNIUM",
+      "LAPSUS$",
+      "Moonstone Sleet",
+      "Sea Turtle",
+      "VOID MANTICORE",
+      "Winter Vivern"
+    ],
+    "T1583.004": [
+      "CURIUM",
+      "Earth Lusca",
+      "GALLIUM",
+      "Kimsuky",
+      "Mustard Tempest",
+      "Sandworm Team",
+      "VOID MANTICORE"
+    ],
+    "T1583.005": [
+      "APT5",
+      "HAFNIUM",
+      "Ke3chang"
+    ],
+    "T1583.006": [
+      "APT-C-36",
+      "APT17",
+      "APT28",
+      "APT29",
+      "APT32",
+      "Confucius",
+      "Contagious Interview",
+      "Earth Lusca",
+      "FIN7",
+      "Gamaredon Group",
+      "HAFNIUM",
+      "IndigoZebra",
+      "Kimsuky",
+      "Lazarus Group",
+      "LazyScripter",
+      "Magic Hound",
+      "Medusa Group",
+      "MuddyWater",
+      "Mustang Panda",
+      "POLONIUM",
+      "Saint Bear",
+      "TA2541",
+      "TA578",
+      "Turla",
+      "VOID MANTICORE",
+      "ZIRCONIUM"
+    ],
+    "T1583.008": [
+      "Mustard Tempest"
+    ],
+    "T1584.001": [
+      "APT1",
+      "Kimsuky",
+      "Magic Hound",
+      "Mustard Tempest",
+      "SideCopy",
+      "Transparent Tribe"
+    ],
+    "T1584.002": [
+      "LAPSUS$",
+      "Sea Turtle"
+    ],
+    "T1584.003": [
+      "Turla",
+      "Volt Typhoon"
+    ],
+    "T1584.004": [
+      "APT16",
+      "Daggerfly",
+      "Dragonfly",
+      "Earth Lusca",
+      "Indrik Spider",
+      "Lazarus Group",
+      "Leviathan",
+      "Sandworm Team",
+      "Turla",
+      "Volt Typhoon"
+    ],
+    "T1584.005": [
+      "APT-C-36",
+      "Axiom",
+      "HAFNIUM",
+      "Sandworm Team",
+      "Volt Typhoon"
+    ],
+    "T1584.006": [
+      "CURIUM",
+      "Earth Lusca",
+      "Turla",
+      "Winter Vivern"
+    ],
+    "T1584.008": [
+      "APT28",
+      "Leviathan",
+      "Volt Typhoon",
+      "ZIRCONIUM"
+    ],
+    "T1585": [
+      "APT17",
+      "Contagious Interview",
+      "Ember Bear",
+      "Fox Kitten",
+      "Kimsuky"
+    ],
+    "T1585.001": [
+      "APT32",
+      "CURIUM",
+      "Cleaver",
+      "Contagious Interview",
+      "EXOTIC LILY",
+      "Fox Kitten",
+      "HEXANE",
+      "Kimsuky",
+      "Lazarus Group",
+      "Leviathan",
+      "Magic Hound",
+      "Medusa Group",
+      "Moonstone Sleet",
+      "Sandworm Team",
+      "Scattered Spider",
+      "Star Blizzard",
+      "VOID MANTICORE",
+      "Water Galura"
+    ],
+    "T1585.002": [
+      "APT1",
+      "APT42",
+      "CURIUM",
+      "Contagious Interview",
+      "EXOTIC LILY",
+      "HEXANE",
+      "Indrik Spider",
+      "Kimsuky",
+      "Lazarus Group",
+      "Leviathan",
+      "Magic Hound",
+      "Medusa Group",
+      "Moonstone Sleet",
+      "Mustang Panda",
+      "Sandworm Team",
+      "Silent Librarian",
+      "Star Blizzard",
+      "VOID MANTICORE",
+      "Wizard Spider"
+    ],
+    "T1585.003": [
+      "Storm-1811"
+    ],
+    "T1586.001": [
+      "Leviathan",
+      "Sandworm Team"
+    ],
+    "T1586.002": [
+      "APT-C-36",
+      "APT28",
+      "APT29",
+      "HEXANE",
+      "IndigoZebra",
+      "Kimsuky",
+      "LAPSUS$",
+      "Leviathan",
+      "Magic Hound",
+      "Mustang Panda",
+      "OilRig",
+      "Star Blizzard",
+      "TA577",
+      "WIRTE"
+    ],
+    "T1586.003": [
+      "APT-C-36",
+      "APT29"
+    ],
+    "T1587": [
+      "Contagious Interview",
+      "Kimsuky",
+      "Moonstone Sleet"
+    ],
+    "T1587.001": [
+      "APT-C-36",
+      "APT29",
+      "Aoqin Dragon",
+      "Cleaver",
+      "Contagious Interview",
+      "FIN13",
+      "FIN7",
+      "Indrik Spider",
+      "Ke3chang",
+      "Kimsuky",
+      "Lazarus Group",
+      "LuminousMoth",
+      "MirrorFace",
+      "Moonstone Sleet",
+      "Moses Staff",
+      "Mustang Panda",
+      "OilRig",
+      "Play",
+      "RedCurl",
+      "Salt Typhoon",
+      "Sandworm Team",
+      "TeamTNT",
+      "Turla",
+      "UNC3886",
+      "VOID MANTICORE"
+    ],
+    "T1587.002": [
+      "Daggerfly",
+      "PROMETHIUM",
+      "Patchwork"
+    ],
+    "T1587.003": [
+      "APT29",
+      "Gamaredon Group",
+      "PROMETHIUM",
+      "Storm-0501"
+    ],
+    "T1587.004": [
+      "Leviathan",
+      "UNC3886",
+      "Volt Typhoon"
+    ],
+    "T1588.001": [
+      "APT-C-36",
+      "APT1",
+      "Andariel",
+      "Aquatic Panda",
+      "BackdoorDiplomacy",
+      "Earth Lusca",
+      "Ember Bear",
+      "LAPSUS$",
+      "LazyScripter",
+      "LuminousMoth",
+      "Metador",
+      "MuddyWater",
+      "Scattered Spider",
+      "TA2541",
+      "TA505",
+      "Turla",
+      "UNC3886",
+      "VOID MANTICORE"
+    ],
+    "T1588.002": [
+      "APT-C-36",
+      "APT1",
+      "APT19",
+      "APT28",
+      "APT29",
+      "APT32",
+      "APT33",
+      "APT38",
+      "APT39",
+      "APT41",
+      "APT42",
+      "Aoqin Dragon",
+      "Aquatic Panda",
+      "BITTER",
+      "BRONZE BUTLER",
+      "BackdoorDiplomacy",
+      "BlackTech",
+      "Blue Mockingbird",
+      "Carbanak",
+      "Chimera",
+      "Cinnamon Tempest",
+      "Cleaver",
+      "Cobalt Group",
+      "Contagious Interview",
+      "CopyKittens",
+      "DarkHydrus",
+      "DarkVishnya",
+      "Dragonfly",
+      "Earth Lusca",
+      "FIN10",
+      "FIN13",
+      "FIN5",
+      "FIN6",
+      "FIN7",
+      "FIN8",
+      "Ferocious Kitten",
+      "GALLIUM",
+      "Gamaredon Group",
+      "Gorgon Group",
+      "HEXANE",
+      "INC Ransom",
+      "Inception",
+      "IndigoZebra",
+      "Ke3chang",
+      "Kimsuky",
+      "LAPSUS$",
+      "Lazarus Group",
+      "Leafminer",
+      "Lotus Blossom",
+      "LuminousMoth",
+      "Magic Hound",
+      "Medusa Group",
+      "Metador",
+      "MirrorFace",
+      "Moses Staff",
+      "MuddyWater",
+      "Mustang Panda",
+      "OilRig",
+      "POLONIUM",
+      "Patchwork",
+      "PittyTiger",
+      "Play",
+      "Salt Typhoon",
+      "Sandworm Team",
+      "Scattered Spider",
+      "Sea Turtle",
+      "Silence",
+      "Silent Librarian",
+      "Star Blizzard",
+      "Storm-1811",
+      "TA2541",
+      "TA505",
+      "Threat Group-3390",
+      "Thrip",
+      "Turla",
+      "VOID MANTICORE",
+      "Volt Typhoon",
+      "WIRTE",
+      "Whitefly",
+      "Wizard Spider",
+      "menuPass"
+    ],
+    "T1588.003": [
+      "BlackTech",
+      "FIN8",
+      "Kimsuky",
+      "Mustang Panda",
+      "OilRig",
+      "Threat Group-3390",
+      "Wizard Spider"
+    ],
+    "T1588.004": [
+      "BlackTech",
+      "Lazarus Group",
+      "LuminousMoth",
+      "Mustang Panda",
+      "Sea Turtle",
+      "Silent Librarian",
+      "UNC3886"
+    ],
+    "T1588.005": [
+      "Ember Bear",
+      "Kimsuky"
+    ],
+    "T1588.006": [
+      "Sandworm Team",
+      "Storm-0501",
+      "Volt Typhoon"
+    ],
+    "T1588.007": [
+      "APT28",
+      "Contagious Interview"
+    ],
+    "T1589": [
+      "APT32",
+      "Contagious Interview",
+      "FIN13",
+      "HEXANE",
+      "LAPSUS$",
+      "Magic Hound",
+      "Scattered Spider",
+      "Star Blizzard",
+      "VOID MANTICORE",
+      "Volt Typhoon"
+    ],
+    "T1589.001": [
+      "APT28",
+      "Chimera",
+      "LAPSUS$",
+      "Leviathan",
+      "Magic Hound"
+    ],
+    "T1589.002": [
+      "APT32",
+      "EXOTIC LILY",
+      "HAFNIUM",
+      "HEXANE",
+      "Kimsuky",
+      "LAPSUS$",
+      "Lazarus Group",
+      "Magic Hound",
+      "Moonstone Sleet",
+      "Saint Bear",
+      "Sandworm Team",
+      "Silent Librarian",
+      "TA551",
+      "Volt Typhoon"
+    ],
+    "T1589.003": [
+      "Kimsuky",
+      "Sandworm Team",
+      "Silent Librarian"
+    ],
+    "T1590": [
+      "HAFNIUM",
+      "Indrik Spider",
+      "Volt Typhoon"
+    ],
+    "T1590.001": [
+      "Sandworm Team"
+    ],
+    "T1590.004": [
+      "FIN13",
+      "MuddyWater",
+      "Salt Typhoon",
+      "Volt Typhoon"
+    ],
+    "T1590.005": [
+      "Andariel",
+      "HAFNIUM",
+      "Magic Hound"
+    ],
+    "T1590.006": [
+      "Volt Typhoon"
+    ],
+    "T1591": [
+      "APT28",
+      "FIN7",
+      "Kimsuky",
+      "Lazarus Group",
+      "MirrorFace",
+      "Moonstone Sleet",
+      "Volt Typhoon"
+    ],
+    "T1591.001": [
+      "Magic Hound"
+    ],
+    "T1591.002": [
+      "Dragonfly",
+      "LAPSUS$",
+      "Sandworm Team"
+    ],
+    "T1591.004": [
+      "FIN7",
+      "HEXANE",
+      "LAPSUS$",
+      "Volt Typhoon"
+    ],
+    "T1592": [
+      "Volt Typhoon"
+    ],
+    "T1592.002": [
+      "Andariel",
+      "Magic Hound",
+      "Sandworm Team"
+    ],
+    "T1592.004": [
+      "HAFNIUM"
+    ],
+    "T1593": [
+      "APT-C-36",
+      "Contagious Interview",
+      "Mustang Panda",
+      "Sandworm Team",
+      "Star Blizzard",
+      "Volt Typhoon"
+    ],
+    "T1593.001": [
+      "Contagious Interview",
+      "EXOTIC LILY",
+      "Kimsuky"
+    ],
+    "T1593.002": [
+      "Kimsuky"
+    ],
+    "T1593.003": [
+      "Contagious Interview",
+      "HAFNIUM",
+      "LAPSUS$"
+    ],
+    "T1594": [
+      "EXOTIC LILY",
+      "Kimsuky",
+      "Sandworm Team",
+      "Silent Librarian",
+      "TA578",
+      "Volt Typhoon"
+    ],
+    "T1595.001": [
+      "Ember Bear",
+      "TeamTNT"
+    ],
+    "T1595.002": [
+      "APT28",
+      "APT29",
+      "APT41",
+      "Aquatic Panda",
+      "Dragonfly",
+      "Earth Lusca",
+      "Ember Bear",
+      "Leviathan",
+      "Magic Hound",
+      "Sandworm Team",
+      "TeamTNT",
+      "VOID MANTICORE",
+      "Volatile Cedar",
+      "Winter Vivern"
+    ],
+    "T1595.003": [
+      "APT41",
+      "Volatile Cedar"
+    ],
+    "T1596": [
+      "APT28",
+      "Kimsuky"
+    ],
+    "T1596.005": [
+      "APT41",
+      "Volt Typhoon"
+    ],
+    "T1597": [
+      "EXOTIC LILY"
+    ],
+    "T1597.002": [
+      "LAPSUS$"
+    ],
+    "T1598": [
+      "APT28",
+      "Kimsuky",
+      "Moonstone Sleet",
+      "Scattered Spider",
+      "ZIRCONIUM"
+    ],
+    "T1598.002": [
+      "Dragonfly",
+      "SideCopy",
+      "Sidewinder",
+      "Star Blizzard"
+    ],
+    "T1598.003": [
+      "APT28",
+      "APT32",
+      "CURIUM",
+      "Dragonfly",
+      "Kimsuky",
+      "Magic Hound",
+      "Moonstone Sleet",
+      "Mustang Panda",
+      "Patchwork",
+      "Sandworm Team",
+      "Scattered Spider",
+      "Sidewinder",
+      "Silent Librarian",
+      "Star Blizzard",
+      "ZIRCONIUM"
+    ],
+    "T1598.004": [
+      "LAPSUS$",
+      "Scattered Spider"
+    ],
+    "T1599": [
+      "APT41"
+    ],
+    "T1602.002": [
+      "Salt Typhoon"
+    ],
+    "T1608": [
+      "Mustang Panda"
+    ],
+    "T1608.001": [
+      "APT-C-36",
+      "APT32",
+      "APT42",
+      "BITTER",
+      "BlackByte",
+      "Contagious Interview",
+      "EXOTIC LILY",
+      "Earth Lusca",
+      "FIN7",
+      "Gamaredon Group",
+      "HEXANE",
+      "Kimsuky",
+      "LazyScripter",
+      "LuminousMoth",
+      "Moonstone Sleet",
+      "Mustang Panda",
+      "Mustard Tempest",
+      "OilRig",
+      "Saint Bear",
+      "Sandworm Team",
+      "SideCopy",
+      "Star Blizzard",
+      "TA2541",
+      "TA505",
+      "TeamTNT",
+      "Threat Group-3390",
+      "WIRTE"
+    ],
+    "T1608.002": [
+      "Medusa Group",
+      "Threat Group-3390"
+    ],
+    "T1608.003": [
+      "Sea Turtle"
+    ],
+    "T1608.004": [
+      "APT32",
+      "CURIUM",
+      "Dragonfly",
+      "FIN7",
+      "LuminousMoth",
+      "Mustard Tempest",
+      "Threat Group-3390",
+      "Transparent Tribe"
+    ],
+    "T1608.005": [
+      "FIN7",
+      "LuminousMoth",
+      "Silent Librarian"
+    ],
+    "T1608.006": [
+      "Mustard Tempest"
+    ],
+    "T1609": [
+      "TeamTNT"
+    ],
+    "T1610": [
+      "TeamTNT"
+    ],
+    "T1611": [
+      "TeamTNT"
+    ],
+    "T1613": [
+      "TeamTNT"
+    ],
+    "T1614": [
+      "SideCopy",
+      "Volt Typhoon"
+    ],
+    "T1614.001": [
+      "BlackByte",
+      "Ke3chang",
+      "Malteiro",
+      "MirrorFace",
+      "Storm-0501"
+    ],
+    "T1615": [
+      "Turla"
+    ],
+    "T1620": [
+      "FIN7",
+      "Gamaredon Group",
+      "Kimsuky",
+      "Lazarus Group"
+    ],
+    "T1621": [
+      "APT29",
+      "LAPSUS$",
+      "Scattered Spider"
+    ],
+    "T1622": [
+      "Mustang Panda"
+    ],
+    "T1649": [
+      "APT29"
+    ],
+    "T1650": [
+      "Medusa Group"
+    ],
+    "T1651": [
+      "APT29",
+      "VOID MANTICORE"
+    ],
+    "T1652": [
+      "Medusa Group"
+    ],
+    "T1654": [
+      "APT5",
+      "Aquatic Panda",
+      "Ember Bear",
+      "Mustang Panda",
+      "Volt Typhoon"
+    ],
+    "T1657": [
+      "Akira",
+      "AppleJeus",
+      "Cinnamon Tempest",
+      "Contagious Interview",
+      "FIN13",
+      "INC Ransom",
+      "Kimsuky",
+      "Malteiro",
+      "Medusa Group",
+      "Play",
+      "Scattered Spider",
+      "SilverTerrier",
+      "Storm-0501",
+      "VOID MANTICORE",
+      "Water Galura"
+    ],
+    "T1659": [
+      "MoustachedBouncer"
+    ],
+    "T1665": [
+      "APT29",
+      "ZIRCONIUM"
+    ],
+    "T1667": [
+      "Storm-1811"
+    ],
+    "T1669": [
+      "APT28"
+    ],
+    "T1673": [
+      "UNC3886"
+    ],
+    "T1674": [
+      "FIN7"
+    ],
+    "T1675": [
+      "UNC3886"
+    ],
+    "T1678": [
+      "Kimsuky",
+      "Mustang Panda"
+    ],
+    "T1679": [
+      "VOID MANTICORE"
+    ],
+    "T1680": [
+      "Chimera",
+      "Confucius",
+      "Higaisa",
+      "Kimsuky",
+      "Lazarus Group",
+      "Patchwork",
+      "TeamTNT",
+      "ToddyCat",
+      "Tropic Trooper",
+      "Volt Typhoon"
+    ],
+    "T1681": [
+      "Contagious Interview",
+      "UNC3886"
+    ],
+    "T1682": [
+      "APT42",
+      "Kimsuky"
+    ],
+    "T1683.001": [
+      "APT-C-36",
+      "Contagious Interview"
+    ],
+    "T1683.002": [
+      "APT-C-36",
+      "Contagious Interview"
+    ],
+    "T1684.001": [
+      "APT-C-36",
+      "APT28",
+      "APT41",
+      "APT42",
+      "Contagious Interview",
+      "Kimsuky",
+      "LAPSUS$",
+      "MirrorFace",
+      "MuddyWater",
+      "Saint Bear",
+      "Scattered Spider",
+      "Star Blizzard",
+      "Storm-1811",
+      "VOID MANTICORE",
+      "WIRTE"
+    ],
+    "T1685": [
+      "APT38",
+      "APT41",
+      "APT5",
+      "Agrius",
+      "Akira",
+      "Aquatic Panda",
+      "BRONZE BUTLER",
+      "BlackByte",
+      "Contagious Interview",
+      "FIN6",
+      "Gamaredon Group",
+      "Gorgon Group",
+      "INC Ransom",
+      "Indrik Spider",
+      "Kimsuky",
+      "Lazarus Group",
+      "Magic Hound",
+      "Medusa Group",
+      "MirrorFace",
+      "MuddyWater",
+      "Play",
+      "Putter Panda",
+      "Rocke",
+      "Saint Bear",
+      "Scattered Spider",
+      "TA2541",
+      "TA505",
+      "TeamTNT",
+      "Turla",
+      "UNC3886",
+      "Velvet Ant",
+      "Wizard Spider"
+    ],
+    "T1685.001": [
+      "Magic Hound",
+      "Threat Group-3390"
+    ],
+    "T1685.002": [
+      "APT29"
+    ],
+    "T1685.005": [
+      "APT28",
+      "APT32",
+      "APT38",
+      "APT41",
+      "Aquatic Panda",
+      "Chimera",
+      "Dragonfly",
+      "FIN5",
+      "FIN8",
+      "HAFNIUM",
+      "Indrik Spider",
+      "MirrorFace",
+      "Play",
+      "Volt Typhoon"
+    ],
+    "T1685.006": [
+      "Rocke",
+      "Salt Typhoon",
+      "Sea Turtle",
+      "TeamTNT"
+    ],
+    "T1686": [
+      "APT38",
+      "BlackByte",
+      "Carbanak",
+      "Dragonfly",
+      "FIN7",
+      "Kimsuky",
+      "Medusa Group",
+      "Rocke",
+      "Salt Typhoon",
+      "TeamTNT",
+      "ToddyCat",
+      "UNC3886",
+      "Velvet Ant"
+    ],
+    "T1686.002": [
+      "APT38"
+    ],
+    "T1686.003": [
+      "Lazarus Group",
+      "Magic Hound",
+      "MirrorFace",
+      "Moses Staff",
+      "OilRig",
+      "VOID MANTICORE"
+    ],
+    "T1690": [
+      "APT38",
+      "Medusa Group",
+      "Sea Turtle",
+      "UNC3886"
+    ]
+  },
+  "groups": {
+    "APT-C-36": {
+      "aliases": [
+        "Blind Eagle",
+        "TAG-144",
+        "AguilaCiega",
+        "APT-Q-98"
+      ]
+    },
+    "APT1": {
+      "aliases": [
+        "Comment Crew",
+        "Comment Group",
+        "Comment Panda"
+      ]
+    },
+    "APT12": {
+      "aliases": [
+        "IXESHE",
+        "DynCalc",
+        "Numbered Panda",
+        "DNSCALC"
+      ]
+    },
+    "APT16": {
+      "aliases": []
+    },
+    "APT17": {
+      "aliases": [
+        "Deputy Dog"
+      ]
+    },
+    "APT18": {
+      "aliases": [
+        "TG-0416",
+        "Dynamite Panda",
+        "Threat Group-0416"
+      ]
+    },
+    "APT19": {
+      "aliases": [
+        "Codoso",
+        "C0d0so0",
+        "Codoso Team",
+        "Sunshop Group"
+      ]
+    },
+    "APT28": {
+      "aliases": [
+        "IRON TWILIGHT",
+        "SNAKEMACKEREL",
+        "Swallowtail",
+        "Group 74",
+        "Sednit",
+        "Sofacy",
+        "Pawn Storm",
+        "Fancy Bear",
+        "STRONTIUM",
+        "Tsar Team",
+        "Threat Group-4127",
+        "TG-4127",
+        "Forest Blizzard",
+        "FROZENLAKE",
+        "GruesomeLarch"
+      ]
+    },
+    "APT29": {
+      "aliases": [
+        "IRON RITUAL",
+        "IRON HEMLOCK",
+        "NobleBaron",
+        "Dark Halo",
+        "NOBELIUM",
+        "UNC2452",
+        "YTTRIUM",
+        "The Dukes",
+        "Cozy Bear",
+        "CozyDuke",
+        "SolarStorm",
+        "Blue Kitsune",
+        "UNC3524",
+        "Midnight Blizzard"
+      ]
+    },
+    "APT3": {
+      "aliases": [
+        "Gothic Panda",
+        "Pirpi",
+        "UPS Team",
+        "Buckeye",
+        "Threat Group-0110",
+        "TG-0110"
+      ]
+    },
+    "APT30": {
+      "aliases": []
+    },
+    "APT32": {
+      "aliases": [
+        "SeaLotus",
+        "OceanLotus",
+        "APT-C-00",
+        "Canvas Cyclone",
+        "BISMUTH"
+      ]
+    },
+    "APT33": {
+      "aliases": [
+        "HOLMIUM",
+        "Elfin",
+        "Peach Sandstorm"
+      ]
+    },
+    "APT37": {
+      "aliases": [
+        "InkySquid",
+        "ScarCruft",
+        "Reaper",
+        "Group123",
+        "TEMP.Reaper",
+        "Ricochet Chollima"
+      ]
+    },
+    "APT38": {
+      "aliases": [
+        "NICKEL GLADSTONE",
+        "BeagleBoyz",
+        "Bluenoroff",
+        "Stardust Chollima",
+        "Sapphire Sleet",
+        "COPERNICIUM"
+      ]
+    },
+    "APT39": {
+      "aliases": [
+        "ITG07",
+        "Chafer",
+        "Remix Kitten"
+      ]
+    },
+    "APT41": {
+      "aliases": [
+        "Wicked Panda",
+        "Brass Typhoon",
+        "BARIUM"
+      ]
+    },
+    "APT42": {
+      "aliases": []
+    },
+    "APT5": {
+      "aliases": [
+        "Mulberry Typhoon",
+        "MANGANESE",
+        "BRONZE FLEETWOOD",
+        "Keyhole Panda",
+        "UNC2630"
+      ]
+    },
+    "Agrius": {
+      "aliases": [
+        "Pink Sandstorm",
+        "AMERICIUM",
+        "Agonizing Serpens",
+        "BlackShadow"
+      ]
+    },
+    "Ajax Security Team": {
+      "aliases": [
+        "Operation Woolen-Goldfish",
+        "AjaxTM",
+        "Rocket Kitten",
+        "Flying Kitten",
+        "Operation Saffron Rose"
+      ]
+    },
+    "Akira": {
+      "aliases": [
+        "GOLD SAHARA",
+        "PUNK SPIDER",
+        "Howling Scorpius"
+      ]
+    },
+    "Andariel": {
+      "aliases": [
+        "Silent Chollima",
+        "PLUTONIUM",
+        "Onyx Sleet"
+      ]
+    },
+    "Aoqin Dragon": {
+      "aliases": []
+    },
+    "AppleJeus": {
+      "aliases": [
+        "Gleaming Pisces",
+        "Citrine Sleet",
+        "UNC1720",
+        "UNC4736"
+      ]
+    },
+    "Aquatic Panda": {
+      "aliases": []
+    },
+    "Axiom": {
+      "aliases": [
+        "Group 72"
+      ]
+    },
+    "BITTER": {
+      "aliases": [
+        "T-APT-17"
+      ]
+    },
+    "BRONZE BUTLER": {
+      "aliases": [
+        "REDBALDKNIGHT",
+        "Tick"
+      ]
+    },
+    "BackdoorDiplomacy": {
+      "aliases": []
+    },
+    "BlackByte": {
+      "aliases": [
+        "Hecamede"
+      ]
+    },
+    "BlackOasis": {
+      "aliases": []
+    },
+    "BlackTech": {
+      "aliases": [
+        "Palmerworm"
+      ]
+    },
+    "Blue Mockingbird": {
+      "aliases": []
+    },
+    "CURIUM": {
+      "aliases": [
+        "Crimson Sandstorm",
+        "TA456",
+        "Tortoise Shell",
+        "Yellow Liderc"
+      ]
+    },
+    "Carbanak": {
+      "aliases": [
+        "Anunak"
+      ]
+    },
+    "Chimera": {
+      "aliases": []
+    },
+    "Cinnamon Tempest": {
+      "aliases": [
+        "DEV-0401",
+        "Emperor Dragonfly",
+        "BRONZE STARLIGHT"
+      ]
+    },
+    "Cleaver": {
+      "aliases": [
+        "Threat Group 2889",
+        "TG-2889"
+      ]
+    },
+    "Cobalt Group": {
+      "aliases": [
+        "GOLD KINGSWOOD",
+        "Cobalt Gang",
+        "Cobalt Spider"
+      ]
+    },
+    "Confucius": {
+      "aliases": [
+        "Confucius APT"
+      ]
+    },
+    "Contagious Interview": {
+      "aliases": [
+        "DeceptiveDevelopment",
+        "Gwisin Gang",
+        "Tenacious Pungsan",
+        "DEV#POPPER",
+        "PurpleBravo",
+        "TAG-121"
+      ]
+    },
+    "CopyKittens": {
+      "aliases": []
+    },
+    "Daggerfly": {
+      "aliases": [
+        "Evasive Panda",
+        "BRONZE HIGHLAND"
+      ]
+    },
+    "Dark Caracal": {
+      "aliases": []
+    },
+    "DarkHydrus": {
+      "aliases": []
+    },
+    "DarkVishnya": {
+      "aliases": []
+    },
+    "Darkhotel": {
+      "aliases": [
+        "DUBNIUM",
+        "Zigzag Hail"
+      ]
+    },
+    "Deep Panda": {
+      "aliases": [
+        "Shell Crew",
+        "WebMasters",
+        "KungFu Kittens",
+        "PinkPanther",
+        "Black Vine"
+      ]
+    },
+    "Dragonfly": {
+      "aliases": [
+        "TEMP.Isotope",
+        "DYMALLOY",
+        "Berserk Bear",
+        "TG-4192",
+        "Crouching Yeti",
+        "IRON LIBERTY",
+        "Energetic Bear",
+        "Ghost Blizzard",
+        "BROMINE"
+      ]
+    },
+    "EXOTIC LILY": {
+      "aliases": []
+    },
+    "Earth Lusca": {
+      "aliases": [
+        "TAG-22",
+        "Charcoal Typhoon",
+        "CHROMIUM",
+        "ControlX"
+      ]
+    },
+    "Elderwood": {
+      "aliases": [
+        "Elderwood Gang",
+        "Beijing Group",
+        "Sneaky Panda"
+      ]
+    },
+    "Ember Bear": {
+      "aliases": [
+        "UNC2589",
+        "Bleeding Bear",
+        "DEV-0586",
+        "Cadet Blizzard",
+        "Frozenvista",
+        "UAC-0056"
+      ]
+    },
+    "Equation": {
+      "aliases": []
+    },
+    "Evilnum": {
+      "aliases": []
+    },
+    "FIN10": {
+      "aliases": []
+    },
+    "FIN13": {
+      "aliases": [
+        "Elephant Beetle"
+      ]
+    },
+    "FIN4": {
+      "aliases": []
+    },
+    "FIN5": {
+      "aliases": []
+    },
+    "FIN6": {
+      "aliases": [
+        "Magecart Group 6",
+        "ITG08",
+        "Skeleton Spider",
+        "TAAL",
+        "Camouflage Tempest"
+      ]
+    },
+    "FIN7": {
+      "aliases": [
+        "GOLD NIAGARA",
+        "ITG14",
+        "Carbon Spider",
+        "ELBRUS",
+        "Sangria Tempest"
+      ]
+    },
+    "FIN8": {
+      "aliases": [
+        "Syssphinx"
+      ]
+    },
+    "Ferocious Kitten": {
+      "aliases": []
+    },
+    "Fox Kitten": {
+      "aliases": [
+        "UNC757",
+        "Parisite",
+        "Pioneer Kitten",
+        "RUBIDIUM",
+        "Lemon Sandstorm"
+      ]
+    },
+    "GALLIUM": {
+      "aliases": [
+        "Granite Typhoon"
+      ]
+    },
+    "GCMAN": {
+      "aliases": []
+    },
+    "GOLD SOUTHFIELD": {
+      "aliases": [
+        "Pinchy Spider"
+      ]
+    },
+    "Gallmaker": {
+      "aliases": []
+    },
+    "Gamaredon Group": {
+      "aliases": [
+        "IRON TILDEN",
+        "Primitive Bear",
+        "ACTINIUM",
+        "Armageddon",
+        "Shuckworm",
+        "DEV-0157",
+        "Aqua Blizzard",
+        "NastyShrew"
+      ]
+    },
+    "Gorgon Group": {
+      "aliases": []
+    },
+    "Group5": {
+      "aliases": []
+    },
+    "HAFNIUM": {
+      "aliases": [
+        "Operation Exchange Marauder",
+        "Silk Typhoon"
+      ]
+    },
+    "HEXANE": {
+      "aliases": [
+        "Lyceum",
+        "Siamesekitten",
+        "Spirlin"
+      ]
+    },
+    "Higaisa": {
+      "aliases": []
+    },
+    "INC Ransom": {
+      "aliases": [
+        "GOLD IONIC"
+      ]
+    },
+    "Inception": {
+      "aliases": [
+        "Inception Framework",
+        "Cloud Atlas"
+      ]
+    },
+    "IndigoZebra": {
+      "aliases": []
+    },
+    "Indrik Spider": {
+      "aliases": [
+        "Evil Corp",
+        "Manatee Tempest",
+        "DEV-0243",
+        "UNC2165"
+      ]
+    },
+    "Ke3chang": {
+      "aliases": [
+        "APT15",
+        "Mirage",
+        "Vixen Panda",
+        "GREF",
+        "Playful Dragon",
+        "RoyalAPT",
+        "NICKEL",
+        "Nylon Typhoon"
+      ]
+    },
+    "Kimsuky": {
+      "aliases": [
+        "Black Banshee",
+        "Velvet Chollima",
+        "Emerald Sleet",
+        "THALLIUM",
+        "APT43",
+        "TA427",
+        "Springtail",
+        "Earth Kumiho",
+        "PatheticSlug"
+      ]
+    },
+    "LAPSUS$": {
+      "aliases": [
+        "DEV-0537",
+        "Strawberry Tempest"
+      ]
+    },
+    "Lazarus Group": {
+      "aliases": [
+        "Labyrinth Chollima",
+        "HIDDEN COBRA",
+        "Guardians of Peace",
+        "ZINC",
+        "NICKEL ACADEMY",
+        "Diamond Sleet"
+      ]
+    },
+    "LazyScripter": {
+      "aliases": []
+    },
+    "Leafminer": {
+      "aliases": [
+        "Raspite"
+      ]
+    },
+    "Leviathan": {
+      "aliases": [
+        "MUDCARP",
+        "Kryptonite Panda",
+        "Gadolinium",
+        "BRONZE MOHAWK",
+        "TEMP.Jumper",
+        "APT40",
+        "TEMP.Periscope",
+        "Gingham Typhoon"
+      ]
+    },
+    "Lotus Blossom": {
+      "aliases": [
+        "DRAGONFISH",
+        "Spring Dragon",
+        "RADIUM",
+        "Raspberry Typhoon",
+        "Bilbug",
+        "Thrip"
+      ]
+    },
+    "LuminousMoth": {
+      "aliases": []
+    },
+    "Machete": {
+      "aliases": [
+        "APT-C-43",
+        "El Machete"
+      ]
+    },
+    "Magic Hound": {
+      "aliases": [
+        "TA453",
+        "COBALT ILLUSION",
+        "Charming Kitten",
+        "ITG18",
+        "Phosphorus",
+        "Newscaster",
+        "APT35",
+        "Mint Sandstorm"
+      ]
+    },
+    "Malteiro": {
+      "aliases": []
+    },
+    "Medusa Group": {
+      "aliases": []
+    },
+    "Metador": {
+      "aliases": []
+    },
+    "MirrorFace": {
+      "aliases": [
+        "Earth Kasha"
+      ]
+    },
+    "Moafee": {
+      "aliases": []
+    },
+    "Mofang": {
+      "aliases": []
+    },
+    "Molerats": {
+      "aliases": [
+        "Operation Molerats",
+        "Gaza Cybergang"
+      ]
+    },
+    "Moonstone Sleet": {
+      "aliases": [
+        "Storm-1789"
+      ]
+    },
+    "Moses Staff": {
+      "aliases": [
+        "DEV-0500",
+        "Marigold Sandstorm"
+      ]
+    },
+    "MoustachedBouncer": {
+      "aliases": []
+    },
+    "MuddyWater": {
+      "aliases": [
+        "Earth Vetala",
+        "MERCURY",
+        "Static Kitten",
+        "Seedworm",
+        "TEMP.Zagros",
+        "Mango Sandstorm",
+        "TA450",
+        "MuddyKrill"
+      ]
+    },
+    "Mustang Panda": {
+      "aliases": [
+        "TA416",
+        "RedDelta",
+        "BRONZE PRESIDENT",
+        "STATELY TAURUS",
+        "FIREANT",
+        "CAMARO DRAGON",
+        "EARTH PRETA",
+        "HIVE0154",
+        "TWILL TYPHOON",
+        "TANTALUM",
+        "LUMINOUS MOTH",
+        "UNC6384",
+        "TEMP.Hex",
+        "Red Lich",
+        "ClumsyToad"
+      ]
+    },
+    "Mustard Tempest": {
+      "aliases": [
+        "DEV-0206",
+        "TA569",
+        "GOLD PRELUDE",
+        "UNC1543"
+      ]
+    },
+    "Naikon": {
+      "aliases": []
+    },
+    "Nomadic Octopus": {
+      "aliases": [
+        "DustSquad"
+      ]
+    },
+    "OilRig": {
+      "aliases": [
+        "COBALT GYPSY",
+        "IRN2",
+        "APT34",
+        "Helix Kitten",
+        "Evasive Serpens",
+        "Hazel Sandstorm",
+        "EUROPIUM",
+        "ITG13",
+        "Earth Simnavaz",
+        "Crambus",
+        "TA452"
+      ]
+    },
+    "Orangeworm": {
+      "aliases": []
+    },
+    "PLATINUM": {
+      "aliases": []
+    },
+    "POLONIUM": {
+      "aliases": [
+        "Plaid Rain"
+      ]
+    },
+    "PROMETHIUM": {
+      "aliases": [
+        "StrongPity"
+      ]
+    },
+    "Patchwork": {
+      "aliases": [
+        "Hangover Group",
+        "Dropping Elephant",
+        "Chinastrats",
+        "MONSOON",
+        "Operation Hangover"
+      ]
+    },
+    "PittyTiger": {
+      "aliases": []
+    },
+    "Play": {
+      "aliases": []
+    },
+    "Poseidon Group": {
+      "aliases": []
+    },
+    "Putter Panda": {
+      "aliases": [
+        "APT2",
+        "MSUpdater"
+      ]
+    },
+    "RTM": {
+      "aliases": []
+    },
+    "Rancor": {
+      "aliases": []
+    },
+    "RedCurl": {
+      "aliases": []
+    },
+    "RedEcho": {
+      "aliases": []
+    },
+    "Rocke": {
+      "aliases": []
+    },
+    "Saint Bear": {
+      "aliases": [
+        "Storm-0587",
+        "TA471",
+        "UAC-0056",
+        "Lorec53"
+      ]
+    },
+    "Salt Typhoon": {
+      "aliases": []
+    },
+    "Sandworm Team": {
+      "aliases": [
+        "ELECTRUM",
+        "Telebots",
+        "IRON VIKING",
+        "BlackEnergy (Group)",
+        "Quedagh",
+        "Voodoo Bear",
+        "IRIDIUM",
+        "Seashell Blizzard",
+        "FROZENBARENTS",
+        "APT44"
+      ]
+    },
+    "Scarlet Mimic": {
+      "aliases": []
+    },
+    "Scattered Spider": {
+      "aliases": [
+        "Roasted 0ktapus",
+        "Octo Tempest",
+        "Storm-0875",
+        "UNC3944"
+      ]
+    },
+    "Sea Turtle": {
+      "aliases": [
+        "Teal Kurma",
+        "Marbled Dust",
+        "Cosmic Wolf",
+        "SILICON"
+      ]
+    },
+    "SideCopy": {
+      "aliases": []
+    },
+    "Sidewinder": {
+      "aliases": [
+        "T-APT-04",
+        "Rattlesnake"
+      ]
+    },
+    "Silence": {
+      "aliases": [
+        "Whisper Spider"
+      ]
+    },
+    "Silent Librarian": {
+      "aliases": [
+        "TA407",
+        "COBALT DICKENS"
+      ]
+    },
+    "SilverTerrier": {
+      "aliases": []
+    },
+    "Sowbug": {
+      "aliases": []
+    },
+    "Star Blizzard": {
+      "aliases": [
+        "SEABORGIUM",
+        "Callisto Group",
+        "TA446",
+        "COLDRIVER"
+      ]
+    },
+    "Stealth Falcon": {
+      "aliases": []
+    },
+    "Storm-0501": {
+      "aliases": []
+    },
+    "Storm-1811": {
+      "aliases": []
+    },
+    "Strider": {
+      "aliases": [
+        "ProjectSauron"
+      ]
+    },
+    "Suckfly": {
+      "aliases": []
+    },
+    "TA2541": {
+      "aliases": []
+    },
+    "TA459": {
+      "aliases": []
+    },
+    "TA505": {
+      "aliases": [
+        "Hive0065",
+        "Spandex Tempest",
+        "CHIMBORAZO"
+      ]
+    },
+    "TA551": {
+      "aliases": [
+        "GOLD CABIN",
+        "Shathak"
+      ]
+    },
+    "TA577": {
+      "aliases": []
+    },
+    "TA578": {
+      "aliases": []
+    },
+    "TeamTNT": {
+      "aliases": []
+    },
+    "The White Company": {
+      "aliases": []
+    },
+    "Threat Group-1314": {
+      "aliases": [
+        "TG-1314"
+      ]
+    },
+    "Threat Group-3390": {
+      "aliases": [
+        "Earth Smilodon",
+        "TG-3390",
+        "Emissary Panda",
+        "BRONZE UNION",
+        "APT27",
+        "Iron Tiger",
+        "LuckyMouse",
+        "Linen Typhoon"
+      ]
+    },
+    "Thrip": {
+      "aliases": []
+    },
+    "ToddyCat": {
+      "aliases": []
+    },
+    "Tonto Team": {
+      "aliases": [
+        "Earth Akhlut",
+        "BRONZE HUNTLEY",
+        "CactusPete",
+        "Karma Panda"
+      ]
+    },
+    "Transparent Tribe": {
+      "aliases": [
+        "COPPER FIELDSTONE",
+        "APT36",
+        "Mythic Leopard",
+        "ProjectM"
+      ]
+    },
+    "Tropic Trooper": {
+      "aliases": [
+        "Pirate Panda",
+        "KeyBoy"
+      ]
+    },
+    "Turla": {
+      "aliases": [
+        "IRON HUNTER",
+        "Group 88",
+        "Waterbug",
+        "WhiteBear",
+        "Snake",
+        "Krypton",
+        "Venomous Bear",
+        "Secret Blizzard",
+        "BELUGASTURGEON"
+      ]
+    },
+    "UNC3886": {
+      "aliases": []
+    },
+    "VOID MANTICORE": {
+      "aliases": [
+        "COBALT MYSTIQUE",
+        "Handala Hack",
+        "Homeland Justice",
+        "Karma",
+        "Karmabelow80",
+        "BANISHED KITTEN",
+        "Red Sandstorm"
+      ]
+    },
+    "Velvet Ant": {
+      "aliases": []
+    },
+    "Volatile Cedar": {
+      "aliases": [
+        "Lebanese Cedar"
+      ]
+    },
+    "Volt Typhoon": {
+      "aliases": [
+        "BRONZE SILHOUETTE",
+        "Vanguard Panda",
+        "DEV-0391",
+        "UNC3236",
+        "Voltzite",
+        "Insidious Taurus",
+        "DazedToad"
+      ]
+    },
+    "WIRTE": {
+      "aliases": [
+        "Ashen Lepus"
+      ]
+    },
+    "Water Galura": {
+      "aliases": [
+        "GOLD FEATHER"
+      ]
+    },
+    "Whitefly": {
+      "aliases": []
+    },
+    "Windigo": {
+      "aliases": []
+    },
+    "Windshift": {
+      "aliases": [
+        "Bahamut"
+      ]
+    },
+    "Winnti Group": {
+      "aliases": [
+        "Blackfly"
+      ]
+    },
+    "Winter Vivern": {
+      "aliases": [
+        "TA473",
+        "UAC-0114"
+      ]
+    },
+    "Wizard Spider": {
+      "aliases": [
+        "UNC1878",
+        "TEMP.MixMaster",
+        "Grim Spider",
+        "FIN12",
+        "GOLD BLACKBURN",
+        "ITG23",
+        "Periwinkle Tempest",
+        "DEV-0193",
+        "Pistachio Tempest",
+        "DEV-0237"
+      ]
+    },
+    "ZIRCONIUM": {
+      "aliases": [
+        "APT31",
+        "Violet Typhoon"
+      ]
+    },
+    "admin@338": {
+      "aliases": []
+    },
+    "menuPass": {
+      "aliases": [
+        "Cicada",
+        "POTASSIUM",
+        "Stone Panda",
+        "APT10",
+        "Red Apollo",
+        "CVNX",
+        "HOGFISH",
+        "BRONZE RIVERSIDE"
+      ]
+    }
+  }
+}

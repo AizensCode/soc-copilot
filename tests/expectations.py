@@ -19,6 +19,10 @@ Matching semantics:
   the concatenated action+rationale text of at least one pivot
 - min_evidence_count: investigation must contain at least this many
   Evidence entries (catches silently-failed enrichment)
+- min_associated_groups: investigation must map at least this many MITRE
+  threat groups from its techniques (catches broken group enrichment).
+  The test also verifies each group's matched_techniques are grounded in
+  the investigation's own attack_techniques (catches hallucinated overlap)
 """
 from typing import TypedDict
 
@@ -32,6 +36,7 @@ class AlertExpectation(TypedDict, total=False):
     must_escalate: bool
     pivots_must_include: list[str]
     min_evidence_count: int
+    min_associated_groups: int
 
 
 EXPECTATIONS: dict[str, AlertExpectation] = {
@@ -49,6 +54,8 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
                         # did any authentication actually succeed?
         ],
         "min_evidence_count": 1,
+        # T1110 family is used by many documented groups; ≥1 must surface
+        "min_associated_groups": 1,
     },
     "phishing_attachment.json": {
         # Allow either true_positive or inconclusive — the EICAR
@@ -70,6 +77,8 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
             "suppliersi-nvoices",  # any pivot addressing the typosquat
         ],
         "min_evidence_count": 1,
+        # T1566.001 + T1204.002 are heavily used TTPs; groups must surface
+        "min_associated_groups": 1,
     },
     "suspicious_url_click.json": {
         # Credential-phishing pattern is obvious from URL anatomy, but
@@ -96,6 +105,8 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
         # (URLScan), so ≥2 evidence entries; agentic typically produces more.
         # This locks in domain-enrichment parity between the two modes.
         "min_evidence_count": 2,
+        # T1566 link-phishing is a widely-documented TTP; groups must surface
+        "min_associated_groups": 1,
     },
 }
 

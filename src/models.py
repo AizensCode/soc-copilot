@@ -47,6 +47,23 @@ class Pivot(BaseModel):
     priority: Literal["low", "medium", "high"]
 
 
+class GroupMatch(BaseModel):
+    """A MITRE ATT&CK threat group whose documented TTPs overlap with the
+    investigation's observed techniques.
+
+    Populated deterministically from the local MITRE group map (never by the
+    LLM), so every group name traces back to the official ATT&CK data. Overlap
+    is suggestive context, not attribution.
+    """
+
+    group: str
+    aliases: list[str] = Field(default_factory=list)
+    matched_techniques: list[str] = Field(
+        description="Observed technique IDs this group is documented to use"
+    )
+    overlap_count: int
+
+
 class Investigation(BaseModel):
     """The final report produced for an alert."""
 
@@ -60,6 +77,13 @@ class Investigation(BaseModel):
     )
     evidence: list[Evidence] = Field(default_factory=list)
     suggested_pivots: list[Pivot] = Field(default_factory=list)
+    associated_groups: list[GroupMatch] = Field(
+        default_factory=list,
+        description=(
+            "MITRE ATT&CK groups whose TTPs overlap the mapped techniques. "
+            "Filled deterministically from the local group map, not the LLM."
+        ),
+    )
     escalation_recommended: bool
     escalation_draft: str | None = None
     reasoning_transcript: str = ""
