@@ -113,6 +113,19 @@ class Correlation(BaseModel):
     summary: str
 
 
+class InjectionFlag(BaseModel):
+    """A suspected prompt-injection attempt found in untrusted alert content.
+
+    Detected deterministically by scanning alert fields, so it can't be talked
+    out of firing by the content it inspects. An injection attempt is itself a
+    hostile signal, not just something to defend against.
+    """
+
+    location: str = Field(description="Where it was found, e.g. 'raw_log.notes'")
+    pattern: str = Field(description="Which injection pattern matched")
+    excerpt: str = Field(description="The surrounding text")
+
+
 class Investigation(BaseModel):
     """The final report produced for an alert."""
 
@@ -145,6 +158,13 @@ class Investigation(BaseModel):
         description=(
             "Campaign assessment: whether this alert clusters with recent "
             "prior alerts. Filled deterministically from the case history."
+        ),
+    )
+    injection_flags: list[InjectionFlag] = Field(
+        default_factory=list,
+        description=(
+            "Suspected prompt-injection attempts in the alert content. "
+            "Detected deterministically by scanning, not by the LLM."
         ),
     )
     escalation_recommended: bool

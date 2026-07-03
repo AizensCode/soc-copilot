@@ -239,3 +239,21 @@ async def test_associated_groups(
             f"{alert_file} [{mode}]: group {gm.group} matched techniques "
             f"{stray} not present in the investigation: {inv.attack_techniques}"
         )
+
+
+@pytest.mark.parametrize("alert_file,mode,expected", _cases())
+async def test_injection_flags(
+    alert_file: str,
+    mode: str,
+    expected: AlertExpectation,
+    investigations: dict[tuple[str, str], Investigation],
+):
+    if "min_injection_flags" not in expected:
+        pytest.skip("No min_injection_flags specified")
+    inv = investigations[(alert_file, mode)]
+    actual = len(inv.injection_flags)
+    assert actual >= expected["min_injection_flags"], (
+        f"{alert_file} [{mode}]: expected at least "
+        f"{expected['min_injection_flags']} injection flag(s), got {actual}. "
+        f"The deterministic scanner should have caught the embedded injection."
+    )
