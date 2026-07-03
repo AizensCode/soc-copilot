@@ -187,6 +187,14 @@ Two layers, plus a test that proves it. A deterministic scanner (`scan_for_injec
 
 The scanner is tuned for precision — ordinary SOC vocabulary ("brute force", "policy override", "blocked malicious payload") must not trip it, which is checked directly (`tests/test_injection.py`). And resistance is a real eval, not a hope: `data/sample_alerts/prompt_injection.json` is a genuinely malicious alert (encoded PowerShell from an Office macro, external C2) with an injection payload commanding `false_positive` and no escalation. The harness asserts the copilot does the opposite — verdict is *not* false_positive, it escalates, and it flags the manipulation. The injection tells it to stand down; it escalates harder.
 
+### An analyst-facing report, not a JSON blob
+
+The investigation is a rich object — verdict, evidence, MITRE mapping, threat groups, prior sightings, campaign correlation, injection flags, an escalation draft. Handing an analyst that as JSON is handing them homework. `src/report.py` renders it as a single self-contained HTML file (`--report`): no external CSS, fonts, or scripts, so it opens anywhere and can be attached to a ticket as-is.
+
+The design follows the domain rather than a template. It reads like a SOC console — deep-slate ground, machine data (IOCs, T-codes, timestamps, the escalation draft) set in mono the way every SIEM renders it, and *semantic* status color kept separate from the accent: a verdict pill and severity rail in red / amber / green so the decision reads at a glance, with a red banner when injection was resisted and an amber one when the alert is part of a campaign. Summary up top, detail below — the way a tool is scanned, not the way a document is read.
+
+Because the report includes attacker-controlled text (alert fields, injection excerpts), every dynamic value is HTML-escaped — the report must never become the injection vector the rest of the system defends against. That's asserted directly (`tests/test_report.py` renders a `<script>`-laden investigation and checks it comes out inert), alongside self-containment (no external references) and the conditional banners. All of it runs without the API.
+
 ## Project layout
 
 ```text
@@ -197,6 +205,7 @@ soc-copilot/
 │   ├── mitre_groups.py     # Technique→threat-group matcher (reads the local map)
 │   ├── history.py          # AlertHistoryStore: cross-alert memory + campaign correlation
 │   ├── injection.py        # Prompt-injection scanner for untrusted alert content
+│   ├── report.py           # Renders an investigation as a self-contained HTML report
 │   ├── config.py           # Settings + env loading
 │   ├── main.py             # CLI: python -m src.main <alert.json> [--agentic]
 │   ├── prompts/
@@ -215,6 +224,7 @@ soc-copilot/
 │   ├── test_investigations.py  # The eval harness (API-backed)
 │   ├── test_history.py     # Cross-alert memory + correlation unit tests (no API)
 │   ├── test_injection.py   # Prompt-injection scanner unit tests (no API)
+│   ├── test_report.py      # HTML report rendering + escaping unit tests (no API)
 │   └── expectations.py     # Per-alert correctness criteria
 ├── data/
 │   ├── sample_alerts/      # Labeled alerts for testing (incl. an adversarial one)
@@ -241,6 +251,9 @@ uv run python -m src.main data/sample_alerts/brute_force_ssh.json
 
 # Run with agentic mode
 uv run python -m src.main data/sample_alerts/brute_force_ssh.json --agentic
+
+# Write a self-contained HTML report an analyst can read/triage from
+uv run python -m src.main data/sample_alerts/brute_force_ssh.json --report report.html
 
 # Run the eval harness
 uv run pytest tests/test_investigations.py -v
@@ -287,7 +300,7 @@ The project is research-grade today. Three concrete directions to grow it.
 - **Few alert types.** Four labeled samples (SSH brute force, phishing-with-attachment, credential-phishing link click, and an adversarial encoded-PowerShell/injection alert). Real SOC environments have dozens of alert classes. The architecture scales but the labeled test set doesn't yet.
 - **Correlation is heuristic and single-process.** The copilot remembers past investigations, surfaces prior sightings, clusters related alerts into campaigns, and now feeds that context back into the escalation decision (`AlertHistoryStore`). But correlation is still deterministic-rule-based (shared IOC / /24 / host within a window), not learned, and it reads a local JSONL store — so there's no multi-analyst or cross-host sharing yet.
 - **Tool coverage is shallow.** Three external threat-intel sources (IP, hash, domain) plus a local MITRE ATT&CK Groups lookup. Production use still needs sandbox detonation, internal log search, and richer reputation feeds.
-- **No human-in-the-loop UI.** Output is JSON. Useful for piping into other systems, not for an analyst sitting at a console.
+- **Report is read-only.** `--report` renders a self-contained HTML investigation an analyst can read and triage from, but it's a static document — no queue, no case actions, no click-to-pivot. The JSON is still the integration surface; the report is the human surface.
 - **LLM costs.** Sonnet runs ≈$0.03–0.05 per investigation. At SOC volumes (thousands of alerts/day) this adds up. Production would need a tiered approach: cheap model for triage, expensive model for ambiguous cases.
 - **Prompt-injection defense is best-effort, not a guarantee.** Alert content is treated as untrusted: a deterministic scanner flags injection attempts, both prompts carry an untrusted-input rule, and an adversarial alert in the eval harness checks the copilot resists (see "Treating alert content as hostile"). But pattern-based detection can be evaded by novel phrasings, and prompt-level defenses are mitigations, not proofs. Production would still want input isolation and output validation on top.
 

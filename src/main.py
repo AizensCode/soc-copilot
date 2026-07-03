@@ -10,7 +10,10 @@ from .models import Alert
 
 async def main() -> None:
     if len(sys.argv) < 2:
-        print("Usage: python -m src.main <path/to/alert.json> [--agentic]")
+        print(
+            "Usage: python -m src.main <path/to/alert.json> [--agentic] "
+            "[--report [out.html]]"
+        )
         sys.exit(1)
 
     alert_path = Path(sys.argv[1])
@@ -44,6 +47,18 @@ async def main() -> None:
             default=str,
         )
     print(f"Full debug written to {debug_path}")
+
+    if "--report" in sys.argv:
+        from .report import render_report
+
+        idx = sys.argv.index("--report")
+        nxt = sys.argv[idx + 1] if idx + 1 < len(sys.argv) else ""
+        report_path = Path(nxt) if nxt and not nxt.startswith("-") else Path(
+            "investigation_report.html"
+        )
+        report_path.write_text(render_report(alert, investigation))
+        print(f"HTML report written to {report_path}")
+
     print(investigation.model_dump_json(indent=2))
 
 
