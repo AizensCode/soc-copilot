@@ -83,6 +83,36 @@ class PriorSighting(BaseModel):
     )
 
 
+class RelatedAlert(BaseModel):
+    """A prior alert that correlates with the current one via shared
+    infrastructure, target, or (corroborating) technique within a time window.
+    """
+
+    alert_id: str
+    timestamp: datetime
+    verdict: str
+    signals: list[str] = Field(
+        description=(
+            "Why these alerts correlate, e.g. 'shared_ioc:1.2.3.4', "
+            "'related_ip:5.6.7.8/24', 'shared_host:web-02', "
+            "'shared_technique:T1110'"
+        )
+    )
+
+
+class Correlation(BaseModel):
+    """Campaign assessment: does this alert cluster with recent prior alerts?
+
+    Computed deterministically from the case history (never the LLM). A single
+    alert in isolation yields is_campaign=False with no related alerts.
+    """
+
+    is_campaign: bool
+    window_hours: int
+    related_alerts: list[RelatedAlert] = Field(default_factory=list)
+    summary: str
+
+
 class Investigation(BaseModel):
     """The final report produced for an alert."""
 
@@ -108,6 +138,13 @@ class Investigation(BaseModel):
         description=(
             "Past investigations sharing an indicator with this alert. "
             "Filled deterministically from the case history, not the LLM."
+        ),
+    )
+    correlation: Correlation | None = Field(
+        default=None,
+        description=(
+            "Campaign assessment: whether this alert clusters with recent "
+            "prior alerts. Filled deterministically from the case history."
         ),
     )
     escalation_recommended: bool

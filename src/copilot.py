@@ -232,6 +232,9 @@ class SOCCopilot:
             investigation.attack_techniques
         )
         investigation.prior_sightings = priors
+        investigation.correlation = self.history.correlate(
+            alert, investigation, window_hours=settings.CORRELATION_WINDOW_HOURS
+        )
         self.history.record(alert, investigation)
         return investigation
 
@@ -284,6 +287,11 @@ class SOCCopilot:
                     response, evidence_collected
                 )
                 investigation.prior_sightings = priors
+                investigation.correlation = self.history.correlate(
+                    alert,
+                    investigation,
+                    window_hours=settings.CORRELATION_WINDOW_HOURS,
+                )
                 self.history.record(alert, investigation)
                 return investigation
 

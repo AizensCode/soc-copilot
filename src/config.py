@@ -19,6 +19,8 @@ class Settings:
     MODEL: str = "claude-sonnet-4-6"
     # Case-history store (cross-alert memory). Not a secret; overridable per env.
     HISTORY_PATH: str = "data/history/investigations.jsonl"
+    # Temporal window (hours) for clustering alerts into a campaign.
+    CORRELATION_WINDOW_HOURS: int = 72
 
     @classmethod
     def from_env(cls) -> "Settings":

@@ -60,7 +60,7 @@ flowchart TD
 
         Validation["<b>Pydantic validation</b><br/>schema-checked output"]
 
-        History["<b>Case history</b><br/>prior sightings by IOC<br/>(cross-alert memory)"]
+        History["<b>Case history</b><br/>prior sightings + campaign<br/>correlation (cross-alert memory)"]
 
         Phase1 --> Registry
         Phase2 --> Registry
@@ -163,15 +163,23 @@ The same grounding discipline as threat-actor context applies. Prior sightings a
 
 Two details worth calling out. First, when the store has no match, the injected block is the empty string — an empty history leaves the prompt byte-for-byte unchanged, which keeps investigations deterministic and means the existing eval harness (which runs against an isolated empty store) is unaffected. Second, the core memory logic is a pure function of the store, so it's tested entirely without the API: `tests/test_history.py` records and looks up investigations directly, validating recurrence detection, self-exclusion, multi-IOC dedup, and recency ordering in milliseconds. The expensive API harness only has to confirm the wiring, not the logic.
 
+### Recognizing campaigns
+
+Prior sightings match on an *exact* shared indicator. Real campaigns are looser than that — three brute-force alerts from `185.220.101.10`, `.14`, and `.47` hitting different hosts in the same hour are obviously one operation, but they share no exact IOC. `AlertHistoryStore.correlate()` handles that broader relatedness.
+
+The design choice that keeps it useful rather than noisy is what counts as a link. Two alerts correlate only when they're within a time window **and** share an *infrastructure or target* signal: an exact IOC, a `/24`-adjacent IP, or the same host. A shared *technique* family is recorded as a corroborating signal on an already-linked pair, but never links alerts on its own — otherwise every phishing alert (all `T1566`) would look like one campaign. Once enough related priors accumulate within the window, the `correlation` field flags `is_campaign` and lists each related alert with the exact signals that tied it in (`related_ip:185.220.101.10/24`, `shared_host:prod-web-02`, `shared_technique:T1110`).
+
+Like the rest of the memory layer, correlation is deterministic and Python-owned — the campaign assessment traces to concrete signals, not the model's intuition — so it's covered by fast API-free tests (same-/24 linking, technique-alone *not* linking, window exclusion, the campaign threshold). It's computed post-investigation, so it uses the final technique mapping; the honest limitation is that it annotates the report rather than feeding back into the model's escalation call, which is the natural next increment.
+
 ## Project layout
 
 ```text
 soc-copilot/
 ├── src/
 │   ├── copilot.py          # The main class: investigate() and investigate_agentic()
-│   ├── models.py           # Pydantic models: Alert, Evidence, GroupMatch, PriorSighting, Investigation
+│   ├── models.py           # Pydantic models: Alert, Evidence, GroupMatch, PriorSighting, Correlation, Investigation
 │   ├── mitre_groups.py     # Technique→threat-group matcher (reads the local map)
-│   ├── history.py          # AlertHistoryStore: cross-alert memory indexed by IOC
+│   ├── history.py          # AlertHistoryStore: cross-alert memory + campaign correlation
 │   ├── config.py           # Settings + env loading
 │   ├── main.py             # CLI: python -m src.main <alert.json> [--agentic]
 │   ├── prompts/
@@ -249,7 +257,7 @@ The project is research-grade today. Three concrete directions to grow it.
 ### Medium-term: memory and correlation
 
 - ~~**Alert history store**~~ ✅ Implemented via `AlertHistoryStore` (JSONL-backed, indexed by IOC). Every investigation persists; when a new alert shares an indicator with a past one, the copilot surfaces that prior sighting as grounded context in both modes. The cross-alert memory a human analyst keeps in their head. See "Cross-alert memory, grounded" below.
-- **Multi-alert correlation** — if three brute-force alerts hit three different hosts from related IPs in the same hour, the copilot should recognize the pattern. Right now each alert is isolated.
+- ~~**Multi-alert correlation**~~ ✅ Implemented via `AlertHistoryStore.correlate()`. Alerts that fall within a time window and share infrastructure or a target (an exact IOC, a /24-adjacent IP, or the same host) are clustered; once enough accumulate, the investigation's `correlation` field flags a possible campaign. Shared technique families corroborate an already-linked pair but never link alerts on their own. See "Recognizing campaigns" below.
 
 ### Long-term: case management integration
 
@@ -259,7 +267,7 @@ The project is research-grade today. Three concrete directions to grow it.
 ## Limitations and honest caveats
 
 - **Two alert types only.** Brute force and phishing-with-attachment. Real SOC environments have dozens of alert classes. The architecture scales but the testing doesn't yet.
-- **Memory is single-indicator, not correlated.** The copilot now remembers past investigations and surfaces prior sightings when an IOC recurs (`AlertHistoryStore`), but it doesn't yet *correlate* — e.g. recognizing that three alerts on different hosts form one campaign. That's the next step.
+- **Correlation is heuristic and single-process.** The copilot remembers past investigations, surfaces prior sightings, and clusters related alerts into campaigns (`AlertHistoryStore`). But correlation is deterministic-rule-based (shared IOC / /24 / host within a window), not learned; it reads a local JSONL store, so there's no multi-analyst or cross-host sharing; and campaign membership is surfaced as a report annotation rather than fed back to influence the model's escalation decision.
 - **Tool coverage is shallow.** Three external threat-intel sources (IP, hash, domain) plus a local MITRE ATT&CK Groups lookup. Production use still needs sandbox detonation, internal log search, and richer reputation feeds.
 - **No human-in-the-loop UI.** Output is JSON. Useful for piping into other systems, not for an analyst sitting at a console.
 - **LLM costs.** Sonnet runs ≈$0.03–0.05 per investigation. At SOC volumes (thousands of alerts/day) this adds up. Production would need a tiered approach: cheap model for triage, expensive model for ambiguous cases.
