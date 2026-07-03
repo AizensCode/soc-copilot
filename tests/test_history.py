@@ -135,7 +135,7 @@ _T = datetime(2026, 4, 19, 12, 0, tzinfo=timezone.utc)
 def test_correlation_single_alert_is_not_a_campaign(tmp_path):
     store = _store(tmp_path)
     alert = _alert("A1", {"ips": ["10.0.0.1"]}, _T)
-    corr = store.correlate(alert, _inv("A1"))
+    corr = store.correlate(alert)
     assert corr.is_campaign is False
     assert corr.related_alerts == []
     assert "No related" in corr.summary
@@ -148,7 +148,7 @@ def test_correlation_related_via_same_24(tmp_path):
         _inv("A1"),
     )
     now = _alert("A2", {"ips": ["185.220.101.47"]}, _T)  # same /24, different IP
-    corr = store.correlate(now, _inv("A2"))
+    corr = store.correlate(now)
     assert len(corr.related_alerts) == 1
     assert any(s.startswith("related_ip:") for s in corr.related_alerts[0].signals)
 
@@ -160,7 +160,7 @@ def test_correlation_related_via_shared_host(tmp_path):
         _inv("A1"),
     )
     now = _alert("A2", {}, _T, host="prod-web-02.internal")
-    corr = store.correlate(now, _inv("A2"))
+    corr = store.correlate(now)
     assert len(corr.related_alerts) == 1
     assert "shared_host:prod-web-02.internal" in corr.related_alerts[0].signals
 
@@ -174,7 +174,7 @@ def test_correlation_shared_technique_alone_does_not_relate(tmp_path):
         _inv("A1", techniques=["T1566.001 - Spearphishing Attachment"]),
     )
     now = _alert("A2", {"domains": ["b.test"]}, _T)
-    corr = store.correlate(now, _inv("A2", techniques=["T1566.002 - Spearphishing Link"]))
+    corr = store.correlate(now, ["T1566.002 - Spearphishing Link"])
     assert corr.related_alerts == []
 
 
@@ -185,10 +185,18 @@ def test_correlation_technique_corroborates_infra_link(tmp_path):
         _inv("A1", techniques=["T1110.001 - Password Guessing"]),
     )
     now = _alert("A2", {"ips": ["185.220.101.47"]}, _T)  # same /24
-    corr = store.correlate(now, _inv("A2", techniques=["T1110.003 - Password Spraying"]))
+    corr = store.correlate(now, ["T1110.003 - Password Spraying"])
     signals = corr.related_alerts[0].signals
     assert any(s.startswith("related_ip:") for s in signals)
     assert "shared_technique:T1110" in signals
+
+    # Pre-investigation (no techniques): same campaign, minus the corroborating
+    # technique signal — proves is_campaign is technique-independent.
+    pre = store.correlate(now)
+    assert len(pre.related_alerts) == 1
+    assert not any(
+        s.startswith("shared_technique") for s in pre.related_alerts[0].signals
+    )
 
 
 def test_correlation_outside_window_excluded(tmp_path):
@@ -198,7 +206,7 @@ def test_correlation_outside_window_excluded(tmp_path):
         _inv("A1"),
     )
     now = _alert("A2", {"ips": ["10.0.0.1"]}, _T)
-    corr = store.correlate(now, _inv("A2"), window_hours=72)
+    corr = store.correlate(now, window_hours=72)
     assert corr.related_alerts == []
 
 
@@ -211,7 +219,7 @@ def test_correlation_campaign_threshold(tmp_path):
             _inv(f"A{i}"),
         )
     now = _alert("A9", {}, _T, host="db-01.internal")
-    corr = store.correlate(now, _inv("A9"))
+    corr = store.correlate(now)
     assert corr.is_campaign is True
     assert len(corr.related_alerts) == 2
     assert "campaign" in corr.summary.lower()
@@ -221,5 +229,5 @@ def test_correlation_excludes_self(tmp_path):
     store = _store(tmp_path)
     alert = _alert("A1", {"ips": ["10.0.0.1"]}, _T, host="h1")
     store.record(alert, _inv("A1"))
-    corr = store.correlate(alert, _inv("A1"))
+    corr = store.correlate(alert)
     assert corr.related_alerts == []

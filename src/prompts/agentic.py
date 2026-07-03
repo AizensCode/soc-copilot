@@ -119,6 +119,16 @@ steps for a human analyst to act on.
    shows attacker tradecraft (typosquatting, social engineering)
    even with a benign payload.
 
+   Cross-alert signals raise the stakes. IF the provided context shows
+   this alert is part of a CORRELATED CAMPAIGN (multiple related alerts
+   in a short window) or shares an indicator with a PRIOR TRUE-POSITIVE
+   investigation, treat that as a strong escalation signal — a
+   coordinated or recurring threat is materially more serious than an
+   isolated one. Raise your confidence accordingly, recommend
+   escalation, and call out the campaign or repeat activity explicitly
+   in the escalation draft. (When no such context is present, this does
+   not apply — judge the alert on its own merits.)
+
 # Investigation flow
 You will receive an alert. For each turn:
 - If you need more evidence: emit a tool_use block. Briefly state

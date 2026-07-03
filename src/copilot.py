@@ -6,7 +6,7 @@ from anthropic import AsyncAnthropic
 from .config import settings
 from .history import AlertHistoryStore
 from .mitre_groups import match_groups
-from .models import Alert, Evidence, Investigation, PriorSighting
+from .models import Alert, Correlation, Evidence, Investigation, PriorSighting
 from .prompts.agentic import AGENTIC_SYSTEM_PROMPT
 from .prompts.system import SYSTEM_PROMPT
 from .tools.abuseipdb import AbuseIPDBTool
@@ -26,27 +26,57 @@ class SOCCopilot:
         self.history = history_store or AlertHistoryStore(settings.HISTORY_PATH)
 
     @staticmethod
-    def _format_priors(priors: list[PriorSighting]) -> str:
-        """Render prior sightings as a prompt context block.
+    def _format_memory_context(
+        priors: list[PriorSighting], correlation: Correlation | None
+    ) -> str:
+        """Render cross-alert memory (prior sightings + campaign correlation)
+        as a prompt context block, fed to the model BEFORE it decides so this
+        context can drive the verdict and escalation.
 
-        Returns "" when there are none, so an empty history leaves the prompt
-        byte-for-byte unchanged (keeps investigations deterministic).
+        Returns "" when there's nothing to add, so an empty history leaves the
+        prompt byte-for-byte unchanged (keeps investigations deterministic and
+        the eval harness unaffected).
         """
-        if not priors:
-            return ""
-        lines = [
-            "# Prior investigation history (from the copilot's own case store)",
-            "These past investigations share one or more indicators with this "
-            "alert. Treat as grounded context — weigh it in your hypothesis, "
-            "confidence, and escalation call:",
-        ]
-        for p in priors:
-            lines.append(
-                f"- {p.alert_id} ({p.timestamp:%Y-%m-%d}, verdict={p.verdict}, "
-                f"confidence={p.confidence}): \"{p.title}\" "
-                f"— shared indicators: {', '.join(p.matched_iocs)}"
+        sections: list[str] = []
+
+        if priors:
+            lines = [
+                "# Prior investigation history (from the copilot's own case store)",
+                "These past investigations share one or more indicators with "
+                "this alert. Treat as grounded context — weigh it in your "
+                "hypothesis, confidence, and escalation call:",
+            ]
+            for p in priors:
+                lines.append(
+                    f"- {p.alert_id} ({p.timestamp:%Y-%m-%d}, verdict={p.verdict}, "
+                    f"confidence={p.confidence}): \"{p.title}\" "
+                    f"— shared indicators: {', '.join(p.matched_iocs)}"
+                )
+            sections.append("\n".join(lines))
+
+        if correlation and correlation.related_alerts:
+            header = (
+                "# Cross-alert correlation — POSSIBLE COORDINATED CAMPAIGN"
+                if correlation.is_campaign
+                else "# Cross-alert correlation — related recent activity"
             )
-        return "\n".join(lines)
+            lines = [header, correlation.summary,
+                     "Related alerts (and why they correlate):"]
+            for r in correlation.related_alerts:
+                lines.append(
+                    f"- {r.alert_id} ({r.timestamp:%Y-%m-%d}, verdict={r.verdict}) "
+                    f"— signals: {', '.join(r.signals)}"
+                )
+            if correlation.is_campaign:
+                lines.append(
+                    "A coordinated campaign across multiple alerts is materially "
+                    "more serious than an isolated event — factor this into your "
+                    "confidence and escalation decision, and note it in the "
+                    "escalation draft."
+                )
+            sections.append("\n".join(lines))
+
+        return "\n\n".join(sections)
 
     # ------------------------------------------------------------------
     # Phase 1: fixed enrichment pipeline
@@ -199,14 +229,20 @@ class SOCCopilot:
         """Phase 1 entrypoint: pre-enrich, then one LLM call to write the report."""
         evidence = await self.enrich(alert)
         priors = self.history.prior_sightings(alert)
+        # Correlate on alert-level signals now, so a detected campaign can
+        # inform the escalation decision (technique corroboration is added
+        # post-investigation for the recorded field).
+        pre_correlation = self.history.correlate(
+            alert, window_hours=settings.CORRELATION_WINDOW_HOURS
+        )
 
-        priors_block = self._format_priors(priors)
-        priors_section = f"{priors_block}\n\n" if priors_block else ""
+        mem_block = self._format_memory_context(priors, pre_correlation)
+        mem_section = f"{mem_block}\n\n" if mem_block else ""
         user_message = (
             f"# Alert\n```json\n{alert.model_dump_json(indent=2)}\n```\n\n"
             f"# Enrichment evidence collected\n"
             f"```json\n{json.dumps([e.model_dump() for e in evidence], indent=2)}\n```\n\n"
-            f"{priors_section}"
+            f"{mem_section}"
             f"Produce the final Investigation JSON now."
         )
 
@@ -233,7 +269,9 @@ class SOCCopilot:
         )
         investigation.prior_sightings = priors
         investigation.correlation = self.history.correlate(
-            alert, investigation, window_hours=settings.CORRELATION_WINDOW_HOURS
+            alert,
+            investigation.attack_techniques,
+            window_hours=settings.CORRELATION_WINDOW_HOURS,
         )
         self.history.record(alert, investigation)
         return investigation
@@ -254,8 +292,11 @@ class SOCCopilot:
         as a safety stop against runaway loops.
         """
         priors = self.history.prior_sightings(alert)
-        priors_block = self._format_priors(priors)
-        priors_section = f"\n\n{priors_block}" if priors_block else ""
+        pre_correlation = self.history.correlate(
+            alert, window_hours=settings.CORRELATION_WINDOW_HOURS
+        )
+        mem_block = self._format_memory_context(priors, pre_correlation)
+        mem_section = f"\n\n{mem_block}" if mem_block else ""
         messages: list[dict] = [
             {
                 "role": "user",
@@ -263,7 +304,7 @@ class SOCCopilot:
                     f"Investigate this alert. Call tools as needed to gather "
                     f"evidence, then produce the final Investigation JSON.\n\n"
                     f"```json\n{alert.model_dump_json(indent=2)}\n```"
-                    f"{priors_section}"
+                    f"{mem_section}"
                 ),
             }
         ]
@@ -289,7 +330,7 @@ class SOCCopilot:
                 investigation.prior_sightings = priors
                 investigation.correlation = self.history.correlate(
                     alert,
-                    investigation,
+                    investigation.attack_techniques,
                     window_hours=settings.CORRELATION_WINDOW_HOURS,
                 )
                 self.history.record(alert, investigation)

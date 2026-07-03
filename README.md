@@ -169,7 +169,15 @@ Prior sightings match on an *exact* shared indicator. Real campaigns are looser 
 
 The design choice that keeps it useful rather than noisy is what counts as a link. Two alerts correlate only when they're within a time window **and** share an *infrastructure or target* signal: an exact IOC, a `/24`-adjacent IP, or the same host. A shared *technique* family is recorded as a corroborating signal on an already-linked pair, but never links alerts on its own — otherwise every phishing alert (all `T1566`) would look like one campaign. Once enough related priors accumulate within the window, the `correlation` field flags `is_campaign` and lists each related alert with the exact signals that tied it in (`related_ip:185.220.101.10/24`, `shared_host:prod-web-02`, `shared_technique:T1110`).
 
-Like the rest of the memory layer, correlation is deterministic and Python-owned — the campaign assessment traces to concrete signals, not the model's intuition — so it's covered by fast API-free tests (same-/24 linking, technique-alone *not* linking, window exclusion, the campaign threshold). It's computed post-investigation, so it uses the final technique mapping; the honest limitation is that it annotates the report rather than feeding back into the model's escalation call, which is the natural next increment.
+Like the rest of the memory layer, correlation is deterministic and Python-owned — the campaign assessment traces to concrete signals, not the model's intuition — so it's covered by fast API-free tests (same-/24 linking, technique-alone *not* linking, window exclusion, the campaign threshold).
+
+### Closing the loop: context that decides, not just describes
+
+The three features above — threat-actor overlap, prior sightings, campaign correlation — are only as sharp as their effect on the verdict. It's not enough for the copilot to *know* an alert is part of a campaign; that knowledge has to change what it recommends. Otherwise it's a fact-lister, not an analyst.
+
+So the memory context is fed to the model **before it decides**, and both system prompts carry an escalation principle: *if the context shows a coordinated campaign or a shared indicator with a prior true-positive, treat that as a strong escalation signal.* An alert that might read as medium-severity in isolation escalates hard once the copilot sees it's the third hit from the same /24 on the same host in an hour.
+
+The timing works because relatedness rests on *alert-level* signals (IOC, /24, host, time) that exist before investigation — so `correlate()` runs once up front to inform the decision, and again after, enriched with the final technique mapping, for the recorded `correlation` field. The escalation principle is written to be inert when no such context is present (it explicitly says "when no such context is present, this does not apply"), so isolated alerts — and the empty-store eval harness — behave exactly as before. The result is a copilot whose accumulated memory actually bends its conclusions, which is the whole point of giving it a memory.
 
 ## Project layout
 
@@ -267,7 +275,7 @@ The project is research-grade today. Three concrete directions to grow it.
 ## Limitations and honest caveats
 
 - **Two alert types only.** Brute force and phishing-with-attachment. Real SOC environments have dozens of alert classes. The architecture scales but the testing doesn't yet.
-- **Correlation is heuristic and single-process.** The copilot remembers past investigations, surfaces prior sightings, and clusters related alerts into campaigns (`AlertHistoryStore`). But correlation is deterministic-rule-based (shared IOC / /24 / host within a window), not learned; it reads a local JSONL store, so there's no multi-analyst or cross-host sharing; and campaign membership is surfaced as a report annotation rather than fed back to influence the model's escalation decision.
+- **Correlation is heuristic and single-process.** The copilot remembers past investigations, surfaces prior sightings, clusters related alerts into campaigns, and now feeds that context back into the escalation decision (`AlertHistoryStore`). But correlation is still deterministic-rule-based (shared IOC / /24 / host within a window), not learned, and it reads a local JSONL store — so there's no multi-analyst or cross-host sharing yet.
 - **Tool coverage is shallow.** Three external threat-intel sources (IP, hash, domain) plus a local MITRE ATT&CK Groups lookup. Production use still needs sandbox detonation, internal log search, and richer reputation feeds.
 - **No human-in-the-loop UI.** Output is JSON. Useful for piping into other systems, not for an analyst sitting at a console.
 - **LLM costs.** Sonnet runs ≈$0.03–0.05 per investigation. At SOC volumes (thousands of alerts/day) this adds up. Production would need a tiered approach: cheap model for triage, expensive model for ambiguous cases.

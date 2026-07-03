@@ -142,7 +142,7 @@ class AlertHistoryStore:
     def correlate(
         self,
         alert: Alert,
-        investigation: Investigation,
+        techniques: list[str] | None = None,
         window_hours: int = DEFAULT_WINDOW_HOURS,
     ) -> Correlation:
         """Assess whether this alert clusters with recent prior alerts.
@@ -154,13 +154,19 @@ class AlertHistoryStore:
         keeps generic TTPs (e.g. every phishing alert uses T1566) from
         producing spurious campaigns. is_campaign is True once enough related
         priors accumulate.
+
+        `techniques` is optional so this can run BEFORE investigation (on
+        alert-level signals alone, to inform the escalation decision) and again
+        AFTER (with the final technique mapping, to record technique
+        corroboration). Because relatedness rests on infrastructure/target
+        signals, is_campaign is stable whether or not techniques are supplied.
         """
         current_iocs = set(alert_iocs(alert))
         current_ips = _ipv4s(list(current_iocs))
         current_host = (
             alert.raw_log.get("host") if isinstance(alert.raw_log, dict) else None
         )
-        current_techs = _parent_tcodes(investigation.attack_techniques)
+        current_techs = _parent_tcodes(techniques or [])
         window = timedelta(hours=window_hours)
 
         related: list[RelatedAlert] = []
