@@ -12,6 +12,10 @@ Matching semantics:
 - required_techniques: each string must appear as substring in any
   attack_techniques entry (so "T1110.001" matches
   "T1110.001 - Brute Force: Password Guessing")
+- any_of_techniques: list of groups; for EACH group, at least one member
+  must appear. For behaviors that legitimately map to several families
+  (e.g. DNS tunneling → T1071 C2 vs T1048 exfil vs T1572 tunneling),
+  where forcing one family would punish a defensible analyst choice
 - forbidden_techniques: none of these may appear anywhere in
   attack_techniques (catches hallucinated T-codes)
 - must_escalate: exact bool match on escalation_recommended
@@ -34,6 +38,7 @@ class AlertExpectation(TypedDict, total=False):
     allowed_verdicts: list[str]        # any-of match for ambiguous cases
     min_confidence: str
     required_techniques: list[str]
+    any_of_techniques: list[list[str]]  # each group: at least one must appear
     forbidden_techniques: list[str]
     must_escalate: bool
     pivots_must_include: list[str]
@@ -126,6 +131,49 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
         "min_associated_groups": 1,
         # the deterministic scanner must catch the embedded injection
         "min_injection_flags": 1,
+    },
+    "impossible_travel_login.json": {
+        # The counterpart to the URL-click alert's T1078 discipline: there,
+        # valid-account use was ANTICIPATED (forbidden); here two SUCCESSFUL
+        # sign-ins — the second reusing a session token with no MFA prompt —
+        # are OBSERVED account use, so T1078 is REQUIRED. Guards against the
+        # prompts over-learning "never map T1078".
+        "allowed_verdicts": ["true_positive", "inconclusive"],  # VPN use is conceivable
+        "min_confidence": "medium",
+        "required_techniques": ["T1078"],
+        "forbidden_techniques": [
+            "T1110",   # both sign-ins succeeded outright — not brute force
+            "T1566",   # no delivery evidence in the alert; a phishing origin
+                       # would be anticipation, not observation
+        ],
+        "must_escalate": True,   # active account compromise indicators
+        "pivots_must_include": [
+            "revoke",  # the non-negotiable containment: revoke sessions/tokens
+        ],
+        "min_evidence_count": 1,
+        "min_associated_groups": 1,  # T1078 is used by many documented groups
+    },
+    "dns_tunneling_beacon.json": {
+        # Network C2/exfil class. High-entropy TXT-heavy ~1/sec queries to a
+        # never-before-seen domain is classic DNS tunneling, but a benign
+        # explanation (security-agent telemetry over DNS) is conceivable, so
+        # inconclusive is defensible. The technique family is a genuine
+        # analyst choice — C2 channel vs exfil vs tunneling — hence any-of.
+        "allowed_verdicts": ["true_positive", "inconclusive"],
+        "min_confidence": "medium",
+        "any_of_techniques": [
+            ["T1071", "T1048", "T1572", "T1132"],
+        ],
+        "forbidden_techniques": [
+            "T1566",   # no phishing evidence — guards cross-contamination
+            "T1204",   # no user-execution evidence either
+        ],
+        "must_escalate": True,   # possible active C2/exfil channel on a workstation
+        "pivots_must_include": [
+            "xf-telemetry-sync",  # pivots must address the suspect domain
+        ],
+        "min_evidence_count": 1,
+        "min_associated_groups": 1,
     },
 }
 

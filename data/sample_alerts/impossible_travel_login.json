@@ -1,0 +1,42 @@
+{
+  "alert_id": "ALRT-2026-0420-005",
+  "timestamp": "2026-04-20T07:48:12Z",
+  "source": "siem",
+  "severity": "high",
+  "title": "Impossible travel: successful sign-ins from two countries within 41 minutes",
+  "raw_log": {
+    "event_type": "authentication",
+    "service": "azure-ad-signin",
+    "user": "c.moreau",
+    "detection_window_minutes": 41,
+    "geo_velocity_kmh_required": 8900,
+    "logins": [
+      {
+        "time": "2026-04-20T07:07:33Z",
+        "result": "success",
+        "source_ip": "77.136.14.202",
+        "country": "FR",
+        "city": "Lyon",
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Edg/124.0",
+        "mfa": "satisfied_by_prompt",
+        "client_app": "Outlook Web"
+      },
+      {
+        "time": "2026-04-20T07:48:12Z",
+        "result": "success",
+        "source_ip": "146.70.113.24",
+        "country": "AE",
+        "city": "Dubai",
+        "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/123.0",
+        "mfa": "satisfied_by_existing_token",
+        "client_app": "Exchange ActiveSync"
+      }
+    ],
+    "note": "Second sign-in reused an existing session token; no interactive MFA prompt was issued."
+  },
+  "indicators": {
+    "ips": ["77.136.14.202", "146.70.113.24"],
+    "hashes": [],
+    "users": ["c.moreau"]
+  }
+}

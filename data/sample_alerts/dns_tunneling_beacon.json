@@ -1,0 +1,33 @@
+{
+  "alert_id": "ALRT-2026-0420-006",
+  "timestamp": "2026-04-20T11:16:40Z",
+  "source": "siem",
+  "severity": "medium",
+  "title": "High-volume DNS queries with high-entropy subdomains to newly observed domain",
+  "raw_log": {
+    "event_type": "dns_anomaly",
+    "host": "eng-ws-31.corp.internal",
+    "user": "t.okafor",
+    "domain": "xf-telemetry-sync.net",
+    "resolved_ip": "91.92.240.17",
+    "query_count_1h": 4212,
+    "distinct_subdomains_1h": 3987,
+    "avg_query_interval_seconds": 0.86,
+    "qtype_distribution_pct": {"TXT": 61, "A": 32, "CNAME": 7},
+    "avg_subdomain_length": 47,
+    "avg_subdomain_entropy_bits": 4.6,
+    "sample_queries": [
+      "3a9f0c71be22d84410ce.xf-telemetry-sync.net",
+      "b81e44a09cd13f7a2e55.xf-telemetry-sync.net",
+      "f02c9d5e17ab8834c1d9.xf-telemetry-sync.net"
+    ],
+    "first_seen_domain": "2026-04-19T22:03:11Z",
+    "baseline_note": "Domain not queried by any corporate host before 2026-04-19; no other host currently querying it."
+  },
+  "indicators": {
+    "ips": ["91.92.240.17"],
+    "hashes": [],
+    "users": ["t.okafor"],
+    "domains": ["xf-telemetry-sync.net"]
+  }
+}

@@ -123,6 +123,24 @@ async def test_required_mitre_techniques(
 
 
 @pytest.mark.parametrize("alert_file,mode,expected", _cases())
+async def test_any_of_mitre_techniques(
+    alert_file: str,
+    mode: str,
+    expected: AlertExpectation,
+    investigations: dict[tuple[str, str], Investigation],
+):
+    if "any_of_techniques" not in expected:
+        pytest.skip("No any_of_techniques specified")
+    inv = investigations[(alert_file, mode)]
+    techniques_blob = " ".join(inv.attack_techniques)
+    for group in expected["any_of_techniques"]:
+        assert any(t in techniques_blob for t in group), (
+            f"{alert_file} [{mode}]: none of the acceptable techniques "
+            f"{group} appear. Got: {inv.attack_techniques}"
+        )
+
+
+@pytest.mark.parametrize("alert_file,mode,expected", _cases())
 async def test_forbidden_mitre_techniques(
     alert_file: str,
     mode: str,

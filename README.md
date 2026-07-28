@@ -139,9 +139,11 @@ The fix: assert on *invariants* (must always be true for a useful investigation)
 
 This took three iteration cycles to calibrate. The harness is now stable across runs while still catching real regressions (cross-contaminated MITRE families, missing escalation, hallucinated tools).
 
+The sharpest expression of this: T1078 (Valid Accounts) is *forbidden* on the credential-phishing alert (the attacker wants account access — anticipated, not observed) and *required* on the impossible-travel alert (two successful sign-ins, the second reusing a session token — account use observed in the log). The same technique, opposite assertions, hinging entirely on what the evidence shows. That pairing pins the observed-vs-anticipated discipline from both sides, so the prompts can't drift into either "map the attacker's goal" or "never map T1078". For behaviors that legitimately map to several families (DNS tunneling: C2 channel vs exfiltration vs protocol tunneling), the expectation is an any-of group rather than a forced single answer — the invariant is "recognized the behavior", not "picked my favorite label".
+
 ### Two-mode parametrization in the harness
 
-The eval harness runs both phase 1 and agentic mode against the same expectations. 28 assertions per run (7 properties × 2 alerts × 2 modes). When something fails, the failure message includes the mode, so I immediately see whether the regression is in the fixed pipeline or the agent.
+The eval harness runs both phase 1 and agentic mode against the same expectations — currently a grid of 10 properties × 6 alerts × 2 modes (properties an alert doesn't specify are skipped). When something fails, the failure message includes the mode, so I immediately see whether the regression is in the fixed pipeline or the agent.
 
 This catches a class of bug that single-mode testing misses: when prompt changes accidentally diverge the two modes. If a system prompt change makes phase 1 better but breaks agentic, or vice versa, the parametrized tests surface it instantly.
 
@@ -303,7 +305,7 @@ The project is research-grade today. Three concrete directions to grow it.
 
 ## Limitations and honest caveats
 
-- **Few alert types.** Four labeled samples (SSH brute force, phishing-with-attachment, credential-phishing link click, and an adversarial encoded-PowerShell/injection alert). Real SOC environments have dozens of alert classes. The architecture scales but the labeled test set doesn't yet.
+- **Few alert types.** Six labeled samples: SSH brute force, phishing-with-attachment, credential-phishing link click, an adversarial encoded-PowerShell/injection alert, impossible-travel login, and DNS tunneling. Real SOC environments have dozens of alert classes. The architecture scales but the labeled test set doesn't yet.
 - **Correlation is heuristic and single-process.** The copilot remembers past investigations, surfaces prior sightings, clusters related alerts into campaigns, and now feeds that context back into the escalation decision (`AlertHistoryStore`). But correlation is still deterministic-rule-based (shared IOC / /24 / host within a window), not learned, and it reads a local JSONL store — so there's no multi-analyst or cross-host sharing yet.
 - **Tool coverage is shallow.** Three external threat-intel sources (IP, hash, domain) plus a local MITRE ATT&CK Groups lookup. Production use still needs sandbox detonation, internal log search, and richer reputation feeds.
 - **Report is read-only.** `--report` renders a self-contained HTML investigation an analyst can read and triage from, but it's a static document — no queue, no case actions, no click-to-pivot. The JSON is still the integration surface; the report is the human surface.
