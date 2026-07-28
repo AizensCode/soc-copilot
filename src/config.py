@@ -21,6 +21,11 @@ class Settings:
     HISTORY_PATH: str = "data/history/investigations.jsonl"
     # Temporal window (hours) for clustering alerts into a campaign.
     CORRELATION_WINDOW_HOURS: int = 72
+    # Elastic SIEM integration — optional; the copilot runs fine without it.
+    ELASTIC_URL: str | None = None
+    ELASTIC_API_KEY: str | None = None
+    ELASTIC_ALERTS_INDEX: str = ".alerts-security.alerts-default"
+    ELASTIC_RESULTS_INDEX: str = "soc-copilot-investigations"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -45,7 +50,20 @@ class Settings:
                 f"Add them to your .env file."
             )
 
-        return cls(ANTHROPIC_KEY=anthropic_key, ABUSEIPDB_KEY=abuseipdb_key, VIRUSTOTAL_KEY=virustotal_key, URLSCAN_KEY=urlscan_key,)
+        return cls(
+            ANTHROPIC_KEY=anthropic_key,
+            ABUSEIPDB_KEY=abuseipdb_key,
+            VIRUSTOTAL_KEY=virustotal_key,
+            URLSCAN_KEY=urlscan_key,
+            ELASTIC_URL=os.environ.get("ELASTIC_URL"),
+            ELASTIC_API_KEY=os.environ.get("ELASTIC_API_KEY"),
+            ELASTIC_ALERTS_INDEX=os.environ.get(
+                "ELASTIC_ALERTS_INDEX", ".alerts-security.alerts-default"
+            ),
+            ELASTIC_RESULTS_INDEX=os.environ.get(
+                "ELASTIC_RESULTS_INDEX", "soc-copilot-investigations"
+            ),
+        )
 
 
 settings = Settings.from_env()

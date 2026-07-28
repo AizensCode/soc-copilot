@@ -2,7 +2,7 @@
 
 An AI-assisted security alert investigator. Given a SIEM or EDR alert, it gathers threat intelligence, reasons through the evidence, and produces a structured investigation report — verdict, MITRE ATT&CK mapping, suggested pivots, and a sendable escalation draft.
 
-Built as a learning project to explore agentic LLM patterns in a SOC context. The architecture is designed to scale toward production use (real SIEM integration, case management, multi-alert correlation), but the current implementation is intentionally small: two alert types, two threat intel tools, one eval harness.
+Built as a learning project to explore agentic LLM patterns in a SOC context, grown feature by feature toward a real assistant: threat intel enrichment, MITRE mapping with threat-group context, cross-alert memory and campaign correlation that feed the escalation decision, prompt-injection defense, an analyst-facing HTML report, and an Elastic SIEM source. Still research-grade — four labeled alert types, one eval harness — but every feature is grounded in tests you can run.
 
 ## Quick example
 
@@ -206,6 +206,7 @@ soc-copilot/
 │   ├── history.py          # AlertHistoryStore: cross-alert memory + campaign correlation
 │   ├── injection.py        # Prompt-injection scanner for untrusted alert content
 │   ├── report.py           # Renders an investigation as a self-contained HTML report
+│   ├── elastic.py          # Elastic SIEM source: pull ECS alerts, push results
 │   ├── config.py           # Settings + env loading
 │   ├── main.py             # CLI: python -m src.main <alert.json> [--agentic]
 │   ├── prompts/
@@ -225,6 +226,7 @@ soc-copilot/
 │   ├── test_history.py     # Cross-alert memory + correlation unit tests (no API)
 │   ├── test_injection.py   # Prompt-injection scanner unit tests (no API)
 │   ├── test_report.py      # HTML report rendering + escaping unit tests (no API)
+│   ├── test_elastic.py     # ECS normalization + Elastic HTTP unit tests (no API)
 │   └── expectations.py     # Per-alert correctness criteria
 ├── data/
 │   ├── sample_alerts/      # Labeled alerts for testing (incl. an adversarial one)
@@ -255,6 +257,10 @@ uv run python -m src.main data/sample_alerts/brute_force_ssh.json --agentic
 # Write a self-contained HTML report an analyst can read/triage from
 uv run python -m src.main data/sample_alerts/brute_force_ssh.json --report report.html
 
+# Pull open detection alerts from Elastic, investigate, push results back
+# (requires ELASTIC_URL and ELASTIC_API_KEY in .env)
+uv run python -m src.main --from-elastic 3 --push --report
+
 # Run the eval harness
 uv run pytest tests/test_investigations.py -v
 ```
@@ -280,7 +286,7 @@ The project is research-grade today. Three concrete directions to grow it.
 
 ### Near-term: real alert sources and broader threat intel
 
-- **Elastic SIEM integration** — pull alerts from Elastic via the detection engine API, pipe through the copilot, push the investigation back as a custom field on the alert document. This is the next thing I want to build.
+- ~~**Elastic SIEM integration**~~ ✅ Implemented via `src/elastic.py`. `--from-elastic [N]` pulls the most recent open detection alerts from `.alerts-security.alerts-*`, normalizes each ECS document into the copilot's `Alert` model (nested or dotted-key form, IOCs extracted from standard ECS fields, Kibana rule-execution metadata projected away), investigates, and with `--push` indexes the result into a `soc-copilot-investigations` index for dashboards or case workflows. The normalization is the tested core — pure function, exercised against recorded-style fixture docs with no cluster and no network (`tests/test_elastic.py`, using `httpx.MockTransport` for the thin HTTP layer). Configuration is optional (`ELASTIC_URL`, `ELASTIC_API_KEY`); everything else works without it.
 - ~~**Domain reputation tool**~~ ✅ Implemented via URLScan.io. The agent now calls check_domain_reputation on domains in alert indicators. "No historical scans" is treated as a positive signal for newly-registered attacker infrastructure.
 - ~~**Threat actor lookup**~~ ✅ Implemented via a local MITRE ATT&CK Groups map. After the technique mapping is formed, the copilot surfaces groups whose documented TTPs overlap the observed techniques ("these chain in a way associated with FIN7"), ranked by overlap. The group data is extracted from the official ATT&CK STIX bundle by `scripts/build_group_map.py` into a small committed lookup, so runtime is offline and — crucially — group names can't be hallucinated. See "Grounding attribution deterministically" below.
 - **Sigma rule matching** — given the raw log, match it against community Sigma rules to surface relevant detection logic. This bridges from "the alert fired" to "and here's why the detection exists" in a maintainable way.
@@ -301,6 +307,7 @@ The project is research-grade today. Three concrete directions to grow it.
 - **Correlation is heuristic and single-process.** The copilot remembers past investigations, surfaces prior sightings, clusters related alerts into campaigns, and now feeds that context back into the escalation decision (`AlertHistoryStore`). But correlation is still deterministic-rule-based (shared IOC / /24 / host within a window), not learned, and it reads a local JSONL store — so there's no multi-analyst or cross-host sharing yet.
 - **Tool coverage is shallow.** Three external threat-intel sources (IP, hash, domain) plus a local MITRE ATT&CK Groups lookup. Production use still needs sandbox detonation, internal log search, and richer reputation feeds.
 - **Report is read-only.** `--report` renders a self-contained HTML investigation an analyst can read and triage from, but it's a static document — no queue, no case actions, no click-to-pivot. The JSON is still the integration surface; the report is the human surface.
+- **Elastic integration is fixture-tested, not live-verified.** The ECS normalization and HTTP layer are covered by unit tests against recorded-style documents and a mock transport, but I haven't yet run it against a production Elastic cluster. Field mappings on a real deployment (custom pipelines, ECS versions) may need adjustment.
 - **LLM costs.** Sonnet runs ≈$0.03–0.05 per investigation. At SOC volumes (thousands of alerts/day) this adds up. Production would need a tiered approach: cheap model for triage, expensive model for ambiguous cases.
 - **Prompt-injection defense is best-effort, not a guarantee.** Alert content is treated as untrusted: a deterministic scanner flags injection attempts, both prompts carry an untrusted-input rule, and an adversarial alert in the eval harness checks the copilot resists (see "Treating alert content as hostile"). But pattern-based detection can be evaded by novel phrasings, and prompt-level defenses are mitigations, not proofs. Production would still want input isolation and output validation on top.
 
