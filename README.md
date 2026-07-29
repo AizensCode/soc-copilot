@@ -275,6 +275,63 @@ uv run python -m src.main --from-elastic 3 --push --report
 uv run pytest tests/test_investigations.py -v
 ```
 
+### Local Elastic dev stack (no Docker required)
+
+To exercise `--from-elastic` without a production SIEM, run a single-node
+Elasticsearch as your own user from the official tarball — no root, no Docker.
+Security stays on (the copilot authenticates with a real API key); TLS stays
+off because everything binds to loopback only.
+
+```bash
+# 1. Download and configure (one time)
+mkdir -p ~/elastic-stack && cd ~/elastic-stack
+curl -sSO https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-9.3.0-linux-x86_64.tar.gz
+tar xzf elasticsearch-9.3.0-linux-x86_64.tar.gz
+cd elasticsearch-9.3.0
+cat > config/elasticsearch.yml <<'EOF'
+cluster.name: soc-copilot-dev
+discovery.type: single-node
+network.host: 127.0.0.1
+xpack.security.enabled: true
+xpack.security.http.ssl.enabled: false
+xpack.security.transport.ssl.enabled: false
+EOF
+./bin/elasticsearch-keystore create
+echo -n "<your-password>" | ./bin/elasticsearch-keystore add -x bootstrap.password
+
+# 2. Start it (runs in the foreground; use nohup/& to background)
+ES_JAVA_OPTS="-Xms1g -Xmx1g" ./bin/elasticsearch
+
+# 3. Seed the demo alerts index (3 ECS detection alerts, one per enrichment route)
+ES_PASS=<your-password> ./scripts/elastic_dev_seed.sh
+
+# 4. Mint a least-privilege API key for the copilot
+#    (read on the alerts index, write on the results index, nothing else)
+curl -u elastic:<your-password> -X POST http://127.0.0.1:9200/_security/api_key \
+  -H 'Content-Type: application/json' -d '{
+  "name": "soc-copilot",
+  "role_descriptors": {"soc_copilot": {"indices": [
+    {"names": ["soc-alerts-demo"], "privileges": ["read"]},
+    {"names": ["soc-copilot-investigations"],
+     "privileges": ["create_index", "create_doc", "auto_configure"]}
+  ]}}}'
+
+# 5. Wire .env with the "encoded" field from the response
+#    ELASTIC_URL=http://127.0.0.1:9200
+#    ELASTIC_API_KEY=<encoded>
+#    ELASTIC_ALERTS_INDEX=soc-alerts-demo
+
+# 6. Close the loop
+uv run python -m src.main --from-elastic 3 --push
+```
+
+Kibana (optional, same version, same tarball pattern) gives you a UI on
+`http://127.0.0.1:5601` for browsing the `soc-copilot-investigations` index:
+set the `kibana_system` user's password via
+`POST /_security/user/kibana_system/_password`, point
+`config/kibana.yml` at `http://127.0.0.1:9200` with those credentials, and
+start `./bin/kibana`.
+
 The MITRE ATT&CK group map (`data/mitre/technique_groups.json`) is committed, so
 threat-actor lookup works out of the box with no extra key. To refresh it against
 the latest ATT&CK release:
