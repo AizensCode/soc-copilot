@@ -132,6 +132,8 @@ class ElasticAlertSource:
         url: str | None = None,
         api_key: str | None = None,
         client: httpx.AsyncClient | None = None,
+        alerts_index: str | None = None,
+        results_index: str | None = None,
     ) -> None:
         self.url = (url or settings.ELASTIC_URL or "").rstrip("/")
         self.api_key = api_key or settings.ELASTIC_API_KEY
@@ -140,8 +142,8 @@ class ElasticAlertSource:
                 "Elastic is not configured. Set ELASTIC_URL and "
                 "ELASTIC_API_KEY in your .env to use --from-elastic."
             )
-        self.alerts_index = settings.ELASTIC_ALERTS_INDEX
-        self.results_index = settings.ELASTIC_RESULTS_INDEX
+        self.alerts_index = alerts_index or settings.ELASTIC_ALERTS_INDEX
+        self.results_index = results_index or settings.ELASTIC_RESULTS_INDEX
         self._client = client
 
     @property
@@ -167,10 +169,15 @@ class ElasticAlertSource:
                 f"{e.response.text[:200]}"
             ) from e
 
-    async def fetch_alerts(
+    async def fetch_alert_hits(
         self, limit: int = 3, status: str = "open"
-    ) -> list[Alert]:
-        """Pull the most recent open detection alerts, normalized."""
+    ) -> list[tuple[str, Alert]]:
+        """Pull the most recent detection alerts as (doc_id, Alert) pairs.
+
+        The Elasticsearch _id rides along because it is what update APIs
+        address documents by — kibana.alert.uuid inside _source is not
+        guaranteed to match it.
+        """
         body = {
             "size": limit,
             "sort": [{"@timestamp": "desc"}],
@@ -184,7 +191,28 @@ class ElasticAlertSource:
         }
         data = await self._post(f"/{self.alerts_index}/_search", body)
         hits = data.get("hits", {}).get("hits", [])
-        return [normalize_hit(h) for h in hits]
+        return [(h.get("_id", ""), normalize_hit(h)) for h in hits]
+
+    async def fetch_alerts(
+        self, limit: int = 3, status: str = "open"
+    ) -> list[Alert]:
+        """Pull the most recent open detection alerts, normalized."""
+        return [a for _, a in await self.fetch_alert_hits(limit, status)]
+
+    async def acknowledge_alert(self, doc_id: str) -> None:
+        """Mark an alert as acknowledged so it leaves the 'open' queue.
+
+        Partial-update merge on the nested ECS shape (the form Kibana alert
+        docs and this project's dev seeds use). refresh=true so the next
+        poll cycle doesn't re-fetch the same alert. On a production Elastic
+        Security cluster, prefer Kibana's detection-engine signals-status
+        API, which keeps the alert's audit trail; direct index updates are
+        the dev-stack shortcut.
+        """
+        await self._post(
+            f"/{self.alerts_index}/_update/{doc_id}?refresh=true",
+            {"doc": {"kibana": {"alert": {"workflow_status": "acknowledged"}}}},
+        )
 
     async def push_investigation(
         self, alert: Alert, investigation: Investigation

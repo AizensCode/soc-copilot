@@ -124,9 +124,14 @@ def test_normalize_rejects_bogus_severity():
 
 
 def _source_with(handler) -> ElasticAlertSource:
+    # Pin every knob so the test never depends on the developer's .env
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     return ElasticAlertSource(
-        url="https://elastic.test:9200", api_key="key123", client=client
+        url="https://elastic.test:9200",
+        api_key="key123",
+        client=client,
+        alerts_index=".alerts-security.alerts-default",
+        results_index="soc-copilot-investigations",
     )
 
 
@@ -176,6 +181,38 @@ async def test_push_investigation_indexes_summary_doc():
     assert doc["escalation_recommended"] is True
     assert doc["is_campaign"] is False
     assert doc["investigation"]["attack_techniques"] == ["T1059.001"]
+
+
+async def test_fetch_alert_hits_pairs_doc_id_with_alert():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json={"hits": {"hits": [NESTED_HIT, DOTTED_HIT]}}
+        )
+
+    source = _source_with(handler)
+    hits = await source.fetch_alert_hits(limit=5)
+
+    # doc_id is the ES _id, even when _source carries a different uuid
+    assert [d for d, _ in hits] == ["abc123", "flat456"]
+    assert hits[0][1].alert_id == "d9c1e5a0-1111-2222-3333-444455556666"
+
+
+async def test_acknowledge_alert_sends_partial_update():
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"result": "updated"})
+
+    source = _source_with(handler)
+    await source.acknowledge_alert("abc123")
+
+    assert "/.alerts-security.alerts-default/_update/abc123" in captured["url"]
+    assert "refresh=true" in captured["url"]
+    assert captured["body"] == {
+        "doc": {"kibana": {"alert": {"workflow_status": "acknowledged"}}}
+    }
 
 
 async def test_http_error_surfaces_clearly():

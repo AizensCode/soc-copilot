@@ -271,6 +271,10 @@ uv run python -m src.main data/sample_alerts/brute_force_ssh.json --report repor
 # (requires ELASTIC_URL and ELASTIC_API_KEY in .env)
 uv run python -m src.main --from-elastic 3 --push --report
 
+# Stay running: poll Elastic, investigate every new open alert, push the
+# result, and acknowledge the alert so it leaves the open queue
+uv run python -m src.main --watch 60
+
 # Run the eval harness
 uv run pytest tests/test_investigations.py -v
 ```
@@ -306,12 +310,14 @@ ES_JAVA_OPTS="-Xms1g -Xmx1g" ./bin/elasticsearch
 ES_PASS=<your-password> ./scripts/elastic_dev_seed.sh
 
 # 4. Mint a least-privilege API key for the copilot
-#    (read on the alerts index, write on the results index, nothing else)
+#    (read + doc-write on the alerts index — write is what lets --watch
+#    acknowledge alerts it has handled — write on the results index,
+#    nothing else)
 curl -u elastic:<your-password> -X POST http://127.0.0.1:9200/_security/api_key \
   -H 'Content-Type: application/json' -d '{
   "name": "soc-copilot",
   "role_descriptors": {"soc_copilot": {"indices": [
-    {"names": ["soc-alerts-demo"], "privileges": ["read"]},
+    {"names": ["soc-alerts-demo"], "privileges": ["read", "write"]},
     {"names": ["soc-copilot-investigations"],
      "privileges": ["create_index", "create_doc", "auto_configure"]}
   ]}}}'
@@ -366,6 +372,7 @@ The project is research-grade today. Three concrete directions to grow it.
 - ~~**Elastic SIEM integration**~~ ✅ Implemented via `src/elastic.py`. `--from-elastic [N]` pulls the most recent open detection alerts from `.alerts-security.alerts-*`, normalizes each ECS document into the copilot's `Alert` model (nested or dotted-key form, IOCs extracted from standard ECS fields, Kibana rule-execution metadata projected away), investigates, and with `--push` indexes the result into a `soc-copilot-investigations` index for dashboards or case workflows. The normalization is the tested core — pure function, exercised against recorded-style fixture docs with no cluster and no network (`tests/test_elastic.py`, using `httpx.MockTransport` for the thin HTTP layer). Configuration is optional (`ELASTIC_URL`, `ELASTIC_API_KEY`); everything else works without it.
 - ~~**Domain reputation tool**~~ ✅ Implemented via URLScan.io. The agent now calls check_domain_reputation on domains in alert indicators. "No historical scans" is treated as a positive signal for newly-registered attacker infrastructure.
 - ~~**Threat actor lookup**~~ ✅ Implemented via a local MITRE ATT&CK Groups map. After the technique mapping is formed, the copilot surfaces groups whose documented TTPs overlap the observed techniques ("these chain in a way associated with FIN7"), ranked by overlap. The group data is extracted from the official ATT&CK STIX bundle by `scripts/build_group_map.py` into a small committed lookup, so runtime is offline and — crucially — group names can't be hallucinated. See "Grounding attribution deterministically" below.
+- ~~**Continuous watch mode**~~ ✅ Implemented via `--watch [interval]`. The copilot polls the open-alert queue, investigates every new alert, pushes the result, and acknowledges the alert in Elastic — acknowledgement doubles as the dedupe, exactly as a human analyst clears their queue. With the Kibana console auto-refreshing, the full loop is hands-off: alert lands → investigated within one poll interval → verdict, hypothesis, and escalation draft on the dashboard, alert gone from the open queue. A failed investigation is retried next cycle instead of killing the loop.
 - **Sigma rule matching** — given the raw log, match it against community Sigma rules to surface relevant detection logic. This bridges from "the alert fired" to "and here's why the detection exists" in a maintainable way.
 
 ### Medium-term: memory and correlation

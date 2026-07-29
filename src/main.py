@@ -5,6 +5,10 @@
 
     # Pull open detection alerts from Elastic and investigate each
     uv run python -m src.main --from-elastic [N] [--agentic] [--push] [--report]
+
+    # Stay running: poll Elastic, investigate every new open alert,
+    # push the result, acknowledge the alert
+    uv run python -m src.main --watch [interval_seconds] [--agentic]
 """
 import asyncio
 import json
@@ -17,7 +21,8 @@ from .models import Alert, Investigation
 USAGE = (
     "Usage:\n"
     "  python -m src.main <path/to/alert.json> [--agentic] [--report [out.html]]\n"
-    "  python -m src.main --from-elastic [N] [--agentic] [--push] [--report]"
+    "  python -m src.main --from-elastic [N] [--agentic] [--push] [--report]\n"
+    "  python -m src.main --watch [interval_seconds] [--agentic]"
 )
 
 
@@ -123,6 +128,63 @@ async def _run_elastic(agentic: bool) -> None:
             print(f"Pushed investigation to Elastic (doc id: {doc_id})")
 
 
+async def _run_watch(agentic: bool) -> None:
+    """Continuous mode: the copilot works the open-alert queue by itself.
+
+    Each cycle: fetch open alerts, investigate each, push the result,
+    acknowledge the alert in Elastic (which removes it from the next
+    poll — acknowledgement IS the dedupe). A per-session seen-set guards
+    against re-investigating if an acknowledgement fails; a failed alert
+    is logged and retried on a later cycle rather than killing the loop.
+    """
+    from .elastic import ElasticAlertSource
+
+    interval = int(_arg_after("--watch") or 60)
+    try:
+        source = ElasticAlertSource()
+    except RuntimeError as e:
+        print(e)
+        sys.exit(1)
+
+    copilot = SOCCopilot()
+    seen: set[str] = set()
+    mode = "agentic" if agentic else "phase one"
+    # flush every line: when watch runs under nohup/systemd its output is
+    # the operator's only heartbeat, and block-buffering would hide it
+    print(
+        f"Watching {source.alerts_index} every {interval}s ({mode} mode). "
+        f"Ctrl+C to stop.",
+        flush=True,
+    )
+    while True:
+        try:
+            hits = await source.fetch_alert_hits(limit=10, status="open")
+            fresh = [(d, a) for d, a in hits if d not in seen]
+            for doc_id, alert in fresh:
+                print(f"\n=== {alert.alert_id} — {alert.title} ===", flush=True)
+                try:
+                    investigation = await _investigate(copilot, alert, agentic)
+                    result_id = await source.push_investigation(
+                        alert, investigation
+                    )
+                    await source.acknowledge_alert(doc_id)
+                    seen.add(doc_id)
+                    print(
+                        f"verdict={investigation.verdict} "
+                        f"confidence={investigation.confidence} "
+                        f"escalate={investigation.escalation_recommended} "
+                        f"-> pushed {result_id}, alert acknowledged",
+                        flush=True,
+                    )
+                except Exception as e:
+                    print(f"FAILED (will retry next cycle): {e}", flush=True)
+        except Exception as e:
+            print(
+                f"Poll cycle failed (retrying in {interval}s): {e}", flush=True
+            )
+        await asyncio.sleep(interval)
+
+
 async def main() -> None:
     if len(sys.argv) < 2:
         print(USAGE)
@@ -131,6 +193,11 @@ async def main() -> None:
     agentic = "--agentic" in sys.argv
     if sys.argv[1] == "--from-elastic":
         await _run_elastic(agentic)
+    elif sys.argv[1] == "--watch":
+        try:
+            await _run_watch(agentic)
+        except KeyboardInterrupt:
+            print("\nWatch stopped.")
     else:
         await _run_file(agentic)
 
