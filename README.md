@@ -332,6 +332,16 @@ set the `kibana_system` user's password via
 `config/kibana.yml` at `http://127.0.0.1:9200` with those credentials, and
 start `./bin/kibana`.
 
+With Kibana up, install the analyst console — one dashboard centralizing open
+alerts and the copilot's verdicts (verdict/severity donuts, top MITRE
+techniques, investigation timeline, and both tables), auto-refreshing every
+30 seconds so new alerts and fresh investigations appear as they land:
+
+```bash
+ES_PASS=<your-password> ./scripts/kibana_dashboard_import.sh
+# then open http://127.0.0.1:5601/app/dashboards#/view/soc-dashboard-console
+```
+
 The MITRE ATT&CK group map (`data/mitre/technique_groups.json`) is committed, so
 threat-actor lookup works out of the box with no extra key. To refresh it against
 the latest ATT&CK release:
