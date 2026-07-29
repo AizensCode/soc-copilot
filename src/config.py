@@ -16,7 +16,7 @@ class Settings:
     ABUSEIPDB_KEY: str
     VIRUSTOTAL_KEY: str
     URLSCAN_KEY: str
-    MODEL: str = "claude-sonnet-4-6"
+    MODEL: str = "claude-sonnet-5"
     # Case-history store (cross-alert memory). Not a secret; overridable per env.
     HISTORY_PATH: str = "data/history/investigations.jsonl"
     # Temporal window (hours) for clustering alerts into a campaign.

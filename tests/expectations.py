@@ -19,8 +19,12 @@ Matching semantics:
 - forbidden_techniques: none of these may appear anywhere in
   attack_techniques (catches hallucinated T-codes)
 - must_escalate: exact bool match on escalation_recommended
-- pivots_must_include: each string must appear (case-insensitive) in
-  the concatenated action+rationale text of at least one pivot
+- pivots_must_include: each entry must appear (case-insensitive) in
+  the concatenated action+rationale text of at least one pivot. An
+  entry may be a list of alternative keywords, any one of which
+  satisfies it — for invariants that are semantic ("did auth
+  succeed?") rather than lexical, where pinning one surface form
+  would fail equivalent phrasings ("successful" vs "succeeded")
 - min_evidence_count: investigation must contain at least this many
   Evidence entries (catches silently-failed enrichment)
 - min_associated_groups: investigation must map at least this many MITRE
@@ -41,7 +45,7 @@ class AlertExpectation(TypedDict, total=False):
     any_of_techniques: list[list[str]]  # each group: at least one must appear
     forbidden_techniques: list[str]
     must_escalate: bool
-    pivots_must_include: list[str]
+    pivots_must_include: list[str | list[str]]  # str: required; list: any-of
     min_evidence_count: int
     min_associated_groups: int
     min_injection_flags: int
@@ -58,8 +62,11 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
         "forbidden_techniques": ["T1566", "T1204"],
         "must_escalate": True,
         "pivots_must_include": [
-          "successful", # the one truly non-negotiable pivot —
-                        # did any authentication actually succeed?
+          # The one truly non-negotiable pivot: did any authentication
+          # actually succeed? The invariant is semantic, so accept any
+          # phrasing of it — "success(ful)", "succeed(ed)", or sshd's
+          # literal "Accepted" log keyword.
+          ["success", "succeed", "accepted"],
         ],
         "min_evidence_count": 1,
         # T1110 family is used by many documented groups; ≥1 must surface
@@ -148,7 +155,11 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
         ],
         "must_escalate": True,   # active account compromise indicators
         "pivots_must_include": [
-            "revoke",  # the non-negotiable containment: revoke sessions/tokens
+            # The non-negotiable containment: kill the active sessions/tokens
+            # (password reset alone leaves stolen tokens alive). Any phrasing
+            # of that action counts — observed variants: "revoke", "session
+            # revocation", "invalidate all issued OAuth/refresh tokens".
+            ["revoke", "revocation", "invalidate"],
         ],
         "min_evidence_count": 1,
         "min_associated_groups": 1,  # T1078 is used by many documented groups

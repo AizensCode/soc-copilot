@@ -58,6 +58,15 @@ it into your verdict and escalation.
    from an initial-access alert alone; don't map T1041 Exfiltration
    just because a C2 channel is established).
 
+   The discipline limits WHICH techniques you map, not HOW MANY: it is
+   not a parsimony rule. When one observation evidences two techniques
+   at once, map both. Example: a successful sign-in to a user's account
+   that reused a stolen session token IS valid-account abuse (T1078)
+   AND alternate-authentication-material use (T1550.004) — the specific
+   mechanism complements the umbrella technique; it does not replace
+   it. Dropping the broader observed technique because a narrower one
+   also fits understates what the evidence shows.
+
 4. Behavior vs payload. Evaluate the ATTACK BEHAVIOR (delivery
    mechanism, execution chain, user targeting, process lineage)
    separately from the PAYLOAD VERDICT (is this specific file or

@@ -56,7 +56,7 @@ flowchart TD
 
         Registry["<b>Tool Registry</b><br/>• AbuseIPDB (IPs)<br/>• VirusTotal (hashes)<br/>• URLScan (domains)<br/>• MITRE Groups (TTP→actor)"]
 
-        LLM["<b>Claude Sonnet 4.6</b><br/>system prompt with grounding,<br/>MITRE accuracy, behavior/payload"]
+        LLM["<b>Claude Sonnet 5</b><br/>system prompt with grounding,<br/>MITRE accuracy, behavior/payload"]
 
         Validation["<b>Pydantic validation</b><br/>schema-checked output"]
 
@@ -130,6 +130,14 @@ Two fixes:
 2. **Use a stronger model** — Sonnet 4.6 doesn't show this failure mode in practice.
 
 I implemented two-stage but ended up reverting it after testing Sonnet single-stage. Three runs of the phishing alert on Sonnet, zero T1566.002 leaks. The simpler architecture won. Two-stage stays in my mental toolkit for when a stronger model isn't an option.
+
+The same empirical bar applied to the Sonnet 4.6 → Sonnet 5 upgrade. It wasn't a string swap: Sonnet 5 runs adaptive thinking by default, so responses can lead with thinking blocks — phase 1's `content[0].text` assumption would have crashed, and `max_tokens` needed headroom for thinking plus a ~30% denser tokenizer. After those two code fixes, repeated full-harness runs caught two more things worth having caught:
+
+- **Brittle expectations, not regressions.** Two runs each failed one pivot-keyword check: the brute-force check grepped for the literal word "successful" while the model wrote the same invariant differently, and the impossible-travel check grepped for "revoke" while the model wrote "session revocation … invalidate all issued OAuth/refresh tokens". In both cases the reasoning was correct (the brute-force run explicitly declined to map T1078 because "compromise is not confirmed") — only the surface form varied; Sonnet 5 phrases pivots with more lexical variation than 4.6 did. Fix: `pivots_must_include` entries can now be a group of alternative keywords (any-of), same pattern as `any_of_techniques`. Asserting on invariants means the *harness* has to honor the semantic/lexical distinction too.
+- **A real robustness gap.** One run in ~30 investigations, Sonnet 5 emitted a bare placeholder string (`"action_2_placeholder"`) where a Pivot object belonged — schema-invalid JSON that crashed the pipeline. The slip is stochastic, so both modes now tolerate it with a bounded retry: phase 1 resamples the report call (max 2 attempts); the agentic loop feeds the validation error back as a correction turn instead of re-running the whole investigation. Trusting the model to emit valid JSON on the first try, every time, was a latent bug the upgrade surfaced.
+- **The anti-anticipation rule over-generalizing into parsimony.** Roughly one agentic run in three, Sonnet 5 mapped the impossible-travel alert as *only* T1550.004 (session-token reuse — which the alert does observe) and dropped T1078 (valid-account abuse — equally observed, and required by the harness precisely so the observed-vs-anticipated rule can never quietly become a blanket "avoid T1078"). The model was treating the discipline as "map as few techniques as possible" rather than "map only what's observed." The expectation stayed as-is — weakening it would gut the both-directions safeguard — and both prompts instead gained a clarification: the discipline limits *which* techniques, not *how many*; when one observation evidences a mechanism and its umbrella technique, map both. Three consecutive agentic runs after the fix: `[T1078, T1550.004]` every time.
+
+Every discipline (observed-vs-anticipated from both directions, injection resistance, campaign escalation, cross-contamination guards) was re-validated green on the new model before the swap was committed.
 
 ### Eval harness with invariants, not typical outputs
 

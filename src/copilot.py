@@ -23,6 +23,12 @@ from .tools.registry import anthropic_tool_schemas, dispatch
 from .tools.urlscan import URLScanTool
 from .tools.virustotal import VirusTotalTool
 
+# The model occasionally emits schema-invalid Investigation JSON (observed on
+# claude-sonnet-5: a bare placeholder string where a Pivot object belongs).
+# The slip is stochastic, so a bounded retry recovers instead of crashing.
+MAX_REPORT_ATTEMPTS = 2      # phase 1: full resamples of the report call
+MAX_JSON_CORRECTIONS = 2     # agentic: in-conversation correction turns
+
 
 class SOCCopilot:
     def __init__(self, history_store: AlertHistoryStore | None = None) -> None:
@@ -280,24 +286,43 @@ class SOCCopilot:
             f"Produce the final Investigation JSON now."
         )
 
-        response = await self.client.messages.create(
-            model=settings.MODEL,
-            max_tokens=8192,
-            system=SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_message}],
-        )
-
-        if response.stop_reason == "max_tokens":
-            raise RuntimeError(
-                f"Model hit max_tokens ceiling "
-                f"({response.usage.output_tokens} tokens generated). "
-                f"Response was truncated and JSON is incomplete."
+        last_err: ValueError | None = None
+        for _ in range(MAX_REPORT_ATTEMPTS):
+            response = await self.client.messages.create(
+                model=settings.MODEL,
+                max_tokens=16000,
+                system=SYSTEM_PROMPT,
+                messages=[{"role": "user", "content": user_message}],
             )
 
-        report_text = response.content[0].text
-        report_json = self._extract_json(report_text)
+            if response.stop_reason == "max_tokens":
+                raise RuntimeError(
+                    f"Model hit max_tokens ceiling "
+                    f"({response.usage.output_tokens} tokens generated). "
+                    f"Response was truncated and JSON is incomplete."
+                )
 
-        investigation = Investigation(**report_json, evidence=evidence)
+            # content may lead with thinking blocks (adaptive thinking is on by
+            # default on Sonnet 5+); take the text block, not content[0].
+            report_text = next(
+                (b.text for b in response.content if b.type == "text"), None
+            )
+            if report_text is None:
+                raise RuntimeError("Model response contained no text block")
+
+            # ValueError covers both failed JSON extraction and pydantic's
+            # ValidationError (a ValueError subclass) — resample on either.
+            try:
+                report_json = self._extract_json(report_text)
+                investigation = Investigation(**report_json, evidence=evidence)
+                break
+            except ValueError as err:
+                last_err = err
+        else:
+            raise RuntimeError(
+                f"Model produced invalid Investigation JSON in "
+                f"{MAX_REPORT_ATTEMPTS} attempts. Last error: {last_err}"
+            )
         investigation.associated_groups = match_groups(
             investigation.attack_techniques
         )
@@ -350,11 +375,12 @@ class SOCCopilot:
 
         tool_schemas = anthropic_tool_schemas()
         evidence_collected: list[Evidence] = []
+        correction_attempts = 0
 
         for iteration in range(max_iterations):
             response = await self.client.messages.create(
                 model=settings.MODEL,
-                max_tokens=8192,
+                max_tokens=16000,
                 system=AGENTIC_SYSTEM_PROMPT,
                 tools=tool_schemas,
                 messages=messages,
@@ -363,9 +389,31 @@ class SOCCopilot:
             messages.append({"role": "assistant", "content": response.content})
 
             if response.stop_reason == "end_turn":
-                investigation = self._parse_agentic_final(
-                    response, evidence_collected
-                )
+                # Same stochastic-slip tolerance as phase 1, but here the
+                # conversation exists — ask the model to fix its JSON rather
+                # than resampling the whole (expensive) investigation.
+                try:
+                    investigation = self._parse_agentic_final(
+                        response, evidence_collected
+                    )
+                except ValueError as err:
+                    correction_attempts += 1
+                    if correction_attempts > MAX_JSON_CORRECTIONS:
+                        raise RuntimeError(
+                            f"Final JSON still invalid after "
+                            f"{MAX_JSON_CORRECTIONS} correction attempts: {err}"
+                        ) from err
+                    messages.append(
+                        {
+                            "role": "user",
+                            "content": (
+                                f"Your final output failed schema validation: "
+                                f"{err}\n\nRe-emit the complete, corrected "
+                                f"Investigation JSON and nothing else."
+                            ),
+                        }
+                    )
+                    continue
                 investigation.prior_sightings = priors
                 investigation.correlation = self.history.correlate(
                     alert,

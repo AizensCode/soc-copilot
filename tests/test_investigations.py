@@ -191,10 +191,11 @@ async def test_pivot_keywords(
     pivots_blob = " ".join(
         f"{p.action} {p.rationale}" for p in inv.suggested_pivots
     ).lower()
-    missing = [
-        kw for kw in expected["pivots_must_include"]
-        if kw.lower() not in pivots_blob
-    ]
+    missing = []
+    for entry in expected["pivots_must_include"]:
+        alternatives = [entry] if isinstance(entry, str) else entry
+        if not any(kw.lower() in pivots_blob for kw in alternatives):
+            missing.append(entry)
     assert not missing, (
         f"{alert_file} [{mode}]: missing expected pivot keywords: "
         f"{missing}. Pivots: {[p.action for p in inv.suggested_pivots]}"
