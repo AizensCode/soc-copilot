@@ -14,7 +14,9 @@ from .models import (
     InjectionFlag,
     Investigation,
     PriorSighting,
+    SigmaMatch,
 )
+from .sigma import match_sigma_rules
 from .prompts.agentic import AGENTIC_SYSTEM_PROMPT
 from .prompts.system import SYSTEM_PROMPT
 from .tools.abuseipdb import AbuseIPDBTool
@@ -26,7 +28,7 @@ from .tools.virustotal import VirusTotalTool
 # The model occasionally emits schema-invalid Investigation JSON (observed on
 # claude-sonnet-5: a bare placeholder string where a Pivot object belongs).
 # The slip is stochastic, so a bounded retry recovers instead of crashing.
-MAX_REPORT_ATTEMPTS = 2      # phase 1: full resamples of the report call
+MAX_REPORT_ATTEMPTS = 3      # phase 1: full resamples of the report call
 MAX_JSON_CORRECTIONS = 2     # agentic: in-conversation correction turns
 
 
@@ -112,6 +114,30 @@ class SOCCopilot:
         ]
         for f in flags:
             lines.append(f"- {f.location} [{f.pattern}]: {f.excerpt}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_sigma_context(matches: list[SigmaMatch]) -> str:
+        """Render matched Sigma rules as detection-logic context.
+
+        Returns "" when nothing matched, so alerts outside the curated rules'
+        coverage leave the prompt unchanged. Matches are deterministic (see
+        src/sigma.py), so every rule cited here traces to a committed SigmaHQ
+        rule file — the model corroborates with them, it cannot invent them.
+        """
+        if not matches:
+            return ""
+        lines = [
+            "# Matched detection rules (Sigma)",
+            "The alert's raw log deterministically matches these community "
+            "detection rules. They explain what detection logic recognizes "
+            "this behavior; their ATT&CK tags SUGGEST technique families but "
+            "do not override the observed-vs-anticipated discipline. Cite "
+            "only rules listed here.",
+        ]
+        for m in matches:
+            tags = ", ".join(m.tags) if m.tags else "no tags"
+            lines.append(f"- [{m.level}] {m.title} (id: {m.rule_id}) — {tags}")
         return "\n".join(lines)
 
     # ------------------------------------------------------------------
@@ -272,16 +298,20 @@ class SOCCopilot:
             alert, window_hours=settings.CORRELATION_WINDOW_HOURS
         )
         injection_flags = scan_for_injection(alert)
+        sigma_matches = match_sigma_rules(alert)
 
         warn_block = self._format_injection_warning(injection_flags)
         warn_section = f"{warn_block}\n\n" if warn_block else ""
         mem_block = self._format_memory_context(priors, pre_correlation)
         mem_section = f"{mem_block}\n\n" if mem_block else ""
+        sigma_block = self._format_sigma_context(sigma_matches)
+        sigma_section = f"{sigma_block}\n\n" if sigma_block else ""
         user_message = (
             f"{warn_section}"
             f"# Alert\n```json\n{alert.model_dump_json(indent=2)}\n```\n\n"
             f"# Enrichment evidence collected\n"
             f"```json\n{json.dumps([e.model_dump() for e in evidence], indent=2)}\n```\n\n"
+            f"{sigma_section}"
             f"{mem_section}"
             f"Produce the final Investigation JSON now."
         )
@@ -333,6 +363,7 @@ class SOCCopilot:
             window_hours=settings.CORRELATION_WINDOW_HOURS,
         )
         investigation.injection_flags = injection_flags
+        investigation.sigma_matches = sigma_matches
         self.history.record(alert, investigation)
         return investigation
 
@@ -356,10 +387,13 @@ class SOCCopilot:
             alert, window_hours=settings.CORRELATION_WINDOW_HOURS
         )
         injection_flags = scan_for_injection(alert)
+        sigma_matches = match_sigma_rules(alert)
         warn_block = self._format_injection_warning(injection_flags)
         warn_section = f"{warn_block}\n\n" if warn_block else ""
         mem_block = self._format_memory_context(priors, pre_correlation)
         mem_section = f"\n\n{mem_block}" if mem_block else ""
+        sigma_block = self._format_sigma_context(sigma_matches)
+        sigma_section = f"\n\n{sigma_block}" if sigma_block else ""
         messages: list[dict] = [
             {
                 "role": "user",
@@ -368,6 +402,7 @@ class SOCCopilot:
                     f"Investigate this alert. Call tools as needed to gather "
                     f"evidence, then produce the final Investigation JSON.\n\n"
                     f"```json\n{alert.model_dump_json(indent=2)}\n```"
+                    f"{sigma_section}"
                     f"{mem_section}"
                 ),
             }
@@ -421,6 +456,7 @@ class SOCCopilot:
                     window_hours=settings.CORRELATION_WINDOW_HOURS,
                 )
                 investigation.injection_flags = injection_flags
+                investigation.sigma_matches = sigma_matches
                 self.history.record(alert, investigation)
                 return investigation
 
@@ -540,9 +576,12 @@ class SOCCopilot:
                 cleaned = "\n".join(lines[1:])
             cleaned = cleaned.strip()
 
-        # Fast path: the whole thing is clean JSON
+        # Fast path: the whole thing is clean JSON. strict=False throughout:
+        # the model occasionally emits literal control characters (raw
+        # newlines) inside long string values; strict parsing rejects the
+        # whole report over them, strict=False keeps the content.
         try:
-            return json.loads(cleaned)
+            return json.loads(cleaned, strict=False)
         except json.JSONDecodeError:
             pass
 
@@ -586,7 +625,7 @@ class SOCCopilot:
         # final top-level object; earlier ones may be quoted alert fragments.
         for candidate in reversed(candidates):
             try:
-                parsed = json.loads(candidate)
+                parsed = json.loads(candidate, strict=False)
                 # Sanity check: the Investigation must have an alert_id.
                 # If this candidate doesn't, it's probably a quoted fragment;
                 # keep looking.
@@ -599,7 +638,7 @@ class SOCCopilot:
         # and let Pydantic produce a clear error.
         for candidate in reversed(candidates):
             try:
-                return json.loads(candidate)
+                return json.loads(candidate, strict=False)
             except json.JSONDecodeError:
                 continue
 

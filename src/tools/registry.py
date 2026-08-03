@@ -41,6 +41,11 @@ async def dispatch(tool_name: str, tool_input: dict) -> ToolResult:
     """Execute a tool by name with the given input dict.
 
     The agentic loop calls this when the model emits a tool_use block.
+    Any failure — unknown tool, malformed arguments (the model does
+    occasionally emit an empty input dict), or an exception inside the
+    tool — comes back as a failed ToolResult, which the loop returns to
+    the model as an is_error tool_result so it can correct itself. A bad
+    tool call must never crash the investigation.
     """
     tool = get_tool(tool_name)
     if tool is None:
@@ -50,4 +55,23 @@ async def dispatch(tool_name: str, tool_input: dict) -> ToolResult:
             data={},
             error=f"Unknown tool: {tool_name}",
         )
-    return await tool.execute(**tool_input)
+    try:
+        return await tool.execute(**tool_input)
+    except TypeError as e:
+        return ToolResult(
+            tool_name=tool_name,
+            success=False,
+            data={},
+            error=(
+                f"Invalid arguments for {tool_name}: {e}. "
+                f"Got input keys: {sorted(tool_input)}. Re-issue the call "
+                f"with the arguments the tool schema requires."
+            ),
+        )
+    except Exception as e:
+        return ToolResult(
+            tool_name=tool_name,
+            success=False,
+            data={},
+            error=f"{tool_name} raised {type(e).__name__}: {e}",
+        )

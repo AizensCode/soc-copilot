@@ -261,6 +261,37 @@ async def test_associated_groups(
 
 
 @pytest.mark.parametrize("alert_file,mode,expected", _cases())
+async def test_sigma_matches(
+    alert_file: str,
+    mode: str,
+    expected: AlertExpectation,
+    investigations: dict[tuple[str, str], Investigation],
+):
+    if "min_sigma_matches" not in expected:
+        pytest.skip("No min_sigma_matches specified")
+    inv = investigations[(alert_file, mode)]
+
+    actual = len(inv.sigma_matches)
+    assert actual >= expected["min_sigma_matches"], (
+        f"{alert_file} [{mode}]: expected at least "
+        f"{expected['min_sigma_matches']} Sigma match(es), got {actual}. "
+        f"The matcher is deterministic — a shortfall means the matcher or "
+        f"a curated rule regressed."
+    )
+
+    # Grounding invariant: every cited rule must be one of the committed
+    # curated rules. Filled deterministically, so this holds by
+    # construction; assert it so a regression can't slip through silently.
+    from src.sigma import load_rules
+
+    known_ids = {r["id"] for r in load_rules()}
+    stray = [m.rule_id for m in inv.sigma_matches if m.rule_id not in known_ids]
+    assert not stray, (
+        f"{alert_file} [{mode}]: sigma_matches cite unknown rule ids: {stray}"
+    )
+
+
+@pytest.mark.parametrize("alert_file,mode,expected", _cases())
 async def test_injection_flags(
     alert_file: str,
     mode: str,

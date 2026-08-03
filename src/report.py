@@ -216,6 +216,21 @@ def _render_sections(alert: Alert, inv: Investigation) -> str:
             '<p class="sig">Technique overlap is suggestive context, not attribution.</p>',
         ))
 
+    if inv.sigma_matches:
+        cards = "".join(
+            f'<div class="card"><div class="top">'
+            f'<span class="src">{escape(m.title)}</span>'
+            f'<span class="mono sig">{escape(m.level)}</span></div>'
+            f'<div class="sig mono">{escape(", ".join(m.tags))}</div></div>'
+            for m in inv.sigma_matches
+        )
+        s.append(_section(
+            "Matched Detection Rules (Sigma)",
+            f'<div class="stack">{cards}</div>'
+            '<p class="sig">Deterministic matches against curated community '
+            'rules — this behavior is documented detection logic.</p>',
+        ))
+
     if inv.prior_sightings:
         cards = "".join(
             f'<div class="card"><div class="top">'

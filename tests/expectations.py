@@ -33,6 +33,10 @@ Matching semantics:
   the investigation's own attack_techniques (catches hallucinated overlap)
 - min_injection_flags: investigation must detect at least this many
   prompt-injection attempts in the alert content (adversarial alerts)
+- min_sigma_matches: investigation must carry at least this many matched
+  Sigma detection rules. The matcher is deterministic over a fixed alert,
+  so this is exact — a shortfall means the matcher or a curated rule
+  regressed, not the model
 """
 from typing import TypedDict
 
@@ -49,6 +53,7 @@ class AlertExpectation(TypedDict, total=False):
     min_evidence_count: int
     min_associated_groups: int
     min_injection_flags: int
+    min_sigma_matches: int
 
 
 EXPECTATIONS: dict[str, AlertExpectation] = {
@@ -94,6 +99,9 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
         "min_evidence_count": 1,
         # T1566.001 + T1204.002 are heavily used TTPs; groups must surface
         "min_associated_groups": 1,
+        # Executable launched from Outlook's secure temp folder — the curated
+        # SigmaHQ rule for exactly that must match (deterministic)
+        "min_sigma_matches": 1,
     },
     "suspicious_url_click.json": {
         # Credential-phishing pattern is obvious from URL anatomy, but
@@ -138,6 +146,9 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
         "min_associated_groups": 1,
         # the deterministic scanner must catch the embedded injection
         "min_injection_flags": 1,
+        # powershell -enc + WINWORD-spawned child: both curated SigmaHQ
+        # rules must match (deterministic)
+        "min_sigma_matches": 2,
     },
     "impossible_travel_login.json": {
         # The counterpart to the URL-click alert's T1078 discipline: there,

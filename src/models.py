@@ -64,6 +64,23 @@ class GroupMatch(BaseModel):
     overlap_count: int
 
 
+class SigmaMatch(BaseModel):
+    """A community Sigma detection rule whose logic matches the alert's raw
+    log.
+
+    Populated deterministically by the curated-rule matcher (never by the
+    LLM), so every rule title and ATT&CK tag traces back to a committed
+    SigmaHQ rule file. Explains WHY detection logic recognizes this behavior;
+    the rule's tags suggest technique families but do not override the
+    observed-vs-anticipated mapping discipline.
+    """
+
+    rule_id: str
+    title: str
+    level: str = "medium"
+    tags: list[str] = Field(default_factory=list)
+
+
 class PriorSighting(BaseModel):
     """A past investigation that shares one or more indicators with the
     current alert.
@@ -139,6 +156,11 @@ class Investigation(BaseModel):
     )
     evidence: list[Evidence] = Field(default_factory=list)
     suggested_pivots: list[Pivot] = Field(default_factory=list)
+    sigma_matches: list[SigmaMatch] = Field(
+        default_factory=list,
+        description="Community detection rules matching the raw log; "
+        "filled deterministically by the Sigma matcher, never by the LLM",
+    )
     associated_groups: list[GroupMatch] = Field(
         default_factory=list,
         description=(
