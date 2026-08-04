@@ -1,0 +1,27 @@
+{
+  "alert_id": "ALRT-2026-0422-010",
+  "timestamp": "2026-04-22T11:07:52Z",
+  "source": "edr",
+  "severity": "high",
+  "title": "Scheduled task created by unsigned binary in user AppData",
+  "raw_log": {
+    "event_type": "process_creation",
+    "host": "eng-ws-22.corp.internal",
+    "user": "CORP\\d.rossi",
+    "parent_process": "OneDriveUpdater.exe",
+    "parent_process_path": "C:\\Users\\d.rossi\\AppData\\Roaming\\OneDriveUpdater\\OneDriveUpdater.exe",
+    "parent_signature_status": "unsigned",
+    "parent_file_created": "2026-04-22T11:07:41Z",
+    "process": "schtasks.exe",
+    "command_line": "schtasks.exe /create /tn \"OneDrive Sync Maintenance\" /tr \"powershell.exe -w hidden -ep bypass -File C:\\Users\\d.rossi\\AppData\\Roaming\\OneDriveUpdater\\sync.ps1\" /sc minute /mo 30 /f",
+    "task_run_as": "CORP\\d.rossi",
+    "task_trigger": "every 30 minutes, indefinitely",
+    "integrity_level": "medium",
+    "similar_tasks_in_fleet": 0
+  },
+  "indicators": {
+    "ips": [],
+    "hashes": [],
+    "users": ["d.rossi"]
+  }
+}

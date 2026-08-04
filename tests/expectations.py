@@ -223,6 +223,86 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
         "min_evidence_count": 1,
         "min_associated_groups": 1,
     },
+    # --- Post-compromise families: lateral movement, persistence, cloud.
+    # All three calibrated over 4 live runs each (2 per mode): 12/12
+    # true_positive, 12/12 escalate. ---
+    "lateral_movement_wmic.json": {
+        # Remote process creation via WMIC to three servers, off-hours, with
+        # a helpdesk service account that has never used WMIC before.
+        "expected_verdict": "true_positive",
+        "min_confidence": "high",       # calibration: 4/4 high
+        "required_techniques": [
+            "T1047",   # WMI — the observed execution mechanism (4/4)
+            # T1078: the REQUIRED side of the triangulation again. Unlike
+            # brute force (all failures), the remote auth SUCCEEDED
+            # (auth_result success, logon type 3, admin on targets) — valid
+            # account use is directly observed here. 4/4 mapped it.
+            "T1078",
+        ],
+        "any_of_techniques": [
+            ["T1059.001", "T1059"],   # encoded PowerShell payload (4/4)
+        ],
+        "forbidden_techniques": [
+            "T1566",   # no delivery evidence in this alert
+            "T1110",   # authentication succeeded; nothing was guessed
+        ],
+        "must_escalate": True,
+        "pivots_must_include": [
+            "svc-helpdesk",  # must scope the abused account (4/4)
+        ],
+        "min_evidence_count": 1,
+        "min_associated_groups": 1,
+        "min_sigma_matches": 1,   # WMIC Remote Command Execution (4/4)
+    },
+    "persistence_scheduled_task.json": {
+        # Unsigned binary in AppData creates a 30-minute recurring task 11
+        # seconds after landing on disk. No IOCs to enrich (no IPs/hashes in
+        # the alert), so min_evidence_count is deliberately unset — phase 1
+        # legitimately produces zero evidence entries here.
+        "expected_verdict": "true_positive",
+        "min_confidence": "medium",   # calibration: 2 high, 2 medium
+        "required_techniques": ["T1053"],   # scheduled task (4/4)
+        "forbidden_techniques": [
+            "T1566",   # no email/delivery evidence — mapping it is inference
+            "T1110",   # nothing authentication-related observed
+        ],
+        "must_escalate": True,
+        "pivots_must_include": [
+            # Must engage the dropped artifacts (4/4 named both)
+            ["sync.ps1", "onedriveupdater", "appdata"],
+        ],
+        "min_associated_groups": 1,
+        "min_sigma_matches": 1,   # Scheduled Task Creation Via Schtasks.EXE
+    },
+    "cloud_iam_key_creation.json": {
+        # CloudTrail: CreateUser -> CreateAccessKey -> AttachUserPolicy
+        # (AdministratorAccess) in 214s, from a bulletproof-hosting IP, no
+        # MFA, by a CI principal with zero prior IAM writes. Deliberately
+        # outside the curated Sigma rules' coverage (they are process
+        # oriented) — min_sigma_matches is unset, and test_sigma asserts
+        # this family matches nothing.
+        "expected_verdict": "true_positive",
+        "min_confidence": "high",   # calibration: 4/4 high
+        "required_techniques": [
+            "T1136",   # cloud account creation (4/4)
+            # Third required-side data point: the API calls SUCCEEDED under
+            # the ci-deploy identity, so valid-account use is observed, not
+            # anticipated. 4/4 mapped T1078.004.
+            "T1078",
+        ],
+        "forbidden_techniques": [
+            "T1566",   # no phishing evidence in the audit trail
+            "T1110",   # authentication succeeded; no guessing observed
+            "T1047",   # WMI is not a thing in a CloudTrail alert
+        ],
+        "must_escalate": True,
+        "pivots_must_include": [
+            # Must engage the attacker-created identity or its key (4/4)
+            ["svc-backup-restore", "access key", "accesskey"],
+        ],
+        "min_evidence_count": 1,
+        "min_associated_groups": 1,
+    },
     # --- Benign alerts: the false_positive verdict class. Without these, a
     # model that never says false_positive passes the whole harness. Both
     # calibrated over 12 live runs (3 per alert per mode): 12/12

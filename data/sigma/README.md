@@ -22,3 +22,5 @@ threshold logic instead.
 | `proc_creation_win_powershell_encode.yml` | PowerShell launched with a Base64-encoded command | T1059.001 |
 | `proc_creation_win_office_susp_child_processes.yml` | Office applications spawning script hosts / LOLBins | T1204.002, T1047, T1218.010 |
 | `proc_creation_win_office_outlook_execution_from_temp.yml` | Executables running from Outlook's secure temp folder | T1566.001 |
+| `proc_creation_win_schtasks_creation.yml` | Scheduled task created via schtasks.exe (SYSTEM-context tasks filtered out) | T1053.005 |
+| `proc_creation_win_wmic_remote_execution.yml` | WMIC invoked against a remote node (`/node:`), localhost excluded | T1047 |

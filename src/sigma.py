@@ -57,6 +57,10 @@ FIELD_MAP: dict[str, list[str]] = {
     ],
     "OriginalFileName": ["process", "process.name", "process_path"],
     "TargetFilename": ["file_path", "file.path", "file.name"],
+    # Needed by false-positive filters that exclude SYSTEM-context activity
+    # (e.g. the schtasks rule's 'AUTHORI'/'AUTORI' filter). Without the
+    # mapping the filter can never fire and benign SYSTEM tasks would match.
+    "User": ["user", "user.name"],
 }
 
 
@@ -76,6 +80,26 @@ def _lookup(raw_log: dict, path: str) -> list[str]:
     return []
 
 
+# Modifiers this matcher implements. A curated rule using anything else is
+# REJECTED at load time rather than silently mis-evaluated — a Sigma match is
+# a grounding claim, so "quietly wrong" is the one outcome we cannot allow.
+_MATCH_MODIFIERS = {"contains", "startswith", "endswith"}
+_VALUE_MODIFIERS = {"windash"}
+SUPPORTED_MODIFIERS = _MATCH_MODIFIERS | _VALUE_MODIFIERS
+
+# Sigma's `windash` modifier: the pattern's leading dash/slash may appear as
+# any of these in real command lines (including unicode dashes attackers use).
+_WINDASH_PREFIXES = ("-", "/", "–", "—", "―")
+
+
+def _expand_windash(pattern: str) -> list[str]:
+    """Expand a pattern's leading dash/slash into every accepted variant."""
+    if not pattern or pattern[0] not in _WINDASH_PREFIXES:
+        return [pattern]
+    rest = pattern[1:]
+    return [prefix + rest for prefix in _WINDASH_PREFIXES]
+
+
 def _match_value(value: str, pattern: str, modifier: str | None) -> bool:
     v, p = value.lower(), str(pattern).lower()
     if modifier == "contains":
@@ -92,15 +116,24 @@ def _match_value(value: str, pattern: str, modifier: str | None) -> bool:
 
 
 def _field_matches(raw_log: dict, sigma_field: str, patterns: object) -> bool:
-    name, _, modifier = sigma_field.partition("|")
+    name, *modifiers = sigma_field.split("|")
+    unknown = [m for m in modifiers if m not in SUPPORTED_MODIFIERS]
+    if unknown:
+        raise ValueError(
+            f"Unsupported Sigma modifier(s) {unknown} on field '{sigma_field}'"
+        )
     candidates = FIELD_MAP.get(name, [name])
     values = [v for path in candidates for v in _lookup(raw_log, path)]
     if not values:
         return False
+
     pats = patterns if isinstance(patterns, list) else [patterns]
-    return any(
-        _match_value(v, p, modifier or None) for v in values for p in pats
-    )
+    pats = [str(p) for p in pats]
+    if "windash" in modifiers:
+        pats = [variant for p in pats for variant in _expand_windash(p)]
+
+    match_mod = next((m for m in modifiers if m in _MATCH_MODIFIERS), None)
+    return any(_match_value(v, p, match_mod) for v in values for p in pats)
 
 
 def _eval_selection(selection: object, raw_log: dict, blob: str) -> bool:
@@ -191,15 +224,42 @@ class _ConditionParser:
         return self.results[tok]
 
 
+def _validate_modifiers(selection: object, where: str) -> None:
+    """Reject a rule that uses field modifiers this matcher can't evaluate.
+
+    Checked eagerly at load time: condition evaluation short-circuits, so a
+    lazy check could leave an unevaluable field silently unexercised until
+    some future alert happens to reach it.
+    """
+    if isinstance(selection, dict):
+        for field in selection:
+            unknown = [
+                m for m in field.split("|")[1:] if m not in SUPPORTED_MODIFIERS
+            ]
+            if unknown:
+                raise ValueError(
+                    f"{where}: Unsupported Sigma modifier(s) {unknown} on "
+                    f"field '{field}'. Implement them in src/sigma.py or drop "
+                    f"the rule — a rule that cannot be evaluated correctly "
+                    f"must not be curated."
+                )
+    elif isinstance(selection, list):
+        for entry in selection:
+            _validate_modifiers(entry, where)
+
+
 @lru_cache(maxsize=1)
 def load_rules(rules_dir: str = str(RULES_DIR)) -> list[dict]:
-    """Load and lightly validate the curated rule files."""
+    """Load and validate the curated rule files."""
     rules = []
     for path in sorted(Path(rules_dir).glob("*.yml")):
         rule = yaml.safe_load(path.read_text())
         detection = rule.get("detection", {})
         if "condition" not in detection:
             raise ValueError(f"{path.name}: rule has no condition")
+        for name, selection in detection.items():
+            if name != "condition":
+                _validate_modifiers(selection, path.name)
         rules.append(
             {
                 "id": str(rule.get("id", path.stem)),

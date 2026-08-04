@@ -1,0 +1,51 @@
+{
+  "alert_id": "ALRT-2026-0422-011",
+  "timestamp": "2026-04-22T19:26:03Z",
+  "source": "cloudtrail",
+  "severity": "critical",
+  "title": "IAM user created and granted AdministratorAccess from unfamiliar source",
+  "raw_log": {
+    "event_type": "cloud_audit",
+    "cloud_provider": "aws",
+    "account_id": "441982203117",
+    "region": "eu-west-1",
+    "principal": "arn:aws:iam::441982203117:user/ci-deploy",
+    "principal_type": "IAMUser",
+    "auth_result": "success",
+    "mfa_authenticated": false,
+    "source_ip": "45.147.230.19",
+    "source_asn": "AS200651",
+    "usual_source_ranges": ["52.94.0.0/16 (CI runners, eu-west-1)"],
+    "user_agent": "aws-cli/2.15.30 Python/3.11.6 Linux/6.5.0",
+    "window_seconds": 214,
+    "api_calls": [
+      {
+        "time": "2026-04-22T19:22:29Z",
+        "event_name": "CreateUser",
+        "result": "success",
+        "params": {"UserName": "svc-backup-restore"}
+      },
+      {
+        "time": "2026-04-22T19:23:47Z",
+        "event_name": "CreateAccessKey",
+        "result": "success",
+        "params": {"UserName": "svc-backup-restore"}
+      },
+      {
+        "time": "2026-04-22T19:26:03Z",
+        "event_name": "AttachUserPolicy",
+        "result": "success",
+        "params": {
+          "UserName": "svc-backup-restore",
+          "PolicyArn": "arn:aws:iam::aws:policy/AdministratorAccess"
+        }
+      }
+    ],
+    "prior_iam_writes_by_principal_90d": 0
+  },
+  "indicators": {
+    "ips": ["45.147.230.19"],
+    "hashes": [],
+    "users": ["ci-deploy", "svc-backup-restore"]
+  }
+}

