@@ -64,7 +64,21 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
         # the specific sub-technique choice is an analyst judgment call
         # between .001 guessing / .003 spraying / .004 stuffing
         "required_techniques": ["T1110"],  # was ["T1110.001", "T1110.003"]
-        "forbidden_techniques": ["T1566", "T1204"],
+        "forbidden_techniques": [
+            "T1566",   # no phishing evidence
+            "T1204",   # no user-execution evidence
+            # T1078 family: valid-account USE is never observed here — the
+            # alert is 847 FAILURES, zero successes. Guessing default-named
+            # accounts (root/admin/ubuntu...) is inside T1110's own
+            # definition; T1078.001 requires authenticating WITH the
+            # credentials. Recorded regression that motivated this:
+            # data/evals/runs/phase1_brute_force_after_prompt_fix.json mapped
+            # "T1078.001 (targeting hardcoded system usernames)". Scope:
+            # attack_techniques only — transcripts SHOULD mention T1078 when
+            # explaining why it is not mapped. Lift this forbid if the
+            # fixture ever gains a successful auth.
+            "T1078",
+        ],
         "must_escalate": True,
         "pivots_must_include": [
           # The one truly non-negotiable pivot: did any authentication
