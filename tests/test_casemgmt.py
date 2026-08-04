@@ -7,10 +7,12 @@ TheHive server and no Anthropic API are involved.
     uv run pytest tests/test_casemgmt.py -v
 """
 import json
+from dataclasses import replace
 
 import httpx
 import pytest
 
+from src import casemgmt as casemgmt_mod
 from src.casemgmt import (
     TheHiveClient,
     investigation_to_alert,
@@ -26,6 +28,26 @@ from src.models import (
     Pivot,
     SigmaMatch,
 )
+
+@pytest.fixture(autouse=True)
+def _no_thehive_env(monkeypatch):
+    """Decouple from the developer's .env: TheHiveClient falls back to
+    settings for anything not passed explicitly, so these tests must pin
+    the fallbacks to None or they change behavior on a machine where
+    TheHive is really configured. Settings is frozen, so swap the module
+    binding for an unconfigured copy.
+    """
+    monkeypatch.setattr(
+        casemgmt_mod,
+        "settings",
+        replace(
+            casemgmt_mod.settings,
+            THEHIVE_URL=None,
+            THEHIVE_API_KEY=None,
+            THEHIVE_ORGANISATION=None,
+        ),
+    )
+
 
 ALERT = Alert(
     alert_id="ALRT-2026-0419-001",
