@@ -205,6 +205,16 @@ The scanner is tuned for precision — ordinary SOC vocabulary ("brute force", "
 
 Two honest scope decisions. First, the matcher implements the Sigma subset the curated rules actually use (map/list selections, contains/startswith/endswith modifiers, wildcard equality, `and`/`or`/`not`/`N of pattern*` conditions), with a field-mapping table standing in for a pySigma pipeline — it is an event matcher, not a full engine. Second, curation follows expressibility: SSH brute-force thresholds and DNS query-rate tunneling are absent because event-level Sigma cannot express aggregation — SigmaHQ itself parks those rules under `unsupported/`. A rule earns its place in `data/sigma/` only if its logic can genuinely fire on event-shaped alert data; the deterministic harness assertions (`min_sigma_matches`) are exact because the matcher is.
 
+### Closing the loop into case management
+
+An investigation that stops at a JSON blob or a dashboard row is still homework. `--case` pushes it into TheHive, where SOC work actually gets owned: the write-up becomes the alert description, the alert's own indicators become typed observables, and verdict, techniques, groups, campaign, and injection status become filterable tags. Two details are deliberate. Observables are marked `ioc: true` **only** when the copilot concluded true positive — flagging indicators from a false positive would poison the shared IOC store, which is a worse outcome than under-tagging. And the copilot creates *alerts*, not cases: an alert is TheHive's triage inbox, so a human still decides what becomes a case. That is the same restraint the closure policy applies from the other end.
+
+`should_open_case` is the mirror image of `should_auto_close`, and deliberately not its negation. Closure asks "can this be dropped without a human?"; this asks "must a human own this?". An inconclusive, medium-confidence alert answers no to both — it stays a queue item in Elastic without generating case-management noise. In watch mode the two compose: auto-closed alerts never reach TheHive, and everything else is offered to the case policy.
+
+**What is and isn't verified.** The payload mapping and HTTP layer are tested the way `elastic.py` was — a pure `investigation → alert` function checked field by field against TheHive 5's OpenAPI spec (v5.7.5: `POST /api/v1/alert`, Bearer auth, required `type`/`source`/`sourceRef`/`title`/`description`, integer severity 1–4, `observables[].dataType`), plus MockTransport tests for auth headers, the optional `X-Organisation` header, and error surfacing. It has **not** been run against a live TheHive instance, because TheHive 5 self-hosting needs Cassandra and Elasticsearch alongside it and this machine's Docker socket is root-owned. The failure mode that testing would catch is a field TheHive rejects at runtime; the mitigation is that `--case` is opt-in, never fatal (a TheHive outage prints a warning and leaves the investigation intact), and `sourceRef` is the copilot's own alert ID so retries dedupe instead of duplicating.
+
+TheHive was chosen over DFIR-IRIS on one engineering point, after reading both APIs' official docs: TheHive's payload uses stable, self-describing values (`severity: 3`, `dataType: "ip"`), while DFIR-IRIS requires per-installation integer foreign keys (`alert_customer_id`, `ioc_type_id: 76`) that differ between deployments. Hardcoding those would be unverifiable magic numbers in a project whose whole argument is that claims should be checkable.
+
 ### The fixtures are load-bearing, so they get tests too
 
 Eval fixtures look like inert data, but a flaw in one silently weakens every assertion built on it — and the harness cannot see the flaw, because from its perspective the tests still pass. Two real bugs taught this. First, cross-alert memory is *global to a harness run*: a benign vulnerability-scan fixture originally targeted the same host the brute-force fixture attacks, so whichever ran second inherited the other's prior sighting and its verdict moved (the copilot was right to hedge; the experiment was broken). Second, an expectation key is only honored if spelled exactly — every assertion skips when its key is absent, so a typo produces a green test that checks nothing.
@@ -241,10 +251,13 @@ soc-copilot/
 │   ├── mitre_groups.py     # Technique→threat-group matcher (reads the local map)
 │   ├── history.py          # AlertHistoryStore: cross-alert memory + campaign correlation
 │   ├── injection.py        # Prompt-injection scanner for untrusted alert content
+│   ├── sigma.py            # Sigma rule matcher: which detection logic fires on this raw log
+│   ├── closure.py          # Autonomous-closure policy (deterministic gates)
 │   ├── report.py           # Renders an investigation as a self-contained HTML report
 │   ├── elastic.py          # Elastic SIEM source: pull ECS alerts, push results
+│   ├── casemgmt.py         # TheHive output: investigation → alert with observables
 │   ├── config.py           # Settings + env loading
-│   ├── main.py             # CLI: python -m src.main <alert.json> [--agentic]
+│   ├── main.py             # CLI: file / --from-elastic / --watch [--auto-close] [--case]
 │   ├── prompts/
 │   │   ├── system.py       # Phase 1 system prompt
 │   │   └── agentic.py      # Phase 2 system prompt
@@ -256,16 +269,26 @@ soc-copilot/
 │       ├── urlscan.py      # Domain reputation
 │       └── threat_actor.py # MITRE ATT&CK Groups (TTP → threat actor)
 ├── scripts/
-│   └── build_group_map.py  # One-time: STIX bundle → committed group map
+│   ├── build_group_map.py  # One-time: STIX bundle → committed group map
+│   ├── elastic_dev_up.sh   # Start/restart the local dev Elastic stack
+│   ├── elastic_dev_seed.sh # Seed the demo alerts index
+│   ├── kibana_dashboard_import.sh   # Install the analyst console
+│   └── kibana_soc_dashboard.ndjson  # The console, as saved objects
 ├── tests/
 │   ├── test_investigations.py  # The eval harness (API-backed)
+│   ├── test_fixtures.py    # Invariants over the labeled alert set itself (no API)
 │   ├── test_history.py     # Cross-alert memory + correlation unit tests (no API)
 │   ├── test_injection.py   # Prompt-injection scanner unit tests (no API)
+│   ├── test_sigma.py       # Sigma matcher semantics + rule coverage (no API)
+│   ├── test_closure.py     # Autonomous-closure policy gates (no API)
 │   ├── test_report.py      # HTML report rendering + escaping unit tests (no API)
 │   ├── test_elastic.py     # ECS normalization + Elastic HTTP unit tests (no API)
+│   ├── test_casemgmt.py    # TheHive payload mapping + HTTP unit tests (no API)
+│   ├── test_tools.py       # Tool dispatch guardrails (no API)
 │   └── expectations.py     # Per-alert correctness criteria
 ├── data/
-│   ├── sample_alerts/      # Labeled alerts for testing (incl. an adversarial one)
+│   ├── sample_alerts/      # Labeled alerts (11: attacks, benign, and an adversarial one)
+│   ├── sigma/              # Curated SigmaHQ rules + provenance (DRL-licensed)
 │   ├── mitre/              # Generated technique→group lookup (committed)
 │   ├── history/            # Runtime case history (gitignored)
 │   └── evals/runs/         # Captured before/after investigations
@@ -301,8 +324,16 @@ uv run python -m src.main --from-elastic 3 --push --report
 # result, and acknowledge the alert so it leaves the open queue
 uv run python -m src.main --watch 60
 
-# Run the eval harness
+# Fully hands-off: also close high-confidence false positives autonomously
+# (deterministic policy — see src/closure.py) and open a TheHive alert for
+# anything a human should own (requires THEHIVE_URL / THEHIVE_API_KEY)
+uv run python -m src.main --watch 60 --auto-close --case
+
+# Run the eval harness (11 alerts x 2 modes, live API calls)
 uv run pytest tests/test_investigations.py -v
+
+# Everything that needs no API key or network (fast, deterministic)
+uv run pytest tests/ --ignore=tests/test_investigations.py -q
 ```
 
 ### Local Elastic dev stack (no Docker required)
@@ -408,7 +439,7 @@ The project is research-grade today. Three concrete directions to grow it.
 
 ### Long-term: case management integration
 
-- **TheHive or DFIR-IRIS output** — investigations write directly into a case management system as observables, tasks, and analyst notes. Closes the loop from alert to triage.
+- ~~**TheHive or DFIR-IRIS output**~~ ✅ Implemented via `src/casemgmt.py` + `--case`. Investigations a human should own (escalated, true-positive, or campaign-correlated) become TheHive 5 alerts: the analyst write-up as a markdown description, the alert's own IOCs as typed observables, and machine-filterable tags for verdict, techniques, groups, campaign, and injection. Mapping is a pure function tested against the payload shape in TheHive's OpenAPI spec; the HTTP layer is MockTransport-tested. Not yet run against a live TheHive server — see "Closing the loop into case management" below for exactly what that means.
 - ~~**Autonomous closure**~~ ✅ Implemented via `src/closure.py` + `--watch --auto-close`. Investigations that pass a deterministic policy — verdict `false_positive`, confidence `high`, no escalation recommendation, **zero injection flags** (adversarial content always reaches a human, precisely because "please close this alert" is what an injection says), no campaign correlation — close the alert in Elastic autonomously, with the policy reason recorded in the results index as the audit trail. Everything else is acknowledged for a human, exactly as before; the flag is opt-in. See "Knowing when to say 'this is fine'" below.
 
 ## Limitations and honest caveats

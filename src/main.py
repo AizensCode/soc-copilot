@@ -1,17 +1,21 @@
 """CLI entry point.
 
     # Investigate a local alert file
-    uv run python -m src.main <alert.json> [--agentic] [--report [out.html]]
+    uv run python -m src.main <alert.json> [--agentic] [--report [out.html]] [--case]
 
     # Pull open detection alerts from Elastic and investigate each
-    uv run python -m src.main --from-elastic [N] [--agentic] [--push] [--report]
+    uv run python -m src.main --from-elastic [N] [--agentic] [--push] [--report] [--case]
 
     # Stay running: poll Elastic, investigate every new open alert,
     # push the result, acknowledge the alert. With --auto-close, alerts
     # whose investigation passes the closure policy (high-confidence
     # false positive, no escalation/injection/campaign) are closed
     # autonomously instead of acknowledged.
-    uv run python -m src.main --watch [interval_seconds] [--agentic] [--auto-close]
+    uv run python -m src.main --watch [interval_seconds] [--agentic] [--auto-close] [--case]
+
+    --case opens a TheHive alert for investigations a human should own
+    (escalated, true-positive, or campaign-correlated). Requires
+    THEHIVE_URL and THEHIVE_API_KEY.
 """
 import asyncio
 import json
@@ -23,10 +27,30 @@ from .models import Alert, Investigation
 
 USAGE = (
     "Usage:\n"
-    "  python -m src.main <path/to/alert.json> [--agentic] [--report [out.html]]\n"
-    "  python -m src.main --from-elastic [N] [--agentic] [--push] [--report]\n"
-    "  python -m src.main --watch [interval_seconds] [--agentic] [--auto-close]"
+    "  python -m src.main <path/to/alert.json> [--agentic] [--report [out.html]] [--case]\n"
+    "  python -m src.main --from-elastic [N] [--agentic] [--push] [--report] [--case]\n"
+    "  python -m src.main --watch [interval_seconds] [--agentic] [--auto-close] [--case]"
 )
+
+
+async def _maybe_open_case(alert: Alert, investigation: Investigation) -> None:
+    """Open a TheHive alert when --case is set and the policy says a human
+    should own this. Never fatal: case management is an output channel, so
+    a TheHive outage must not lose an investigation that already succeeded.
+    """
+    if "--case" not in sys.argv:
+        return
+    from .casemgmt import TheHiveClient, should_open_case
+
+    open_case, reason = should_open_case(investigation)
+    if not open_case:
+        print(f"No case opened ({reason})", flush=True)
+        return
+    try:
+        case_id = await TheHiveClient().create_alert(alert, investigation)
+        print(f"Opened TheHive alert {case_id} ({reason})", flush=True)
+    except RuntimeError as e:
+        print(f"Case creation failed: {e}", flush=True)
 
 
 def _arg_after(flag: str) -> str | None:
@@ -85,6 +109,8 @@ async def _run_file(agentic: bool) -> None:
         out = Path(_arg_after("--report") or "investigation_report.html")
         _write_report(alert, investigation, out)
 
+    await _maybe_open_case(alert, investigation)
+
     print(investigation.model_dump_json(indent=2))
 
 
@@ -129,6 +155,8 @@ async def _run_elastic(agentic: bool) -> None:
         if "--push" in sys.argv:
             doc_id = await source.push_investigation(alert, investigation)
             print(f"Pushed investigation to Elastic (doc id: {doc_id})")
+
+        await _maybe_open_case(alert, investigation)
 
 
 async def _run_watch(agentic: bool) -> None:
@@ -190,6 +218,11 @@ async def _run_watch(agentic: bool) -> None:
                         doc_id, "closed" if close else "acknowledged"
                     )
                     seen.add(doc_id)
+                    # An auto-closed alert needs no human owner by
+                    # definition, so it never generates case-management
+                    # noise; everything else is offered to the policy.
+                    if not close:
+                        await _maybe_open_case(alert, investigation)
                     disposition = (
                         f"alert CLOSED autonomously ({reason})"
                         if close

@@ -26,6 +26,10 @@ class Settings:
     ELASTIC_API_KEY: str | None = None
     ELASTIC_ALERTS_INDEX: str = ".alerts-security.alerts-default"
     ELASTIC_RESULTS_INDEX: str = "soc-copilot-investigations"
+    # TheHive case management — optional; the copilot runs fine without it.
+    THEHIVE_URL: str | None = None
+    THEHIVE_API_KEY: str | None = None
+    THEHIVE_ORGANISATION: str | None = None
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -63,6 +67,9 @@ class Settings:
             ELASTIC_RESULTS_INDEX=os.environ.get(
                 "ELASTIC_RESULTS_INDEX", "soc-copilot-investigations"
             ),
+            THEHIVE_URL=os.environ.get("THEHIVE_URL"),
+            THEHIVE_API_KEY=os.environ.get("THEHIVE_API_KEY"),
+            THEHIVE_ORGANISATION=os.environ.get("THEHIVE_ORGANISATION"),
         )
 
 
