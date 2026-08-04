@@ -108,7 +108,10 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
         ],
         "must_escalate": True,
         "pivots_must_include": [
-            "suppliersi-nvoices",  # any pivot addressing the typosquat
+            # Any pivot engaging the typosquatted sender — the literal
+            # domain, or reference to it ("the typosquat", "sender domain").
+            # Same reference-not-literal mechanism as the URL-click group.
+            ["suppliersi-nvoices", "typosquat", "sender"],
         ],
         "min_evidence_count": 1,
         # T1566.001 + T1204.002 are heavily used TTPs; groups must surface
@@ -136,7 +139,12 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
         "must_escalate": True,
         "pivots_must_include": [
             "credential",            # must address whether creds were submitted
-            "security-portal.app",   # must address the malicious domain
+            # Must engage the malicious link infrastructure. Accept the
+            # literal domain/IP, or definite reference to it ("submit the
+            # destination_domain to the blocklist", "detonate the URL") —
+            # one run correctly declined to name the IP because it is
+            # Cloudflare fronting, and referenced the domain by field name.
+            ["security-portal.app", "104.21.84.12", "domain", "url"],
         ],
         # Phase 1 now enriches both the IP (AbuseIPDB) and the domain
         # (URLScan), so ≥2 evidence entries; agentic typically produces more.
@@ -206,10 +214,45 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
         ],
         "must_escalate": True,   # possible active C2/exfil channel on a workstation
         "pivots_must_include": [
-            "xf-telemetry-sync",  # pivots must address the suspect domain
+            # Pivots must address the suspect C2 infrastructure. The alert
+            # pairs the domain with its resolved IP; naming either one
+            # proves the pivots target it (a run legitimately worked the
+            # IP + encoded subdomains without spelling the domain).
+            ["xf-telemetry-sync", "91.92.240.17"],
         ],
         "min_evidence_count": 1,
         "min_associated_groups": 1,
+    },
+    # --- Benign alerts: the false_positive verdict class. Without these, a
+    # model that never says false_positive passes the whole harness. Both
+    # calibrated over 12 live runs (3 per alert per mode): 12/12
+    # false_positive, 12/12 no-escalation. ---
+    "benign_vuln_scanner_ssh.json": {
+        # Credentialed-scan failure burst: internal RFC1918 source, a single
+        # scanner service account, and a recurring weekly pattern. Same
+        # detection shape as brute_force_ssh — the point is the copilot must
+        # tell the two apart from evidence, not from the rule name.
+        "expected_verdict": "false_positive",
+        "min_confidence": "medium",   # calibration: 4x medium, 2x high
+        "must_escalate": False,
+        "pivots_must_include": [
+            "qualys",  # must verify the scanner asset/account is legitimate
+        ],
+    },
+    "benign_admin_powershell.json": {
+        # Encoded PowerShell from CcmExec.exe as SYSTEM on an SCCM
+        # management point, recurring daily, benign decoded preview. The
+        # curated Sigma encode rule FIRES on this alert by design
+        # (deterministic, 6/6 in calibration) — a detection-logic match is
+        # corroborating context, not a verdict; the model must still read
+        # the evidence and call it benign. 5x high / 1x medium confidence.
+        "expected_verdict": "false_positive",
+        "min_confidence": "medium",
+        "must_escalate": False,
+        "pivots_must_include": [
+            "sccm",  # must verify against the SCCM inventory schedule
+        ],
+        "min_sigma_matches": 1,
     },
 }
 

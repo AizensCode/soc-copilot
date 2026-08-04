@@ -1,0 +1,27 @@
+{
+  "alert_id": "ALRT-2026-0421-008",
+  "timestamp": "2026-04-21T04:00:12Z",
+  "source": "edr",
+  "severity": "medium",
+  "title": "Encoded PowerShell execution on server",
+  "raw_log": {
+    "event_type": "process_creation",
+    "host": "sccm-mp-01.corp.internal",
+    "user": "NT AUTHORITY\\SYSTEM",
+    "parent_process": "CcmExec.exe",
+    "parent_process_path": "C:\\Windows\\CCM\\CcmExec.exe",
+    "process": "powershell.exe",
+    "command_line": "powershell.exe -NonInteractive -ExecutionPolicy Bypass -EncodedCommand RwBlAHQALQBXAG0AaQBPAGIAagBlAGMAdAAgAFcAaQBuADMAMgBfAFAAcgBvAGQAdQBjAHQA",
+    "decoded_command_preview": "Get-WmiObject Win32_Product",
+    "signature_status": "Microsoft Windows signed",
+    "integrity_level": "system",
+    "prior_identical_executions_30d": 28,
+    "recurrence_match": "SCCM hardware-inventory cycle (daily 04:00 UTC)",
+    "network_connection": null
+  },
+  "indicators": {
+    "ips": [],
+    "hashes": [],
+    "users": []
+  }
+}

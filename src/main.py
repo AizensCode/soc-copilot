@@ -7,8 +7,11 @@
     uv run python -m src.main --from-elastic [N] [--agentic] [--push] [--report]
 
     # Stay running: poll Elastic, investigate every new open alert,
-    # push the result, acknowledge the alert
-    uv run python -m src.main --watch [interval_seconds] [--agentic]
+    # push the result, acknowledge the alert. With --auto-close, alerts
+    # whose investigation passes the closure policy (high-confidence
+    # false positive, no escalation/injection/campaign) are closed
+    # autonomously instead of acknowledged.
+    uv run python -m src.main --watch [interval_seconds] [--agentic] [--auto-close]
 """
 import asyncio
 import json
@@ -22,7 +25,7 @@ USAGE = (
     "Usage:\n"
     "  python -m src.main <path/to/alert.json> [--agentic] [--report [out.html]]\n"
     "  python -m src.main --from-elastic [N] [--agentic] [--push] [--report]\n"
-    "  python -m src.main --watch [interval_seconds] [--agentic]"
+    "  python -m src.main --watch [interval_seconds] [--agentic] [--auto-close]"
 )
 
 
@@ -136,7 +139,14 @@ async def _run_watch(agentic: bool) -> None:
     poll — acknowledgement IS the dedupe). A per-session seen-set guards
     against re-investigating if an acknowledgement fails; a failed alert
     is logged and retried on a later cycle rather than killing the loop.
+
+    With --auto-close, investigations that pass the deterministic closure
+    policy (src/closure.py: high-confidence false positive, no
+    escalation/injection/campaign signals) close the alert autonomously,
+    with the policy reason recorded in the results index. Everything else
+    is acknowledged for a human, exactly as without the flag.
     """
+    from .closure import should_auto_close
     from .elastic import ElasticAlertSource
 
     interval = int(_arg_after("--watch") or 60)
@@ -146,14 +156,15 @@ async def _run_watch(agentic: bool) -> None:
         print(e)
         sys.exit(1)
 
+    auto_close = "--auto-close" in sys.argv
     copilot = SOCCopilot()
     seen: set[str] = set()
     mode = "agentic" if agentic else "phase one"
     # flush every line: when watch runs under nohup/systemd its output is
     # the operator's only heartbeat, and block-buffering would hide it
     print(
-        f"Watching {source.alerts_index} every {interval}s ({mode} mode). "
-        f"Ctrl+C to stop.",
+        f"Watching {source.alerts_index} every {interval}s ({mode} mode"
+        f"{', auto-close on' if auto_close else ''}). Ctrl+C to stop.",
         flush=True,
     )
     while True:
@@ -164,16 +175,31 @@ async def _run_watch(agentic: bool) -> None:
                 print(f"\n=== {alert.alert_id} — {alert.title} ===", flush=True)
                 try:
                     investigation = await _investigate(copilot, alert, agentic)
-                    result_id = await source.push_investigation(
-                        alert, investigation
+                    close, reason = (
+                        should_auto_close(investigation)
+                        if auto_close
+                        else (False, None)
                     )
-                    await source.acknowledge_alert(doc_id)
+                    result_id = await source.push_investigation(
+                        alert,
+                        investigation,
+                        auto_closed=close,
+                        closure_reason=reason,
+                    )
+                    await source.set_alert_status(
+                        doc_id, "closed" if close else "acknowledged"
+                    )
                     seen.add(doc_id)
+                    disposition = (
+                        f"alert CLOSED autonomously ({reason})"
+                        if close
+                        else "alert acknowledged"
+                    )
                     print(
                         f"verdict={investigation.verdict} "
                         f"confidence={investigation.confidence} "
                         f"escalate={investigation.escalation_recommended} "
-                        f"-> pushed {result_id}, alert acknowledged",
+                        f"-> pushed {result_id}, {disposition}",
                         flush=True,
                     )
                 except Exception as e:

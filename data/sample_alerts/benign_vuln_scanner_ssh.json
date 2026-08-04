@@ -1,0 +1,27 @@
+{
+  "alert_id": "ALRT-2026-0421-007",
+  "timestamp": "2026-04-21T03:12:40Z",
+  "source": "siem",
+  "severity": "medium",
+  "title": "SSH authentication failure burst from internal host",
+  "raw_log": {
+    "event_type": "auth_failure",
+    "service": "sshd",
+    "host": "app-db-14.internal",
+    "failed_attempts": 212,
+    "time_window_seconds": 300,
+    "usernames_tried": ["svc-qualys"],
+    "source_ip": "10.20.8.15",
+    "source_host": "qualys-scanner-02.corp.internal",
+    "destination_port": 22,
+    "prior_identical_bursts_30d": 4,
+    "cron_window_match": "weekly-vuln-scan Tue 03:00-04:00 UTC",
+    "first_seen": "2026-04-21T03:07:38Z",
+    "last_seen": "2026-04-21T03:12:38Z"
+  },
+  "indicators": {
+    "ips": ["10.20.8.15"],
+    "hashes": [],
+    "users": ["svc-qualys"]
+  }
+}

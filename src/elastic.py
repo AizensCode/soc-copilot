@@ -199,8 +199,8 @@ class ElasticAlertSource:
         """Pull the most recent open detection alerts, normalized."""
         return [a for _, a in await self.fetch_alert_hits(limit, status)]
 
-    async def acknowledge_alert(self, doc_id: str) -> None:
-        """Mark an alert as acknowledged so it leaves the 'open' queue.
+    async def set_alert_status(self, doc_id: str, status: str) -> None:
+        """Set an alert's workflow status ('acknowledged', 'closed', ...).
 
         Partial-update merge on the nested ECS shape (the form Kibana alert
         docs and this project's dev seeds use). refresh=true so the next
@@ -211,16 +211,27 @@ class ElasticAlertSource:
         """
         await self._post(
             f"/{self.alerts_index}/_update/{doc_id}?refresh=true",
-            {"doc": {"kibana": {"alert": {"workflow_status": "acknowledged"}}}},
+            {"doc": {"kibana": {"alert": {"workflow_status": status}}}},
         )
 
+    async def acknowledge_alert(self, doc_id: str) -> None:
+        """Mark an alert as acknowledged so it leaves the 'open' queue."""
+        await self.set_alert_status(doc_id, "acknowledged")
+
     async def push_investigation(
-        self, alert: Alert, investigation: Investigation
+        self,
+        alert: Alert,
+        investigation: Investigation,
+        auto_closed: bool = False,
+        closure_reason: str | None = None,
     ) -> str:
         """Index the investigation into the results index; returns the doc id.
 
         Summary fields are flattened at the top for easy dashboarding; the
-        complete investigation rides along nested.
+        complete investigation rides along nested. When watch mode closes an
+        alert autonomously, the closure decision and its policy reason are
+        recorded here — the audit trail for the one action the copilot takes
+        without a human.
         """
         doc = {
             "@timestamp": datetime.now(timezone.utc).isoformat(),
@@ -235,6 +246,8 @@ class ElasticAlertSource:
                 and investigation.correlation.is_campaign
             ),
             "injection_flags": len(investigation.injection_flags),
+            "auto_closed": auto_closed,
+            "closure_reason": closure_reason,
             "investigation": investigation.model_dump(mode="json"),
         }
         data = await self._post(f"/{self.results_index}/_doc", doc)
