@@ -222,6 +222,51 @@ class ElasticAlertSource:
         """Mark an alert as acknowledged so it leaves the 'open' queue."""
         await self.set_alert_status(doc_id, "acknowledged")
 
+    async def annotate_disposition(
+        self,
+        alert_id: str,
+        human_verdict: str,
+        human_summary: str | None = None,
+    ) -> int:
+        """Stamp an analyst ruling onto that alert's investigation docs.
+
+        Investigations are point-in-time snapshots; the ruling arrives
+        later, from case management. Writing it back to the results
+        index is what lets the dashboard show the copilot's verdict and
+        the human's side by side — including the disagreements, which
+        are the rows worth reading.
+
+        Deliberately search + per-doc _update rather than
+        _update_by_query: byquery needs broader index privileges than a
+        least-privilege SIEM key usually carries (observed as a 403 on
+        the dev stack), and per-doc updates also let human_agrees be
+        computed against EACH doc's own verdict — a re-investigated
+        alert shows which of the copilot's attempts the human ended up
+        agreeing with. Returns how many docs were updated.
+        """
+        data = await self._post(
+            f"/{self.results_index}/_search",
+            {
+                "size": 100,
+                "query": {"term": {"alert_id.keyword": alert_id}},
+                "_source": ["verdict"],
+            },
+        )
+        hits = data.get("hits", {}).get("hits", [])
+        for hit in hits:
+            await self._post(
+                f"/{self.results_index}/_update/{hit['_id']}?refresh=true",
+                {
+                    "doc": {
+                        "human_verdict": human_verdict,
+                        "human_summary": human_summary,
+                        "human_agrees": hit["_source"].get("verdict")
+                        == human_verdict,
+                    }
+                },
+            )
+        return len(hits)
+
     async def push_investigation(
         self,
         alert: Alert,

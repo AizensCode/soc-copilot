@@ -183,7 +183,9 @@ Cross-alert memory as first built had a quiet epistemic flaw: the verdicts it fe
 
 The prompt discipline is the point: an analyst ruling is ground truth from the human the copilot works for, so it outranks the recorded verdict, and an overturned prior means the earlier reasoning missed something — recalibrate, don't repeat it. Rendering follows the inert-when-absent rule (an unruled history reads exactly as before), and the sync is honest about provenance: each disposition records whether it came from an alert-level status or a numbered case's resolution.
 
-Verified live in both directions. The sync ran against the dev TheHive after real analyst actions and correctly translated both: an alert dismissed as `FalsePositive`, and an alert promoted to a case that closed `TruePositive` — the case's closing summary ("Confirmed account compromise: token replay… sessions revoked") arriving as the analyst note. Then a behavior probe, spot-checked live rather than pinned (4 runs, both modes, isolated store): a prior the copilot had called `true_positive` (60-second beaconing to unknown infra) carrying an analyst overturn — *"sanctioned purple-team exercise PT-2026-14, approved through 2026-09-30"* — followed by a new alert on the same infrastructure. Without the ruling, that alert is a textbook C2 true positive; with it, **4/4 runs concluded `false_positive` with no escalation** (3 high / 1 medium confidence), 4/4 cited the exercise by ID, and — the part that shows the discipline surviving deference — 4/4 still proposed verifying the current activity against the engagement's scope and expiry window. The copilot updates on human feedback without becoming credulous about it.
+The loop runs on its own and shows its work. `--watch` syncs rulings from TheHive every five minutes (a human cadence, not a poll cadence) with no operator in the loop — the standalone `--sync-feedback` remains for cron jobs and catch-ups. And every synced ruling is stamped back onto the investigation documents in Elastic, so the analyst console shows the copilot's verdict and the human's side by side, plus a `human_agrees` boolean whose `false` rows are the ones worth a second look. That stamp is computed **per document against each doc's own verdict**: an alert investigated several times (as they are in watch mode) shows exactly which of the copilot's attempts the analyst ended up agreeing with — the live index for the recurring scanner alert reads `inconclusive/disagrees` on its early runs and `false_positive/agrees` once environment context moved it, with the human's ruling constant throughout. The write-back is a search-plus-per-doc-update rather than an `_update_by_query`, deliberately: byquery needs broader index privileges than a least-privilege SIEM key carries (it 403s on the dev stack), and per-doc updates are what make that per-verdict agreement flag possible in the first place. Like `--case`, the whole path is opt-in and never fatal — no TheHive, no sync; no Elastic, the ruling still lands in memory.
+
+Verified live in both directions. The sync ran against the dev TheHive after real analyst actions and correctly translated both: an alert dismissed as `FalsePositive`, and an alert promoted to a case that closed `TruePositive` — the case's closing summary ("Confirmed account compromise: token replay… sessions revoked") arriving as the analyst note. Then a behavior probe, spot-checked live rather than pin
 
 ### Recognizing campaigns
 
@@ -415,20 +417,21 @@ echo -n "<your-password>" | ./bin/elasticsearch-keystore add -x bootstrap.passwo
 # 2. Start it (runs in the foreground; use nohup/& to background)
 ES_JAVA_OPTS="-Xms1g -Xmx1g" ./bin/elasticsearch
 
-# 3. Seed the demo alerts index (3 ECS detection alerts, one per enrichment route)
+# 3. Seed the demo alerts index (6 ECS detection alerts)
 ES_PASS=<your-password> ./scripts/elastic_dev_seed.sh
 
 # 4. Mint a least-privilege API key for the copilot
-#    (read + doc-write on the alerts index — write is what lets --watch
-#    acknowledge alerts it has handled — write on the results index,
-#    nothing else)
+#    (read + doc-write on both indices: write on alerts is what lets
+#    --watch acknowledge/close what it handled; read + doc-write on
+#    results is what lets --sync-feedback stamp analyst rulings onto
+#    past investigation docs. Still no cluster privileges, and no
+#    update_by_query — annotation is per-doc by design.)
 curl -u elastic:<your-password> -X POST http://127.0.0.1:9200/_security/api_key \
   -H 'Content-Type: application/json' -d '{
   "name": "soc-copilot",
   "role_descriptors": {"soc_copilot": {"indices": [
-    {"names": ["soc-alerts-demo"], "privileges": ["read", "write"]},
-    {"names": ["soc-copilot-investigations"],
-     "privileges": ["create_index", "create_doc", "auto_configure"]}
+    {"names": ["soc-alerts-demo", "soc-copilot-investigations"],
+     "privileges": ["read", "write", "view_index_metadata"]}
   ]}}}'
 
 # 5. Wire .env with the "encoded" field from the response

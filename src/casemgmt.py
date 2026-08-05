@@ -416,15 +416,19 @@ _CASE_RESOLUTION_MAP = {
 }
 
 
-async def sync_dispositions(client: "TheHiveClient", store) -> list[dict]:
+async def sync_dispositions(
+    client: "TheHiveClient", store
+) -> tuple[list[dict], int]:
     """Pull analyst rulings from TheHive into the history store.
 
-    Idempotent in effect: records are appended, latest-per-alert wins on
-    read, so re-syncing an unchanged ruling only reasserts it. Returns
-    the fetched dispositions so callers can report what changed.
+    Idempotent: records are appended and latest-per-alert wins on read,
+    so an unchanged ruling is skipped rather than re-recorded. Returns
+    (changed_rulings, total_fetched) — watch mode reports only what is
+    new, the CLI reports both.
     """
     dispositions = await client.fetch_dispositions()
     existing = store.dispositions()
+    changed: list[dict] = []
     for d in dispositions:
         prior = existing.get(d["alert_id"])
         if prior and (prior.get("human_verdict"), prior.get("summary")) == (
@@ -435,4 +439,5 @@ async def sync_dispositions(client: "TheHiveClient", store) -> list[dict]:
         store.record_disposition(
             d["alert_id"], d["human_verdict"], d["source"], d["summary"]
         )
-    return dispositions
+        changed.append(d)
+    return changed, len(dispositions)

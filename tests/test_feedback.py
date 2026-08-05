@@ -148,11 +148,53 @@ async def test_fetch_dispositions_maps_the_live_status_vocabulary():
 
 async def test_sync_is_idempotent_on_unchanged_rulings(tmp_path):
     store = _store(tmp_path)
-    await sync_dispositions(_client(_handler), store)
+    changed, total = await sync_dispositions(_client(_handler), store)
+    assert total == 3 and len(changed) == 3
     size_after_first = store.dispositions_path.read_text().count("\n")
-    await sync_dispositions(_client(_handler), store)
+
+    changed, total = await sync_dispositions(_client(_handler), store)
+    assert total == 3 and changed == []   # nothing new -> nothing recorded
     assert store.dispositions_path.read_text().count("\n") == size_after_first
     assert store.dispositions()["AL-3"]["human_verdict"] == "true_positive"
+
+
+# --- Elastic annotation ------------------------------------------------------
+
+
+async def test_annotate_disposition_updates_each_matching_doc():
+    """Search + per-doc _update (never _update_by_query — that action
+    needs privileges a least-privilege SIEM key doesn't carry), with
+    human_agrees computed against EACH doc's own verdict: a
+    re-investigated alert shows which attempt the human agreed with."""
+    from src.elastic import ElasticAlertSource
+
+    updates: dict[str, dict] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        if request.url.path.endswith("/_search"):
+            assert body["query"] == {"term": {"alert_id.keyword": "AL-3"}}
+            return httpx.Response(200, json={"hits": {"hits": [
+                {"_id": "d1", "_source": {"verdict": "inconclusive"}},
+                {"_id": "d2", "_source": {"verdict": "true_positive"}},
+            ]}})
+        doc_id = request.url.path.rsplit("/", 1)[-1]
+        updates[doc_id] = body["doc"]
+        return httpx.Response(200, json={"result": "updated"})
+
+    source = ElasticAlertSource(
+        url="https://es.test:9200",
+        api_key="k",
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        results_index="soc-copilot-investigations",
+    )
+    n = await source.annotate_disposition("AL-3", "true_positive", "Confirmed.")
+
+    assert n == 2
+    assert updates["d1"]["human_verdict"] == "true_positive"
+    assert updates["d1"]["human_agrees"] is False   # that run hedged
+    assert updates["d2"]["human_agrees"] is True    # that run called it
+    assert updates["d2"]["human_summary"] == "Confirmed."
 
 
 # --- prompt rendering --------------------------------------------------------

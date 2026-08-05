@@ -30,6 +30,10 @@ from pathlib import Path
 from .copilot import SOCCopilot
 from .models import Alert, Investigation
 
+# How often watch mode pulls analyst rulings back from TheHive. Rulings
+# change on a human cadence, so minutes — not poll cycles — is the unit.
+FEEDBACK_SYNC_INTERVAL = 300
+
 USAGE = (
     "Usage:\n"
     "  python -m src.main <path/to/alert.json> [--agentic] [--report [out.html]] [--case]\n"
@@ -39,12 +43,54 @@ USAGE = (
 )
 
 
+async def _annotate_elastic(changed: list[dict]) -> None:
+    """Stamp new rulings onto the investigations index, when Elastic is
+    configured — this is what puts the human's verdict next to the
+    copilot's on the dashboard. Never fatal: the ruling is already safe
+    in the history store."""
+    if not changed:
+        return
+    from .elastic import ElasticAlertSource
+
+    try:
+        source = ElasticAlertSource()
+    except RuntimeError:
+        return  # no Elastic configured — memory still has the rulings
+    for d in changed:
+        try:
+            n = await source.annotate_disposition(
+                d["alert_id"], d["human_verdict"], d.get("summary")
+            )
+            if n:
+                print(
+                    f"  -> stamped onto {n} investigation doc(s) in Elastic",
+                    flush=True,
+                )
+        except Exception as e:
+            print(f"  -> Elastic annotation failed: {e}", flush=True)
+
+
+def _print_rulings(changed: list[dict], known: set[str]) -> None:
+    for d in changed:
+        marker = (
+            "" if d["alert_id"] in known
+            else " (no local investigation on record)"
+        )
+        note = f' — "{d["summary"]}"' if d.get("summary") else ""
+        print(
+            f"{d['alert_id']}: analyst ruled {d['human_verdict']} "
+            f"[{d['source']}]{note}{marker}",
+            flush=True,
+        )
+
+
 async def _run_sync_feedback() -> None:
     """Pull analyst rulings from TheHive into the copilot's memory.
 
     After this, prior sightings carry the human's verdict beside the
     copilot's own — memory stops being an echo chamber of the copilot's
-    opinions. Run it periodically (cron, or before a watch session).
+    opinions. Watch mode does this by itself on a timer; the CLI form
+    exists for cron jobs and one-off catch-ups.
     """
     from .casemgmt import TheHiveClient, sync_dispositions
     from .config import settings
@@ -53,21 +99,20 @@ async def _run_sync_feedback() -> None:
     store = AlertHistoryStore(settings.HISTORY_PATH)
     known = {r["alert_id"] for r in store._iter_records()}
     try:
-        dispositions = await sync_dispositions(TheHiveClient(), store)
+        changed, total = await sync_dispositions(TheHiveClient(), store)
     except RuntimeError as e:
         print(e)
         sys.exit(1)
-    if not dispositions:
+    if total == 0:
         print("No analyst rulings found in TheHive yet.")
         return
-    for d in dispositions:
-        marker = "" if d["alert_id"] in known else " (no local investigation on record)"
-        note = f' — "{d["summary"]}"' if d.get("summary") else ""
-        print(
-            f"{d['alert_id']}: analyst ruled {d['human_verdict']} "
-            f"[{d['source']}]{note}{marker}"
-        )
-    print(f"Synced {len(dispositions)} ruling(s) into {store.dispositions_path}")
+    _print_rulings(changed, known)
+    await _annotate_elastic(changed)
+    print(
+        f"{len(changed)} new/changed ruling(s), "
+        f"{total - len(changed)} already known "
+        f"({store.dispositions_path})"
+    )
 
 
 async def _maybe_open_case(alert: Alert, investigation: Investigation) -> None:
@@ -210,8 +255,17 @@ async def _run_watch(agentic: bool) -> None:
     escalation/injection/campaign signals) close the alert autonomously,
     with the policy reason recorded in the results index. Everything else
     is acknowledged for a human, exactly as without the flag.
+
+    When TheHive is configured, analyst rulings are synced back every
+    FEEDBACK_SYNC_INTERVAL seconds — the copilot keeps learning from the
+    humans working its cases without an operator remembering to run
+    --sync-feedback. A sync failure is logged and retried next time,
+    never fatal.
     """
+    import time
+
     from .closure import should_auto_close
+    from .config import settings
     from .elastic import ElasticAlertSource
 
     interval = int(_arg_after("--watch") or 60)
@@ -225,14 +279,38 @@ async def _run_watch(agentic: bool) -> None:
     copilot = SOCCopilot()
     seen: set[str] = set()
     mode = "agentic" if agentic else "phase one"
+    feedback = bool(settings.THEHIVE_URL and settings.THEHIVE_API_KEY)
+    last_feedback_sync = float("-inf")
     # flush every line: when watch runs under nohup/systemd its output is
     # the operator's only heartbeat, and block-buffering would hide it
     print(
         f"Watching {source.alerts_index} every {interval}s ({mode} mode"
-        f"{', auto-close on' if auto_close else ''}). Ctrl+C to stop.",
+        f"{', auto-close on' if auto_close else ''}"
+        f"{', analyst-feedback sync on' if feedback else ''}). "
+        f"Ctrl+C to stop.",
         flush=True,
     )
     while True:
+        if feedback and time.monotonic() - last_feedback_sync >= FEEDBACK_SYNC_INTERVAL:
+            last_feedback_sync = time.monotonic()
+            try:
+                from .casemgmt import TheHiveClient, sync_dispositions
+
+                changed, _ = await sync_dispositions(
+                    TheHiveClient(), copilot.history
+                )
+                if changed:
+                    print("Analyst feedback synced from TheHive:", flush=True)
+                    known = {
+                        r["alert_id"]
+                        for r in copilot.history._iter_records()
+                    }
+                    _print_rulings(changed, known)
+                    await _annotate_elastic(changed)
+            except Exception as e:
+                print(
+                    f"Feedback sync failed (will retry): {e}", flush=True
+                )
         try:
             hits = await source.fetch_alert_hits(limit=10, status="open")
             fresh = [(d, a) for d, a in hits if d not in seen]
