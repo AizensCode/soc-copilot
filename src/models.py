@@ -81,6 +81,36 @@ class SigmaMatch(BaseModel):
     tags: list[str] = Field(default_factory=list)
 
 
+class AssetMatch(BaseModel):
+    """An alert identifier found in the operator-maintained asset inventory
+    (data/asset_context.json).
+
+    Filled deterministically by the asset matcher (never by the LLM), so
+    every entry traces to a committed inventory record. The inventory is
+    trusted by provenance — the operator wrote it, unlike alert content,
+    which is attacker-influenced. That makes it the one legitimate source
+    for "this is sanctioned infrastructure" claims: a prose assertion of
+    legitimacy inside an alert is untrusted; the same claim in the
+    inventory is verified. A match describes an entity's SANCTIONED role;
+    whether the observed activity actually fits that role is still the
+    analyst's call.
+    """
+
+    entity: str = Field(description="The identifier as it appeared in the alert")
+    entity_type: Literal["ip", "host", "service_account"]
+    name: str | None = Field(
+        default=None,
+        description="Canonical inventory name, e.g. the host behind an IP",
+    )
+    role: str
+    owner: str | None = None
+    notes: str | None = None
+    expected_activity: list[str] = Field(
+        default_factory=list,
+        description="Sanctioned usage: expected sources, schedule windows",
+    )
+
+
 class PriorSighting(BaseModel):
     """A past investigation that shares one or more indicators with the
     current alert.
@@ -160,6 +190,14 @@ class Investigation(BaseModel):
         default_factory=list,
         description="Community detection rules matching the raw log; "
         "filled deterministically by the Sigma matcher, never by the LLM",
+    )
+    asset_matches: list[AssetMatch] = Field(
+        default_factory=list,
+        description=(
+            "Alert identifiers found in the operator-maintained asset "
+            "inventory. Filled deterministically by the asset matcher, "
+            "never by the LLM."
+        ),
     )
     associated_groups: list[GroupMatch] = Field(
         default_factory=list,

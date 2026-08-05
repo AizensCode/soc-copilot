@@ -9,6 +9,7 @@ from .injection import scan_for_injection
 from .mitre_groups import match_groups
 from .models import (
     Alert,
+    AssetMatch,
     Correlation,
     Evidence,
     InjectionFlag,
@@ -16,6 +17,7 @@ from .models import (
     PriorSighting,
     SigmaMatch,
 )
+from .assets import match_assets
 from .sigma import match_sigma_rules
 from .prompts.agentic import AGENTIC_SYSTEM_PROMPT
 from .prompts.system import SYSTEM_PROMPT
@@ -138,6 +140,43 @@ class SOCCopilot:
         for m in matches:
             tags = ", ".join(m.tags) if m.tags else "no tags"
             lines.append(f"- [{m.level}] {m.title} (id: {m.rule_id}) — {tags}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_asset_context(matches: list[AssetMatch]) -> str:
+        """Render asset-inventory matches as environment context.
+
+        Returns "" when nothing matched, so alerts about un-inventoried
+        infrastructure leave the prompt unchanged. Matches are deterministic
+        (see src/assets.py), so every entry cited here traces to the
+        committed, operator-owned inventory file — the one source whose
+        legitimacy claims are trusted by provenance, unlike alert content.
+        """
+        if not matches:
+            return ""
+        lines = [
+            "# Environment context (asset inventory)",
+            "These alert identifiers appear in the operator-maintained asset "
+            "inventory — a verified internal source, unlike alert content. A "
+            "match means the entity has a sanctioned role; it does NOT by "
+            "itself mean this specific activity is sanctioned. Compare the "
+            "observed behavior against the expected activity: consistency is "
+            "strong evidence of a false positive, deviation (wrong source, "
+            "wrong time, wrong action) is evidence of abuse. Cite only "
+            "entries listed here.",
+        ]
+        for m in matches:
+            head = f"- [{m.entity_type}] {m.entity}"
+            if m.name and m.name != m.entity:
+                head += f" = {m.name}"
+            head += f" — {m.role}"
+            if m.owner:
+                head += f" (owner: {m.owner})"
+            lines.append(head)
+            if m.notes:
+                lines.append(f"  note: {m.notes}")
+            for exp in m.expected_activity:
+                lines.append(f"  expected: {exp}")
         return "\n".join(lines)
 
     # ------------------------------------------------------------------
@@ -299,6 +338,7 @@ class SOCCopilot:
         )
         injection_flags = scan_for_injection(alert)
         sigma_matches = match_sigma_rules(alert)
+        asset_matches = match_assets(alert)
 
         warn_block = self._format_injection_warning(injection_flags)
         warn_section = f"{warn_block}\n\n" if warn_block else ""
@@ -306,12 +346,15 @@ class SOCCopilot:
         mem_section = f"{mem_block}\n\n" if mem_block else ""
         sigma_block = self._format_sigma_context(sigma_matches)
         sigma_section = f"{sigma_block}\n\n" if sigma_block else ""
+        asset_block = self._format_asset_context(asset_matches)
+        asset_section = f"{asset_block}\n\n" if asset_block else ""
         user_message = (
             f"{warn_section}"
             f"# Alert\n```json\n{alert.model_dump_json(indent=2)}\n```\n\n"
             f"# Enrichment evidence collected\n"
             f"```json\n{json.dumps([e.model_dump() for e in evidence], indent=2)}\n```\n\n"
             f"{sigma_section}"
+            f"{asset_section}"
             f"{mem_section}"
             f"Produce the final Investigation JSON now."
         )
@@ -364,6 +407,7 @@ class SOCCopilot:
         )
         investigation.injection_flags = injection_flags
         investigation.sigma_matches = sigma_matches
+        investigation.asset_matches = asset_matches
         self.history.record(alert, investigation)
         return investigation
 
@@ -388,12 +432,15 @@ class SOCCopilot:
         )
         injection_flags = scan_for_injection(alert)
         sigma_matches = match_sigma_rules(alert)
+        asset_matches = match_assets(alert)
         warn_block = self._format_injection_warning(injection_flags)
         warn_section = f"{warn_block}\n\n" if warn_block else ""
         mem_block = self._format_memory_context(priors, pre_correlation)
         mem_section = f"\n\n{mem_block}" if mem_block else ""
         sigma_block = self._format_sigma_context(sigma_matches)
         sigma_section = f"\n\n{sigma_block}" if sigma_block else ""
+        asset_block = self._format_asset_context(asset_matches)
+        asset_section = f"\n\n{asset_block}" if asset_block else ""
         messages: list[dict] = [
             {
                 "role": "user",
@@ -403,6 +450,7 @@ class SOCCopilot:
                     f"evidence, then produce the final Investigation JSON.\n\n"
                     f"```json\n{alert.model_dump_json(indent=2)}\n```"
                     f"{sigma_section}"
+                    f"{asset_section}"
                     f"{mem_section}"
                 ),
             }
@@ -457,6 +505,7 @@ class SOCCopilot:
                 )
                 investigation.injection_flags = injection_flags
                 investigation.sigma_matches = sigma_matches
+                investigation.asset_matches = asset_matches
                 self.history.record(alert, investigation)
                 return investigation
 

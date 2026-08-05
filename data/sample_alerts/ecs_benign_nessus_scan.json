@@ -1,0 +1,34 @@
+{
+  "_id": "ecs-fixture-benign-nessus",
+  "_comment": "ECS-shaped fixture: a raw Elastic detection-alert hit, loaded through src/elastic.py normalize_hit by the harness. Benign twin-class of benign_vuln_scanner_ssh but with fully decoupled identifiers (different scanner vendor, host, IP, account). Benignity is EVIDENCED (recurrence, schedule window, reverse DNS) and the asset inventory carries the sanctioned-role entries — the alert itself never asserts authorization.",
+  "_source": {
+    "@timestamp": "2026-05-12T02:07:44Z",
+    "kibana": {
+      "alert": {
+        "uuid": "ALRT-2026-0512-012",
+        "severity": "medium",
+        "risk_score": 47,
+        "workflow_status": "open",
+        "reason": "241 failed SSH logins for svc-nessus from 10.44.7.9 to erp-web-07 within 6 minutes",
+        "rule": {
+          "name": "SSH brute force burst from single source",
+          "description": "Flags more than 100 failed sshd logins from one source IP within a short window"
+        }
+      }
+    },
+    "event": {
+      "category": ["authentication"],
+      "outcome": "failure",
+      "dataset": "system.auth"
+    },
+    "host": { "name": "erp-web-07.internal" },
+    "user": { "name": "svc-nessus" },
+    "source": { "ip": "10.44.7.9", "domain": "nessus-scanner-01.corp.internal" },
+    "message": "sshd: 241 failed password attempts for svc-nessus from 10.44.7.9 in 360s; no successful logins from this source in the window",
+    "labels": {
+      "prior_identical_bursts_30d": "9",
+      "burst_window_utc": "02:00-02:45",
+      "source_reverse_dns": "nessus-scanner-01.corp.internal"
+    }
+  }
+}

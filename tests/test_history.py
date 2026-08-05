@@ -231,3 +231,28 @@ def test_correlation_excludes_self(tmp_path):
     store.record(alert, _inv("A1"))
     corr = store.correlate(alert)
     assert corr.related_alerts == []
+
+
+def test_correlate_matches_host_across_native_and_ecs_shapes(tmp_path):
+    """An ECS-normalized alert (host as {"name": ...}) and a native alert
+    (host as a plain string) about the same machine must correlate —
+    memory cannot depend on which ingestion path an alert arrived by.
+    """
+    store = _store(tmp_path)
+    ecs = Alert(
+        alert_id="E1",
+        timestamp=_T - timedelta(hours=1),
+        source="elastic",
+        severity="high",
+        title="ecs-shaped alert",
+        raw_log={"host": {"name": "web-01.internal"}},
+        indicators={"ips": ["203.0.113.9"]},
+    )
+    store.record(ecs, _inv("E1"))
+
+    native = _alert(
+        "N1", {"ips": ["198.51.100.7"]}, _T, host="web-01.internal"
+    )
+    corr = store.correlate(native)
+    assert len(corr.related_alerts) == 1
+    assert "shared_host:web-01.internal" in corr.related_alerts[0].signals

@@ -7,15 +7,14 @@ the phase-one baseline.
 
 Run: uv run pytest tests/test_investigations.py -v
 """
-import json
 import re
-from pathlib import Path
 
 import pytest
 
 from src.copilot import SOCCopilot
 from src.models import Alert, Investigation
 
+from .alert_loading import SAMPLE_ALERTS_DIR, load_alert_fixture
 from .expectations import (
     EXPECTATIONS,
     AlertExpectation,
@@ -23,14 +22,11 @@ from .expectations import (
 )
 
 
-SAMPLE_ALERTS_DIR = Path("data/sample_alerts")
 MODES = ["phase_one", "agentic"]
 
 
 def _load_alert(filename: str) -> Alert:
-    path = SAMPLE_ALERTS_DIR / filename
-    with path.open() as f:
-        return Alert(**json.load(f))
+    return load_alert_fixture(SAMPLE_ALERTS_DIR / filename)
 
 
 @pytest.fixture(scope="module")

@@ -1,0 +1,77 @@
+{
+  "_comment": [
+    "Operator-maintained asset inventory: the environment knowledge a SOC",
+    "analyst brings to triage. Entries describe the SANCTIONED role of",
+    "hosts, IPs, and service accounts — what they are FOR, where they act",
+    "from, and on what schedule. The matcher (src/assets.py) surfaces the",
+    "entries relevant to an alert deterministically; the model may cite",
+    "them but can never add to them. Describe sanctioned use positively;",
+    "do not editorialize about what would be suspicious — judging observed",
+    "activity against these entries is the analyst's (and the model's) job.",
+    "This file is trusted by provenance: the operator writes it, unlike",
+    "alert content. Keep it accurate — a stale entry that blesses a",
+    "decommissioned scanner is an attacker's best friend."
+  ],
+  "hosts": {
+    "qualys-scanner-02.corp.internal": {
+      "role": "vulnerability scanner appliance (Qualys)",
+      "owner": "secops",
+      "notes": "Performs authenticated and unauthenticated scans of internal subnets.",
+      "expected_activity": [
+        "scan window: weekly-vuln-scan, Tue 03:00-04:00 UTC",
+        "authenticates as svc-qualys from 10.20.8.15",
+        "high-volume connection and authentication bursts during scan windows are routine"
+      ]
+    },
+    "nessus-scanner-01.corp.internal": {
+      "role": "vulnerability scanner appliance (Nessus)",
+      "owner": "secops",
+      "notes": "Covers web and application tiers.",
+      "expected_activity": [
+        "scan window: nightly-web-scan, Mon-Fri 02:00-02:45 UTC",
+        "authenticates as svc-nessus from 10.44.7.9",
+        "high-volume connection and authentication bursts during scan windows are routine"
+      ]
+    },
+    "sccm-mp-01.corp.internal": {
+      "role": "SCCM management point",
+      "owner": "it-endpoint",
+      "notes": "Runs Configuration Manager client operations (CcmExec.exe), including scheduled hardware/software inventory collection.",
+      "expected_activity": [
+        "daily hardware/software inventory cycle at 04:00 UTC executes PowerShell (including encoded commands) under SYSTEM via CcmExec.exe"
+      ]
+    }
+  },
+  "ips": {
+    "10.20.8.15": { "host": "qualys-scanner-02.corp.internal" },
+    "10.44.7.9": { "host": "nessus-scanner-01.corp.internal" }
+  },
+  "service_accounts": {
+    "svc-qualys": {
+      "role": "authenticated vulnerability scanning (Qualys)",
+      "owner": "secops",
+      "expected_activity": [
+        "SSH/WinRM logins originating from 10.20.8.15 (qualys-scanner-02.corp.internal) only",
+        "active during the weekly-vuln-scan window, Tue 03:00-04:00 UTC",
+        "credential failures in bulk are expected against hosts where rotation lags the scanner vault"
+      ]
+    },
+    "svc-nessus": {
+      "role": "authenticated vulnerability scanning (Nessus)",
+      "owner": "secops",
+      "expected_activity": [
+        "SSH/API logins originating from 10.44.7.9 (nessus-scanner-01.corp.internal) only",
+        "active during the nightly-web-scan window, Mon-Fri 02:00-02:45 UTC",
+        "credential failures in bulk are expected against hosts where rotation lags the scanner vault"
+      ]
+    },
+    "svc-helpdesk": {
+      "role": "helpdesk user-support automation",
+      "owner": "it-servicedesk",
+      "expected_activity": [
+        "password resets and account unlocks via the helpdesk console (helpdesk-web-01.corp.internal)",
+        "business hours only (08:00-18:00 local)"
+      ]
+    }
+  }
+}

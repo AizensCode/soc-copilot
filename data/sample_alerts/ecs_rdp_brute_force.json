@@ -1,0 +1,36 @@
+{
+  "_id": "ecs-fixture-rdp-brute",
+  "_comment": "ECS-shaped fixture: a raw Elastic detection-alert hit, loaded through src/elastic.py normalize_hit by the harness. Malicious counterpart to ecs_benign_nessus_scan: external RDP password spraying against a finance server. All failures, zero successes — so T1078 stays forbidden under the observed-vs-anticipated triangulation, exactly as in brute_force_ssh. Source IP is a real Tor-infrastructure address with a 100/100 AbuseIPDB score (verified 2026-08-05) so live enrichment returns strong evidence.",
+  "_source": {
+    "@timestamp": "2026-05-14T11:23:05Z",
+    "kibana": {
+      "alert": {
+        "uuid": "ALRT-2026-0514-013",
+        "severity": "high",
+        "risk_score": 73,
+        "workflow_status": "open",
+        "reason": "463 failed RDP logon attempts across 9 usernames on fin-app-02 from 185.129.62.62 within 25 minutes",
+        "rule": {
+          "name": "RDP brute force from external source",
+          "description": "Flags more than 100 failed RDP logons (event 4625, logon type 10) from a single external IP"
+        }
+      }
+    },
+    "event": {
+      "category": ["authentication"],
+      "outcome": "failure",
+      "code": "4625",
+      "dataset": "windows.security"
+    },
+    "host": { "name": "fin-app-02.corp.internal" },
+    "user": { "name": "administrator" },
+    "source": { "ip": "185.129.62.62", "geo": { "country_iso_code": "LU" } },
+    "message": "Windows Security 4625 burst: 463 failed logons, logon type 10 (RemoteInteractive), usernames tried: administrator, finadmin, backup, svc-sql, jsmith, dwilliams, itadmin, helpdesk, scanner. No successful logon (4624) from this source in the window.",
+    "labels": {
+      "usernames_tried": "9",
+      "logon_type": "10",
+      "successful_logons_from_source": "0",
+      "first_seen": "2026-05-14T10:58:12Z"
+    }
+  }
+}

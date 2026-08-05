@@ -319,6 +319,66 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
             "qualys",  # must verify the scanner asset/account is legitimate
         ],
     },
+    # --- ECS-shaped fixtures: raw Elastic hits loaded through
+    # src/elastic.py normalize_hit, so the harness evaluates the production
+    # ingestion path end-to-end — normalization included. Added after a live
+    # watch-mode demo showed the ECS path hedging to inconclusive/low where
+    # the native path was a confident false_positive: all earlier fixtures
+    # bypassed the normalizer entirely. ---
+    "ecs_benign_nessus_scan.json": {
+        # Scanner burst, ECS shape, decoupled identifiers (Nessus, not
+        # Qualys). Benignity is evidenced (recurrence, schedule, reverse
+        # DNS) and the asset inventory carries the sanctioned-role
+        # entries; the alert itself never claims to be authorized.
+        # Calibrated over 6 live runs (3 per mode): 6/6 false_positive,
+        # 6/6 HIGH confidence, 6/6 no-escalation, and the inventory
+        # entries (10.44.7.9, svc-nessus) surfaced in every run. High is
+        # pinned deliberately: with a verified inventory match the
+        # copilot should not need to hedge — that IS the feature.
+        "expected_verdict": "false_positive",
+        "min_confidence": "high",
+        "must_escalate": False,
+        "pivots_must_include": [
+            # Must engage the scanner asset/account's legitimacy (7/7).
+            # A "verify nothing actually authenticated" pivot appeared 6/7
+            # but is NOT pinned: for a confident false positive whose
+            # alert already states zero successes, treating that as
+            # settled and pivoting to operational follow-ups (schedule
+            # confirmation, credential-rotation fix) is sound analyst
+            # judgment, not a miss. The auth-success pivot stays pinned
+            # on the TRUE-positive brute-force families, where it decides
+            # whether compromise occurred.
+            ["nessus", "scanner", "secops"],
+        ],
+    },
+    "ecs_rdp_brute_force.json": {
+        # External RDP spraying, ECS shape: proves the ingestion path can
+        # also reach a CONFIDENT true positive. All failures, zero
+        # successes — the T1110/T1078 triangulation applies to ECS input
+        # exactly as it does to native input. Calibrated over 6 live runs
+        # (3 per mode): 6/6 true_positive, 6/6 high, 6/6 escalate, T1110
+        # mapped 6/6, ≥5 associated groups every run. Phase 1 also mapped
+        # T1595 (active scanning) 3/3 and one agentic run added T1133 —
+        # adjacent inferences, tolerated but not required; tightening them
+        # into forbidden_techniques would need its own prompt-discipline
+        # pass, calibrated like the T1078 triangulation was.
+        "expected_verdict": "true_positive",
+        "min_confidence": "high",
+        "required_techniques": ["T1110"],
+        "forbidden_techniques": [
+            "T1566",   # no delivery evidence
+            "T1078",   # zero successful logons — valid-account use never observed
+            "T1047",   # no WMI anywhere in an RDP auth burst
+        ],
+        "must_escalate": True,
+        "pivots_must_include": [
+            # The non-negotiable pivot, RDP edition: did any logon
+            # succeed? (6/6, usually via Windows event 4624)
+            ["success", "succeed", "accepted", "4624"],
+        ],
+        "min_evidence_count": 1,
+        "min_associated_groups": 1,
+    },
     "benign_admin_powershell.json": {
         # Encoded PowerShell from CcmExec.exe as SYSTEM on an SCCM
         # management point, recurring daily, benign decoded preview. The

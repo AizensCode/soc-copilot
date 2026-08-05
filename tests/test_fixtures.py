@@ -6,24 +6,16 @@ the harness assumes but cannot see.
 
     uv run pytest tests/test_fixtures.py -v
 """
-import json
-from pathlib import Path
-
 import pytest
 
-from src.history import alert_iocs
+from src.history import alert_host, alert_iocs
 from src.models import Alert
+from tests.alert_loading import load_all_fixtures
 from tests.expectations import EXPECTATIONS
-
-SAMPLE_ALERTS_DIR = Path("data/sample_alerts")
 
 
 def _alerts() -> dict[str, Alert]:
-    out = {}
-    for path in sorted(SAMPLE_ALERTS_DIR.glob("*.json")):
-        with path.open() as f:
-            out[path.name] = Alert(**json.load(f))
-    return out
+    return load_all_fixtures()
 
 
 def test_every_sample_alert_is_labeled():
@@ -54,10 +46,12 @@ def test_fixtures_are_memory_decoupled():
     """
     alerts = _alerts()
     iocs = {name: set(alert_iocs(a)) for name, a in alerts.items()}
+    # alert_host handles both fixture shapes (native string, ECS object),
+    # so ECS fixtures participate in the host-decoupling invariant too.
     hosts = {
-        name: a.raw_log.get("host")
+        name: alert_host(a)
         for name, a in alerts.items()
-        if isinstance(a.raw_log.get("host"), str)
+        if alert_host(a) is not None
     }
 
     names = sorted(alerts)

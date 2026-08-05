@@ -33,6 +33,20 @@ CAMPAIGN_MIN_RELATED = 2
 _TCODE_RE = re.compile(r"T\d{4}(?:\.\d{3})?")
 
 
+def alert_host(alert: Alert) -> str | None:
+    """The alert's host as a plain string, whichever shape it arrived in.
+
+    Native fixtures carry raw_log["host"] as a string; ECS-normalized
+    alerts carry the ECS object ({"name": ...}). Memory must compare
+    hosts across both shapes or an ECS alert and a native alert about
+    the same machine would never correlate.
+    """
+    host = alert.raw_log.get("host") if isinstance(alert.raw_log, dict) else None
+    if isinstance(host, dict):
+        host = host.get("name")
+    return host if isinstance(host, str) and host else None
+
+
 def alert_iocs(alert: Alert) -> list[str]:
     """Flatten an alert's indicators into a de-duplicated list of IOC strings."""
     seen: list[str] = []
@@ -96,7 +110,7 @@ class AlertHistoryStore:
             "title": alert.title,
             "verdict": investigation.verdict,
             "confidence": investigation.confidence,
-            "host": alert.raw_log.get("host") if isinstance(alert.raw_log, dict) else None,
+            "host": alert_host(alert),
             "iocs": alert_iocs(alert),
             "attack_techniques": investigation.attack_techniques,
         }
@@ -163,9 +177,7 @@ class AlertHistoryStore:
         """
         current_iocs = set(alert_iocs(alert))
         current_ips = _ipv4s(list(current_iocs))
-        current_host = (
-            alert.raw_log.get("host") if isinstance(alert.raw_log, dict) else None
-        )
+        current_host = alert_host(alert)
         current_techs = _parent_tcodes(techniques or [])
         window = timedelta(hours=window_hours)
 

@@ -239,3 +239,22 @@ def test_unconfigured_source_raises_helpfully(monkeypatch):
     monkeypatch.setattr(elastic_mod, "settings", stub)
     with pytest.raises(RuntimeError, match="ELASTIC_URL"):
         ElasticAlertSource()
+
+
+def test_normalize_carries_labels_and_tags():
+    """labels/tags are ECS's designated custom-metadata carriers —
+    enrichment pipelines put structured context there (recurrence counts,
+    schedule matches), and dropping them starves the model of the evidence
+    that separates known-benign from unknown."""
+    hit = {
+        "_id": "x",
+        "_source": {
+            "@timestamp": "2026-05-12T02:07:44Z",
+            "host": {"name": "erp-web-07.internal"},
+            "labels": {"prior_identical_bursts_30d": "9"},
+            "tags": ["routine-scan-candidate"],
+        },
+    }
+    alert = normalize_hit(hit)
+    assert alert.raw_log["labels"] == {"prior_identical_bursts_30d": "9"}
+    assert alert.raw_log["tags"] == ["routine-scan-candidate"]

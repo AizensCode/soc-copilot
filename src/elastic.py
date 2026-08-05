@@ -26,9 +26,13 @@ from .models import Alert, Investigation
 
 # ECS fields that carry the alert's actual observables — projected into
 # raw_log so the model sees signal, not Kibana rule-execution metadata.
+# "labels" and "tags" are ECS's designated custom-metadata carriers:
+# enrichment pipelines put structured context there (recurrence counts,
+# schedule matches), and dropping them starved the model of exactly the
+# evidence that separates known-benign from unknown.
 _RAW_KEYS = [
     "event", "host", "user", "source", "destination", "network",
-    "process", "file", "url", "dns", "message",
+    "process", "file", "url", "dns", "message", "labels", "tags",
 ]
 
 _VALID_SEVERITIES = {"low", "medium", "high", "critical"}
