@@ -128,6 +128,19 @@ class PriorSighting(BaseModel):
     matched_iocs: list[str] = Field(
         description="Indicators shared between this alert and the prior one"
     )
+    human_verdict: str | None = Field(
+        default=None,
+        description=(
+            "The analyst's ruling on that prior investigation, synced back "
+            "from case management (--sync-feedback). When present it "
+            "outranks the copilot's own recorded verdict: memory must not "
+            "keep citing an opinion a human has overturned."
+        ),
+    )
+    human_summary: str | None = Field(
+        default=None,
+        description="The analyst's closing note, when they wrote one",
+    )
 
 
 class RelatedAlert(BaseModel):

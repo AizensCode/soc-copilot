@@ -310,3 +310,129 @@ class TheHiveClient:
                 f"alert for {alert.alert_id}: {e.response.text[:200]}"
             ) from e
         return str(data.get("_id") or data.get("id") or "")
+
+    async def _query(self, name: str, body: dict) -> list | dict:
+        async def do(client: httpx.AsyncClient) -> list | dict:
+            resp = await client.post(
+                f"{self.url}/api/v1/query?name={name}",
+                json=body,
+                headers=self._headers,
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+        try:
+            if self._client is not None:
+                return await do(self._client)
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                return await do(client)
+        except httpx.HTTPStatusError as e:
+            raise RuntimeError(
+                f"TheHive returned HTTP {e.response.status_code} for query "
+                f"'{name}': {e.response.text[:200]}"
+            ) from e
+
+    async def _get_case(self, case_id: str) -> dict:
+        async def do(client: httpx.AsyncClient) -> dict:
+            resp = await client.get(
+                f"{self.url}/api/v1/case/{case_id}", headers=self._headers
+            )
+            resp.raise_for_status()
+            return resp.json()
+
+        if self._client is not None:
+            return await do(self._client)
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            return await do(client)
+
+    async def fetch_dispositions(self) -> list[dict]:
+        """What did human analysts decide about the copilot's alerts?
+
+        Reads every alert this copilot created (type "soc-copilot") and
+        translates TheHive's workflow states into verdict language via
+        _DISPOSITION_MAP (alert-level statuses, verified against a live
+        TheHive 5.7.5). An Imported alert defers to its case: promotion
+        alone means "an analyst took ownership", which is not yet a
+        ruling — only a case closed with a resolution status is. Open
+        cases and workflow-only statuses (New, InProgress, Pending,
+        Duplicate) yield nothing.
+
+        Returns [{alert_id, human_verdict, source, summary}], where
+        alert_id is the sourceRef — the copilot's own alert id.
+        """
+        alerts = await self._query(
+            "feedback-alerts", {"query": [{"_name": "listAlert"}]}
+        )
+        out: list[dict] = []
+        for a in alerts:
+            if a.get("type") != "soc-copilot":
+                continue  # not ours: someone else's alert feed
+            source_ref = a.get("sourceRef")
+            if not source_ref:
+                continue
+            status = a.get("status")
+
+            if status in _DISPOSITION_MAP:
+                verdict, source = _DISPOSITION_MAP[status]
+                out.append(
+                    {
+                        "alert_id": source_ref,
+                        "human_verdict": verdict,
+                        "source": source,
+                        "summary": None,
+                    }
+                )
+            elif a.get("caseId"):
+                case = await self._get_case(a["caseId"])
+                if case.get("stage") != "Closed":
+                    continue  # owned but not yet ruled
+                verdict = _CASE_RESOLUTION_MAP.get(case.get("status"))
+                if verdict is None:
+                    continue
+                out.append(
+                    {
+                        "alert_id": source_ref,
+                        "human_verdict": verdict,
+                        "source": f"thehive:case-{case.get('number')}",
+                        "summary": case.get("summary") or None,
+                    }
+                )
+        return out
+
+
+# Alert-level statuses that ARE a ruling by themselves. Duplicate is
+# deliberately absent (it says "we've seen this", not "it was benign"),
+# and Imported is handled through the case's resolution instead.
+_DISPOSITION_MAP = {
+    "FalsePositive": ("false_positive", "thehive:alert-status"),
+    "Ignored": ("false_positive", "thehive:alert-dismissed"),
+}
+
+# Closed-case resolution statuses -> the copilot's verdict vocabulary.
+_CASE_RESOLUTION_MAP = {
+    "TruePositive": "true_positive",
+    "FalsePositive": "false_positive",
+    "Indeterminate": "inconclusive",
+}
+
+
+async def sync_dispositions(client: "TheHiveClient", store) -> list[dict]:
+    """Pull analyst rulings from TheHive into the history store.
+
+    Idempotent in effect: records are appended, latest-per-alert wins on
+    read, so re-syncing an unchanged ruling only reasserts it. Returns
+    the fetched dispositions so callers can report what changed.
+    """
+    dispositions = await client.fetch_dispositions()
+    existing = store.dispositions()
+    for d in dispositions:
+        prior = existing.get(d["alert_id"])
+        if prior and (prior.get("human_verdict"), prior.get("summary")) == (
+            d["human_verdict"],
+            d["summary"],
+        ):
+            continue  # unchanged — don't grow the file on every sync
+        store.record_disposition(
+            d["alert_id"], d["human_verdict"], d["source"], d["summary"]
+        )
+    return dispositions

@@ -89,10 +89,18 @@ def _parent_tcodes(techniques: list[str]) -> set[str]:
 
 
 class AlertHistoryStore:
-    """Persist investigations and look them up by shared indicator."""
+    """Persist investigations and look them up by shared indicator.
+
+    Beside the investigations file lives a dispositions file
+    (dispositions.jsonl): analyst rulings synced back from case
+    management. The copilot's own verdicts are opinions; a human ruling
+    on one of them is ground truth, and prior sightings carry both so
+    the model can never cite an overturned opinion as unchallenged.
+    """
 
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
+        self.dispositions_path = self.path.with_name("dispositions.jsonl")
 
     def _iter_records(self) -> Iterator[dict]:
         if not self.path.exists():
@@ -101,6 +109,40 @@ class AlertHistoryStore:
             line = line.strip()
             if line:
                 yield json.loads(line)
+
+    def record_disposition(
+        self,
+        alert_id: str,
+        human_verdict: str,
+        source: str,
+        summary: str | None = None,
+    ) -> None:
+        """Append an analyst ruling for a previously investigated alert.
+
+        Append-only like the investigations file; the latest record per
+        alert_id wins, so a re-opened and re-ruled case simply appends.
+        """
+        rec = {
+            "alert_id": alert_id,
+            "human_verdict": human_verdict,
+            "source": source,
+            "summary": summary,
+        }
+        self.dispositions_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.dispositions_path.open("a") as f:
+            f.write(json.dumps(rec) + "\n")
+
+    def dispositions(self) -> dict[str, dict]:
+        """Latest analyst ruling per alert_id."""
+        out: dict[str, dict] = {}
+        if not self.dispositions_path.exists():
+            return out
+        for line in self.dispositions_path.read_text().splitlines():
+            line = line.strip()
+            if line:
+                rec = json.loads(line)
+                out[rec["alert_id"]] = rec
+        return out
 
     def record(self, alert: Alert, investigation: Investigation) -> None:
         """Append a record for a completed investigation."""
@@ -128,6 +170,7 @@ class AlertHistoryStore:
         if not current:
             return []
 
+        rulings = self.dispositions()
         sightings: list[PriorSighting] = []
         seen_alert_ids: set[str] = set()
         for rec in self._iter_records():
@@ -139,6 +182,7 @@ class AlertHistoryStore:
             if not matched:
                 continue
             seen_alert_ids.add(rec["alert_id"])
+            ruling = rulings.get(rec["alert_id"], {})
             sightings.append(
                 PriorSighting(
                     alert_id=rec["alert_id"],
@@ -147,6 +191,8 @@ class AlertHistoryStore:
                     confidence=rec["confidence"],
                     title=rec["title"],
                     matched_iocs=matched,
+                    human_verdict=ruling.get("human_verdict"),
+                    human_summary=ruling.get("summary"),
                 )
             )
 

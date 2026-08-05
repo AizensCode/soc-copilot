@@ -175,6 +175,16 @@ The same grounding discipline as threat-actor context applies. Prior sightings a
 
 Two details worth calling out. First, when the store has no match, the injected block is the empty string — an empty history leaves the prompt byte-for-byte unchanged, which keeps investigations deterministic and means the existing eval harness (which runs against an isolated empty store) is unaffected. Second, the core memory logic is a pure function of the store, so it's tested entirely without the API: `tests/test_history.py` records and looks up investigations directly, validating recurrence detection, self-exclusion, multi-IOC dedup, and recency ordering in milliseconds. The expensive API harness only has to confirm the wiring, not the logic.
 
+### Memory stops being an echo chamber
+
+Cross-alert memory as first built had a quiet epistemic flaw: the verdicts it fed back were the copilot's **own past opinions**, presented with the same authority as any other grounded context. If a human analyst overturned one of those calls in TheHive, the copilot would keep citing its own mistake as history — the machine equivalent of an analyst who never reads the case outcomes of alerts they triaged.
+
+`--sync-feedback` closes the loop in the other direction. It reads every alert the copilot ever created in TheHive (`type: soc-copilot`) and translates the analyst's workflow decisions into verdict language, using a mapping verified against a live TheHive 5.7.5 rather than assumed: alert status `FalsePositive` is a ruling; `Ignored` is a dismissal (recorded as `false_positive` with a weaker source tag); `Imported` defers to the case it became — promotion alone means an analyst took ownership, which is not yet a ruling, so only a case closed with a resolution (`TruePositive`/`FalsePositive`/`Indeterminate`) counts, and its closing summary rides along. `Duplicate` and the open workflow states yield nothing. Rulings land in `dispositions.jsonl` beside the history store (append-only, latest ruling per alert wins), and prior sightings then carry both layers: `verdict=` — the copilot's opinion — and `ANALYST RULED:` — the human's, marked as `confirming` or `OVERTURNING`, with the analyst's note quoted.
+
+The prompt discipline is the point: an analyst ruling is ground truth from the human the copilot works for, so it outranks the recorded verdict, and an overturned prior means the earlier reasoning missed something — recalibrate, don't repeat it. Rendering follows the inert-when-absent rule (an unruled history reads exactly as before), and the sync is honest about provenance: each disposition records whether it came from an alert-level status or a numbered case's resolution.
+
+Verified live in both directions. The sync ran against the dev TheHive after real analyst actions and correctly translated both: an alert dismissed as `FalsePositive`, and an alert promoted to a case that closed `TruePositive` — the case's closing summary ("Confirmed account compromise: token replay… sessions revoked") arriving as the analyst note. Then a behavior probe, spot-checked live rather than pinned (4 runs, both modes, isolated store): a prior the copilot had called `true_positive` (60-second beaconing to unknown infra) carrying an analyst overturn — *"sanctioned purple-team exercise PT-2026-14, approved through 2026-09-30"* — followed by a new alert on the same infrastructure. Without the ruling, that alert is a textbook C2 true positive; with it, **4/4 runs concluded `false_positive` with no escalation** (3 high / 1 medium confidence), 4/4 cited the exercise by ID, and — the part that shows the discipline surviving deference — 4/4 still proposed verifying the current activity against the engagement's scope and expiry window. The copilot updates on human feedback without becoming credulous about it.
+
 ### Recognizing campaigns
 
 Prior sightings match on an *exact* shared indicator. Real campaigns are looser than that — three brute-force alerts from `185.220.101.10`, `.14`, and `.47` hitting different hosts in the same hour are obviously one operation, but they share no exact IOC. `AlertHistoryStore.correlate()` handles that broader relatedness.
@@ -282,7 +292,7 @@ soc-copilot/
 │   ├── elastic.py          # Elastic SIEM source: pull ECS alerts, push results
 │   ├── casemgmt.py         # TheHive output: investigation → alert with observables
 │   ├── config.py           # Settings + env loading
-│   ├── main.py             # CLI: file / --from-elastic / --watch [--auto-close] [--case]
+│   ├── main.py             # CLI: file / --from-elastic / --watch / --sync-feedback
 │   ├── prompts/
 │   │   ├── system.py       # Phase 1 system prompt
 │   │   └── agentic.py      # Phase 2 system prompt
@@ -312,6 +322,7 @@ soc-copilot/
 │   ├── test_casemgmt.py    # TheHive payload mapping + HTTP unit tests (no API)
 │   ├── test_tools.py       # Tool dispatch guardrails (no API)
 │   ├── test_campaign_scenario.py  # Multi-stage campaign eval (API-backed, own store)
+│   ├── test_feedback.py    # Analyst-ruling sync + memory annotation (no API)
 │   ├── test_assets.py      # Asset-inventory matcher unit tests (no API)
 │   ├── alert_loading.py    # Shared loader: native fixtures + ECS hits via normalize_hit
 │   └── expectations.py     # Per-alert correctness criteria
@@ -359,6 +370,10 @@ uv run python -m src.main --watch 60
 # (deterministic policy — see src/closure.py) and open a TheHive alert for
 # anything a human should own (requires THEHIVE_URL / THEHIVE_API_KEY)
 uv run python -m src.main --watch 60 --auto-close --case
+
+# Pull analyst rulings back from TheHive into the copilot's memory, so
+# prior sightings carry the human's verdict beside the copilot's own
+uv run python -m src.main --sync-feedback
 
 # Run the eval harness (13 alerts x 2 modes, live API calls)
 uv run pytest tests/test_investigations.py -v

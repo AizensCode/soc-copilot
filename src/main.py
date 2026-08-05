@@ -16,6 +16,11 @@
     --case opens a TheHive alert for investigations a human should own
     (escalated, true-positive, or campaign-correlated). Requires
     THEHIVE_URL and THEHIVE_API_KEY.
+
+    # Pull analyst rulings from TheHive back into the copilot's memory:
+    # prior sightings then carry the human's verdict beside the
+    # copilot's own, and a ruling outranks the recorded opinion.
+    uv run python -m src.main --sync-feedback
 """
 import asyncio
 import json
@@ -29,8 +34,40 @@ USAGE = (
     "Usage:\n"
     "  python -m src.main <path/to/alert.json> [--agentic] [--report [out.html]] [--case]\n"
     "  python -m src.main --from-elastic [N] [--agentic] [--push] [--report] [--case]\n"
-    "  python -m src.main --watch [interval_seconds] [--agentic] [--auto-close] [--case]"
+    "  python -m src.main --watch [interval_seconds] [--agentic] [--auto-close] [--case]\n"
+    "  python -m src.main --sync-feedback"
 )
+
+
+async def _run_sync_feedback() -> None:
+    """Pull analyst rulings from TheHive into the copilot's memory.
+
+    After this, prior sightings carry the human's verdict beside the
+    copilot's own — memory stops being an echo chamber of the copilot's
+    opinions. Run it periodically (cron, or before a watch session).
+    """
+    from .casemgmt import TheHiveClient, sync_dispositions
+    from .config import settings
+    from .history import AlertHistoryStore
+
+    store = AlertHistoryStore(settings.HISTORY_PATH)
+    known = {r["alert_id"] for r in store._iter_records()}
+    try:
+        dispositions = await sync_dispositions(TheHiveClient(), store)
+    except RuntimeError as e:
+        print(e)
+        sys.exit(1)
+    if not dispositions:
+        print("No analyst rulings found in TheHive yet.")
+        return
+    for d in dispositions:
+        marker = "" if d["alert_id"] in known else " (no local investigation on record)"
+        note = f' — "{d["summary"]}"' if d.get("summary") else ""
+        print(
+            f"{d['alert_id']}: analyst ruled {d['human_verdict']} "
+            f"[{d['source']}]{note}{marker}"
+        )
+    print(f"Synced {len(dispositions)} ruling(s) into {store.dispositions_path}")
 
 
 async def _maybe_open_case(alert: Alert, investigation: Investigation) -> None:
@@ -250,7 +287,9 @@ async def main() -> None:
         sys.exit(1)
 
     agentic = "--agentic" in sys.argv
-    if sys.argv[1] == "--from-elastic":
+    if sys.argv[1] == "--sync-feedback":
+        await _run_sync_feedback()
+    elif sys.argv[1] == "--from-elastic":
         await _run_elastic(agentic)
     elif sys.argv[1] == "--watch":
         try:

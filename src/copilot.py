@@ -64,12 +64,37 @@ class SOCCopilot:
                 "this alert. Treat as grounded context — weigh it in your "
                 "hypothesis, confidence, and escalation call:",
             ]
+            if any(p.human_verdict for p in priors):
+                # Only explain rulings when one is actually present —
+                # unruled histories leave the prompt unchanged.
+                lines.insert(
+                    2,
+                    "Verdicts below are this copilot's own past OPINIONS; "
+                    "where a human analyst has since ruled on one (ANALYST "
+                    "RULED), the ruling is ground truth and outranks the "
+                    "recorded verdict. A confirmed prior strengthens the "
+                    "same conclusion here; an overturned prior means the "
+                    "earlier reasoning missed something — do not repeat it, "
+                    "and say what you weighed differently.",
+                )
             for p in priors:
-                lines.append(
+                line = (
                     f"- {p.alert_id} ({p.timestamp:%Y-%m-%d}, verdict={p.verdict}, "
                     f"confidence={p.confidence}): \"{p.title}\" "
                     f"— shared indicators: {', '.join(p.matched_iocs)}"
                 )
+                if p.human_verdict:
+                    agreement = (
+                        "confirming" if p.human_verdict == p.verdict
+                        else "OVERTURNING"
+                    )
+                    line += (
+                        f"\n  ANALYST RULED: {p.human_verdict} "
+                        f"({agreement} the copilot's {p.verdict})"
+                    )
+                    if p.human_summary:
+                        line += f' — analyst note: "{p.human_summary}"'
+                lines.append(line)
             sections.append("\n".join(lines))
 
         if correlation and correlation.related_alerts:
