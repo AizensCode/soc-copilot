@@ -1,0 +1,29 @@
+{
+  "_comment": "Stage 3 of the CI-compromise campaign scenario. Native EDR shape. Shares the host with stages 1-2 and the stage-1/2 source IP, so correlation should now count TWO related priors and cross the campaign threshold (history.CAMPAIGN_MIN_RELATED).",
+  "alert_id": "ALRT-2026-0611-103",
+  "timestamp": "2026-06-11T04:47:55Z",
+  "source": "edr",
+  "severity": "high",
+  "title": "Large outbound transfer after archive staging on build server",
+  "raw_log": {
+    "event_type": "network_transfer",
+    "host": "bld-ci-04.corp.internal",
+    "user": "svc-jenkins",
+    "process": "curl.exe",
+    "parent_process": "sshd.exe",
+    "parent_session_source_ip": "107.189.31.187",
+    "staged_file": "C:\\ProgramData\\Intel\\src-backup.7z",
+    "staged_file_size_bytes": 2576980377,
+    "staged_from": "C:\\builds\\repo-mirror\\",
+    "destination_ip": "45.148.10.216",
+    "destination_port": 443,
+    "bytes_out": 2576980377,
+    "duration_seconds": 1364,
+    "baseline_daily_egress_bytes": 41943040
+  },
+  "indicators": {
+    "ips": ["45.148.10.216", "107.189.31.187"],
+    "hashes": [],
+    "users": ["svc-jenkins"]
+  }
+}

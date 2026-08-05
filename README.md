@@ -229,7 +229,21 @@ TheHive was chosen over DFIR-IRIS on one engineering point, after reading both A
 
 Eval fixtures look like inert data, but a flaw in one silently weakens every assertion built on it — and the harness cannot see the flaw, because from its perspective the tests still pass. Two real bugs taught this. First, cross-alert memory is *global to a harness run*: a benign vulnerability-scan fixture originally targeted the same host the brute-force fixture attacks, so whichever ran second inherited the other's prior sighting and its verdict moved (the copilot was right to hedge; the experiment was broken). Second, an expectation key is only honored if spelled exactly — every assertion skips when its key is absent, so a typo produces a green test that checks nothing.
 
-`tests/test_fixtures.py` now asserts the properties the harness assumes but can't observe: no two fixtures share an IOC or a host, every fixture is labeled and every label has a fixture, alert IDs are unique, and every expectation key is one the harness actually implements. Deliberate coupling — a campaign scenario, say — belongs in a dedicated test with its own store, never in the shared labeled set.
+`tests/test_fixtures.py` now asserts the properties the harness assumes but can't observe: no two fixtures share an IOC or a host, every fixture is labeled and every label has a fixture, alert IDs are unique, and every expectation key is one the harness actually implements. Deliberate coupling — a campaign scenario, say — belongs in a dedicated test with its own store, never in the shared labeled set; that scenario now exists (see "The campaign that had to be tested somewhere else" below).
+
+### The campaign that had to be tested somewhere else
+
+The memory-decoupling rule (above) has a cost I left unpaid for a while: if no two labeled fixtures may share an indicator, then the most interesting thing cross-alert memory does — behave differently when alerts *are* related — cannot be measured in the labeled set at all. `correlate()` had unit tests over synthetic records, and the copilot had never once been evaluated on an actual multi-stage intrusion.
+
+`data/scenarios/campaign_ci_compromise/` is that missing eval, built where the coupling *is* the experiment: three detections on one CI build server over seven hours — external SSH auth on a service account with no MFA, an unsigned binary reading LSASS inside that session, then a 2.4 GB archive of the repo mirror pushed to a bulletproof host. `tests/test_campaign_scenario.py` runs them chronologically through a **private history store per mode**, so the scenario can never leak into the labeled set's results.
+
+What it pins is the *shape of the escalation*, not just the endpoint: stage 1 stands alone (no phantom priors conjured from an alert's own content), stage 2 carries one related prior and is explicitly **not** a campaign (a threshold that fires on the first coincidence is not a threshold), stage 3 crosses it with both priors attached. Stage 1 arrives ECS-shaped while stages 2–3 are native EDR fixtures, on purpose: a real campaign spans ingestion paths, so the scenario also holds `history.alert_host` to account — if host comparison regressed to a literal match, the campaign would silently fracture into three unrelated alerts, which is exactly the kind of failure that looks like success.
+
+Calibration was 6 full sequences (3 per mode, 18 live investigations): `true_positive`/`high`/escalate 18/18, the correlation curve exact 6/6, and the technique discipline holding in both directions — T1078 required where the auth actually succeeded, T1003 required where a handle opened into LSASS, T1110 and T1566 forbidden throughout because nothing was ever guessed or delivered. One invariant I didn't expect to find surfaced in the data and got pinned: at **stage 2** — still below the campaign threshold — every run named the prior alert by ID and cited the shared source IP in its write-up. Memory reaching the analyst before it reaches a threshold is the behavior that actually saves a shift, and now it can't regress silently.
+
+The first run of the finished test failed, and it was my fault in an instructive way. I had also required T1078 on stage 3 — never having measured it there. My calibration script printed four counts (stage-1 T1078, stage-2 T1003, and two stage-3 technique checks), all 6/6, and I generalized from stage 1 to stage 3 rather than from data. The true figure was 5/6: one run mapped only what stage 3 itself shows, staging and exfiltration, leaving valid-account use to the stages where it was the observed event — which is the same discipline, not a miss. The assertion was relaxed and the reasoning left in the file. It is a small illustration of the rule this whole harness exists to enforce: an expectation you didn't calibrate is just taste with a green checkmark, and the only reason this one got caught is that the calibration data outlived the moment I wrote the assertion.
+
+The scenario also closes a hole in how the test suites were split. "Which tests cost money" was a path ignore-list (`--ignore=tests/test_investigations.py`), so any new API-backed file silently joined the *free* suite and would have quietly billed anyone running it. It is now a pytest marker: `-m "not live"` is the free suite (126 tests), `-m live` the API-backed one — a property of the test rather than something a reader has to remember.
 
 ### Grounding means "correct or refuses to run"
 
@@ -297,12 +311,14 @@ soc-copilot/
 │   ├── test_elastic.py     # ECS normalization + Elastic HTTP unit tests (no API)
 │   ├── test_casemgmt.py    # TheHive payload mapping + HTTP unit tests (no API)
 │   ├── test_tools.py       # Tool dispatch guardrails (no API)
+│   ├── test_campaign_scenario.py  # Multi-stage campaign eval (API-backed, own store)
 │   ├── test_assets.py      # Asset-inventory matcher unit tests (no API)
 │   ├── alert_loading.py    # Shared loader: native fixtures + ECS hits via normalize_hit
 │   └── expectations.py     # Per-alert correctness criteria
 ├── data/
 │   ├── sample_alerts/      # Labeled alerts (13: attacks, benign, adversarial — incl. 2 ECS-shaped)
 │   ├── asset_context.json  # Operator-owned asset inventory (environment context)
+│   ├── scenarios/          # Deliberately coupled multi-alert scenarios (campaign eval)
 │   ├── sigma/              # Curated SigmaHQ rules + provenance (DRL-licensed)
 │   ├── mitre/              # Generated technique→group lookup (committed)
 │   ├── history/            # Runtime case history (gitignored)
@@ -347,8 +363,14 @@ uv run python -m src.main --watch 60 --auto-close --case
 # Run the eval harness (13 alerts x 2 modes, live API calls)
 uv run pytest tests/test_investigations.py -v
 
+# Run the multi-stage campaign scenario (3 coupled alerts x 2 modes, live)
+uv run pytest tests/test_campaign_scenario.py -v
+
+# Everything that spends money, in one go
+uv run pytest tests/ -m live -q
+
 # Everything that needs no API key or network (fast, deterministic)
-uv run pytest tests/ --ignore=tests/test_investigations.py -q
+uv run pytest tests/ -m "not live" -q
 ```
 
 ### Local Elastic dev stack (no Docker required)
@@ -451,6 +473,7 @@ The project is research-grade today. Three concrete directions to grow it.
 
 - ~~**Alert history store**~~ ✅ Implemented via `AlertHistoryStore` (JSONL-backed, indexed by IOC). Every investigation persists; when a new alert shares an indicator with a past one, the copilot surfaces that prior sighting as grounded context in both modes. The cross-alert memory a human analyst keeps in their head. See "Cross-alert memory, grounded" below.
 - ~~**Multi-alert correlation**~~ ✅ Implemented via `AlertHistoryStore.correlate()`. Alerts that fall within a time window and share infrastructure or a target (an exact IOC, a /24-adjacent IP, or the same host) are clustered; once enough accumulate, the investigation's `correlation` field flags a possible campaign. Shared technique families corroborate an already-linked pair but never link alerts on their own. See "Recognizing campaigns" below.
+- ~~**Campaign behavior under evaluation**~~ ✅ Implemented via `data/scenarios/campaign_ci_compromise/` + `tests/test_campaign_scenario.py`: a three-stage intrusion, deliberately coupled, run chronologically through a private history store per mode. Asserts the whole escalation curve (isolated → related-but-below-threshold → campaign), that it survives crossing ingestion shapes, and that memory reaches the analyst's write-up before it reaches the campaign threshold. See "The campaign that had to be tested somewhere else" below.
 
 ### Long-term: case management integration
 

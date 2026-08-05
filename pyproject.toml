@@ -22,3 +22,9 @@ dev = [
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 testpaths = ["tests"]
+# Which tests spend money is a property of the test, not of a path list a
+# reader has to remember: `-m "not live"` is the free suite, `-m live` the
+# API-backed one. (An --ignore list silently absorbs every new live file.)
+markers = [
+    "live: makes real Anthropic API calls — slow and costs money",
+]

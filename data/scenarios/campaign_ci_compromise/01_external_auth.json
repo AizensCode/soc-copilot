@@ -1,0 +1,35 @@
+{
+  "_id": "campaign-stage-1",
+  "_comment": "Stage 1 of the CI-compromise campaign scenario. ECS-shaped (arrives via the Elastic path) while stages 2-3 are native EDR fixtures — a real campaign spans ingestion paths, and correlation must match hosts across both raw_log shapes.",
+  "_source": {
+    "@timestamp": "2026-06-10T22:14:07Z",
+    "kibana": {
+      "alert": {
+        "uuid": "ALRT-2026-0610-101",
+        "severity": "medium",
+        "risk_score": 55,
+        "workflow_status": "open",
+        "reason": "Successful SSH authentication for svc-jenkins on bld-ci-04 from 107.189.31.187 (US) with no MFA",
+        "rule": {
+          "name": "External authentication to internal build infrastructure",
+          "description": "Flags successful authentication to build/CI hosts from outside the corporate address space"
+        }
+      }
+    },
+    "event": {
+      "category": ["authentication"],
+      "outcome": "success",
+      "dataset": "system.auth"
+    },
+    "host": { "name": "bld-ci-04.corp.internal" },
+    "user": { "name": "svc-jenkins" },
+    "source": { "ip": "107.189.31.187", "geo": { "country_iso_code": "US" } },
+    "message": "sshd: Accepted publickey for svc-jenkins from 107.189.31.187 port 51044; session opened. Account has never authenticated from outside 10.0.0.0/8 in 180 days of history.",
+    "labels": {
+      "external_source": "true",
+      "mfa": "none",
+      "prior_external_auths_180d": "0",
+      "session_id": "sshd-88213"
+    }
+  }
+}

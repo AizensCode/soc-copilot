@@ -22,6 +22,10 @@ from .expectations import (
 )
 
 
+# Every test in this module drives live API calls (see the `live` marker
+# in pyproject.toml): `-m "not live"` is the free suite.
+pytestmark = pytest.mark.live
+
 MODES = ["phase_one", "agentic"]
 
 
