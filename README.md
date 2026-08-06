@@ -183,6 +183,8 @@ Cross-alert memory as first built had a quiet epistemic flaw: the verdicts it fe
 
 The prompt discipline is the point: an analyst ruling is ground truth from the human the copilot works for, so it outranks the recorded verdict, and an overturned prior means the earlier reasoning missed something — recalibrate, don't repeat it. Rendering follows the inert-when-absent rule (an unruled history reads exactly as before), and the sync is honest about provenance: each disposition records whether it came from an alert-level status or a numbered case's resolution.
 
+The record it produces is queryable from both ends. `--scorecard` prints the copilot-vs-analyst accuracy record from local memory — distinct alerts investigated, how many a human has ruled on, the agreement rate, and (the part that actually drives improvement) the disagreement list with the analyst's notes: every fix this project made started life as one of those rows. Two semantics coexist on purpose: the scorecard judges the copilot's **latest** verdict per alert (the opinion that stood when the human ruled), while the dashboard's per-document `human_agrees` stamps preserve the full trajectory — for the recurring scanner alert, the console shows three early `disagrees` runs and a final `agrees`, while the scorecard counts one agreement, because the copilot got there before the ruling landed. An empty denominator renders as "no accuracy data yet", never as a perfect record. The "Analyst agreement" tile on the console is the same number, live.
+
 The loop runs on its own and shows its work. `--watch` syncs rulings from TheHive every five minutes (a human cadence, not a poll cadence) with no operator in the loop — the standalone `--sync-feedback` remains for cron jobs and catch-ups. And every synced ruling is stamped back onto the investigation documents in Elastic, so the analyst console shows the copilot's verdict and the human's side by side, plus a `human_agrees` boolean whose `false` rows are the ones worth a second look. That stamp is computed **per document against each doc's own verdict**: an alert investigated several times (as they are in watch mode) shows exactly which of the copilot's attempts the analyst ended up agreeing with — the live index for the recurring scanner alert reads `inconclusive/disagrees` on its early runs and `false_positive/agrees` once environment context moved it, with the human's ruling constant throughout. The write-back is a search-plus-per-doc-update rather than an `_update_by_query`, deliberately: byquery needs broader index privileges than a least-privilege SIEM key carries (it 403s on the dev stack), and per-doc updates are what make that per-verdict agreement flag possible in the first place. Like `--case`, the whole path is opt-in and never fatal — no TheHive, no sync; no Elastic, the ruling still lands in memory.
 
 Verified live in both directions. The sync ran against the dev TheHive after real analyst actions and correctly translated both: an alert dismissed as `FalsePositive`, and an alert promoted to a case that closed `TruePositive` — the case's closing summary ("Confirmed account compromise: token replay… sessions revoked") arriving as the analyst note. Then a behavior probe, spot-checked live rather than pin
@@ -294,7 +296,8 @@ soc-copilot/
 │   ├── elastic.py          # Elastic SIEM source: pull ECS alerts, push results
 │   ├── casemgmt.py         # TheHive output: investigation → alert with observables
 │   ├── config.py           # Settings + env loading
-│   ├── main.py             # CLI: file / --from-elastic / --watch / --sync-feedback
+│   ├── scorecard.py        # Copilot-vs-analyst accuracy record (pure functions)
+│   ├── main.py             # CLI: file / --from-elastic / --watch / --sync-feedback / --scorecard
 │   ├── prompts/
 │   │   ├── system.py       # Phase 1 system prompt
 │   │   └── agentic.py      # Phase 2 system prompt
@@ -325,6 +328,7 @@ soc-copilot/
 │   ├── test_tools.py       # Tool dispatch guardrails (no API)
 │   ├── test_campaign_scenario.py  # Multi-stage campaign eval (API-backed, own store)
 │   ├── test_feedback.py    # Analyst-ruling sync + memory annotation (no API)
+│   ├── test_scorecard.py   # Accuracy-record math + rendering (no API)
 │   ├── test_assets.py      # Asset-inventory matcher unit tests (no API)
 │   ├── alert_loading.py    # Shared loader: native fixtures + ECS hits via normalize_hit
 │   └── expectations.py     # Per-alert correctness criteria
@@ -376,6 +380,10 @@ uv run python -m src.main --watch 60 --auto-close --case
 # Pull analyst rulings back from TheHive into the copilot's memory, so
 # prior sightings carry the human's verdict beside the copilot's own
 uv run python -m src.main --sync-feedback
+
+# How often does the copilot's verdict match the analyst's ruling?
+# Prints the agreement rate and the disagreement list with analyst notes
+uv run python -m src.main --scorecard
 
 # Run the eval harness (13 alerts x 2 modes, live API calls)
 uv run pytest tests/test_investigations.py -v

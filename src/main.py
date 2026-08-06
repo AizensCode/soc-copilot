@@ -39,8 +39,19 @@ USAGE = (
     "  python -m src.main <path/to/alert.json> [--agentic] [--report [out.html]] [--case]\n"
     "  python -m src.main --from-elastic [N] [--agentic] [--push] [--report] [--case]\n"
     "  python -m src.main --watch [interval_seconds] [--agentic] [--auto-close] [--case]\n"
-    "  python -m src.main --sync-feedback"
+    "  python -m src.main --sync-feedback\n"
+    "  python -m src.main --scorecard"
 )
+
+
+async def _run_scorecard() -> None:
+    """Print the copilot-vs-analyst accuracy record from local memory."""
+    from .config import settings
+    from .history import AlertHistoryStore
+    from .scorecard import build_scorecard, render_scorecard
+
+    store = AlertHistoryStore(settings.HISTORY_PATH)
+    print(render_scorecard(build_scorecard(store)))
 
 
 async def _annotate_elastic(changed: list[dict]) -> None:
@@ -367,6 +378,8 @@ async def main() -> None:
     agentic = "--agentic" in sys.argv
     if sys.argv[1] == "--sync-feedback":
         await _run_sync_feedback()
+    elif sys.argv[1] == "--scorecard":
+        await _run_scorecard()
     elif sys.argv[1] == "--from-elastic":
         await _run_elastic(agentic)
     elif sys.argv[1] == "--watch":
