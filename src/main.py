@@ -21,6 +21,11 @@
     # prior sightings then carry the human's verdict beside the
     # copilot's own, and a ruling outranks the recorded opinion.
     uv run python -m src.main --sync-feedback
+
+    # Interrogate a recorded investigation: one-shot with a question,
+    # or an interactive session without one. Answers are grounded in
+    # the stored record — no new tool calls, no re-investigation.
+    uv run python -m src.main --ask ALERT_ID ["question"]
 """
 import asyncio
 import json
@@ -40,8 +45,58 @@ USAGE = (
     "  python -m src.main --from-elastic [N] [--agentic] [--push] [--report] [--case]\n"
     "  python -m src.main --watch [interval_seconds] [--agentic] [--auto-close] [--case]\n"
     "  python -m src.main --sync-feedback\n"
-    "  python -m src.main --scorecard"
+    "  python -m src.main --scorecard\n"
+    "  python -m src.main --ask ALERT_ID [\"question\"]"
 )
+
+
+async def _run_ask() -> None:
+    """Follow-up mode: interrogate a recorded investigation.
+
+    With a question argument, answers once and exits (scriptable).
+    Without one, holds an interactive session — later questions ride on
+    the same conversation, so "and why high confidence?" works.
+    """
+    from .config import settings
+    from .followup import FollowUpSession
+    from .history import AlertHistoryStore
+
+    if len(sys.argv) < 3:
+        print(USAGE)
+        sys.exit(1)
+    alert_id = sys.argv[2]
+    store = AlertHistoryStore(settings.HISTORY_PATH)
+    try:
+        session = FollowUpSession(alert_id, history_store=store)
+    except KeyError:
+        known = list(dict.fromkeys(r["alert_id"] for r in store._iter_records()))
+        print(f"No investigation on record for {alert_id!r}.")
+        if known:
+            print("Investigated alerts (oldest first):")
+            for aid in known:
+                print(f"  {aid}")
+        sys.exit(1)
+
+    question = sys.argv[3] if len(sys.argv) > 3 else None
+    if question:
+        print(await session.ask(question))
+        return
+
+    print(
+        f"Follow-up session on {alert_id} — answers come from the stored "
+        f"record only. Empty line or Ctrl+D to exit.",
+        flush=True,
+    )
+    while True:
+        try:
+            q = input("ask> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            break
+        if not q:
+            break
+        print(await session.ask(q), flush=True)
+        print(flush=True)
 
 
 async def _run_scorecard() -> None:
@@ -380,6 +435,8 @@ async def main() -> None:
         await _run_sync_feedback()
     elif sys.argv[1] == "--scorecard":
         await _run_scorecard()
+    elif sys.argv[1] == "--ask":
+        await _run_ask()
     elif sys.argv[1] == "--from-elastic":
         await _run_elastic(agentic)
     elif sys.argv[1] == "--watch":

@@ -145,7 +145,14 @@ class AlertHistoryStore:
         return out
 
     def record(self, alert: Alert, investigation: Investigation) -> None:
-        """Append a record for a completed investigation."""
+        """Append a record for a completed investigation.
+
+        The summary fields (verdict, iocs, techniques...) are what memory
+        lookups read on every alert; the full alert and investigation dumps
+        exist so the copilot can later answer questions about its own
+        reasoning (--ask) instead of remembering only its conclusion.
+        Records written before these fields existed simply lack them.
+        """
         rec = {
             "alert_id": alert.alert_id,
             "timestamp": alert.timestamp.isoformat(),
@@ -155,10 +162,26 @@ class AlertHistoryStore:
             "host": alert_host(alert),
             "iocs": alert_iocs(alert),
             "attack_techniques": investigation.attack_techniques,
+            "alert": alert.model_dump(mode="json"),
+            "investigation": investigation.model_dump(mode="json"),
         }
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self.path.open("a") as f:
             f.write(json.dumps(rec) + "\n")
+
+    def latest_record(self, alert_id: str) -> dict | None:
+        """The most recent investigation record for an alert, with the
+        analyst's ruling (if any) joined in under "ruling"."""
+        found: dict | None = None
+        for rec in self._iter_records():
+            if rec["alert_id"] == alert_id:
+                found = rec  # file order: last line wins
+        if found is None:
+            return None
+        ruling = self.dispositions().get(alert_id)
+        if ruling:
+            found = {**found, "ruling": ruling}
+        return found
 
     def prior_sightings(self, alert: Alert) -> list[PriorSighting]:
         """Past investigations (excluding this alert_id) that share an IOC.

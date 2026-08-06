@@ -189,6 +189,14 @@ The loop runs on its own and shows its work. `--watch` syncs rulings from TheHiv
 
 Verified live in both directions. The sync ran against the dev TheHive after real analyst actions and correctly translated both: an alert dismissed as `FalsePositive`, and an alert promoted to a case that closed `TruePositive` — the case's closing summary ("Confirmed account compromise: token replay… sessions revoked") arriving as the analyst note. Then a behavior probe, spot-checked live rather than pin
 
+### The verdict you can interrogate
+
+Until now every verdict was write-only: the copilot handed the analyst a report and could not be questioned about it. Real assistants are defined by the follow-up — *why do you think that? what did the reputation lookup actually say? has anyone confirmed your call?* — so `--ask` adds that surface. One-shot for scripting (`--ask ALRT-2026-0419-001 "why true positive?"`), or an interactive session without a question argument, where later questions ride the same conversation ("and who should I hand this to next?" works, because the model still has the previous answer in front of it).
+
+What made it possible is a memory fix, not a prompt trick. The history store recorded only conclusions — verdict, IOCs, techniques — which means the copilot literally could not remember its own reasoning. Records now carry the full alert and investigation dumps, and follow-up grounding is the stored record itself, assembled deterministically by `build_grounding()`: the alert as investigated (behind a freshly-run injection scan, because the raw log is still attacker-influenced data even in replay), the complete report (hypothesis, evidence claims *and* their raw tool data, pivots, reasoning transcript), and the analyst's current ruling — rendered loudly when present, and stated explicitly when absent, because "has anyone ruled on this?" deserves a grounded *no* rather than a guess. No new tool calls happen in follow-up mode: the model can cite the record or say the record doesn't answer, and the system prompt requires it to name where each claim comes from and what concrete step would fill a gap it can't. An alert the store never investigated is refused outright (the CLI lists what it *has* investigated) — there is nothing to interrogate, and answering anyway would be pure confabulation.
+
+Records written before full-report storage degrade honestly: their grounding is the summary fields plus an explicit caveat, so the model bounds its answers by what was actually kept. Spot-checked live on all four paths: the grounded *why* cited the record's specifics (the Tor-exit reputation, 88 reports, the prior sighting) and volunteered that success-confirmation was never collected; the honesty probe ("what did EDR show?") answered "there's no EDR telemetry in this record" and named the exact query that would get it; the riding follow-up stayed in context; and the degraded probe on a pre-upgrade record labeled its scanner inference as a hint rather than evidence, cited the analyst's confirming ruling with its source, and suggested re-investigating to regenerate a full report.
+
 ### Recognizing campaigns
 
 Prior sightings match on an *exact* shared indicator. Real campaigns are looser than that — three brute-force alerts from `185.220.101.10`, `.14`, and `.47` hitting different hosts in the same hour are obviously one operation, but they share no exact IOC. `AlertHistoryStore.correlate()` handles that broader relatedness.
@@ -297,10 +305,12 @@ soc-copilot/
 │   ├── casemgmt.py         # TheHive output: investigation → alert with observables
 │   ├── config.py           # Settings + env loading
 │   ├── scorecard.py        # Copilot-vs-analyst accuracy record (pure functions)
-│   ├── main.py             # CLI: file / --from-elastic / --watch / --sync-feedback / --scorecard
+│   ├── followup.py         # Follow-up mode: interrogate a recorded investigation
+│   ├── main.py             # CLI: file / --from-elastic / --watch / --sync-feedback / --scorecard / --ask
 │   ├── prompts/
 │   │   ├── system.py       # Phase 1 system prompt
-│   │   └── agentic.py      # Phase 2 system prompt
+│   │   ├── agentic.py      # Phase 2 system prompt
+│   │   └── followup.py     # Follow-up mode system prompt (record-bounded answers)
 │   └── tools/
 │       ├── base.py         # Tool ABC, ToolResult model
 │       ├── registry.py     # Tool registration + dispatch
@@ -330,6 +340,7 @@ soc-copilot/
 │   ├── test_feedback.py    # Analyst-ruling sync + memory annotation (no API)
 │   ├── test_scorecard.py   # Accuracy-record math + rendering (no API)
 │   ├── test_assets.py      # Asset-inventory matcher unit tests (no API)
+│   ├── test_followup.py    # Full-record storage + grounding builder + session (no API)
 │   ├── alert_loading.py    # Shared loader: native fixtures + ECS hits via normalize_hit
 │   └── expectations.py     # Per-alert correctness criteria
 ├── data/
@@ -384,6 +395,13 @@ uv run python -m src.main --sync-feedback
 # How often does the copilot's verdict match the analyst's ruling?
 # Prints the agreement rate and the disagreement list with analyst notes
 uv run python -m src.main --scorecard
+
+# Interrogate a recorded investigation — answers are grounded in the
+# stored record only (no new tool calls). One-shot with a question, or
+# drop the question for an interactive session where follow-ups ride
+# the same conversation.
+uv run python -m src.main --ask ALRT-2026-0419-001 "why true positive?"
+uv run python -m src.main --ask ALRT-2026-0419-001
 
 # Run the eval harness (13 alerts x 2 modes, live API calls)
 uv run pytest tests/test_investigations.py -v
