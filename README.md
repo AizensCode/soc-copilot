@@ -197,6 +197,14 @@ What made it possible is a memory fix, not a prompt trick. The history store rec
 
 Records written before full-report storage degrade honestly: their grounding is the summary fields plus an explicit caveat, so the model bounds its answers by what was actually kept. Spot-checked live on all four paths: the grounded *why* cited the record's specifics (the Tor-exit reputation, 88 reports, the prior sighting) and volunteered that success-confirmation was never collected; the honesty probe ("what did EDR show?") answered "there's no EDR telemetry in this record" and named the exact query that would get it; the riding follow-up stayed in context; and the degraded probe on a pre-upgrade record labeled its scanner inference as a hint rather than evidence, cited the analyst's confirming ruling with its source, and suggested re-investigating to regenerate a full report.
 
+### The morning briefing
+
+Every SOC has one ritual artifact: the handover digest — what happened overnight, what came back from the humans, what needs an owner first. `--digest [hours]` composes the copilot's layers into exactly that: the investigations in the reporting window, the analyst rulings that arrived, campaign flags, standing copilot-vs-analyst disagreements, and the all-time accuracy record, narrated as a briefing a team lead can read in a minute. `--sync-feedback && --digest` in a morning cron is the intended shape.
+
+Two design decisions carry it. First, the same grounding split as everywhere else: the digest data is assembled by a pure Python function over the history store — every count, ID, and ruling in it is deterministic and unit-tested without the API — and the model only narrates that data, under a prompt that requires cited alert IDs, forbids padding empty sections, and keeps the voice calibrated (the copilot's verdicts are opinions; only analyst rulings get stated as ground truth). Second, windowing runs on **when the copilot did the work**, not the alert's own timestamp: records now carry `investigated_at` (and rulings `recorded_at`, stamped at sync), because a digest answers "what happened on this desk since yesterday" — an alert from last April investigated overnight belongs in it, and a ruling synced last week is no longer news even though it still rides its investigation as context. A quiet window is answered deterministically — no API call is spent narrating an empty day.
+
+The live run behaved like the artifact it imitates: it led with the one escalation-recommended investigation under "Needs a human" (phishing chain, typosquatted domain, benign-payload-but-real-behavior nuance intact from the hypothesis), filed the benign SCCM PowerShell burst under "Other investigated", stated outright that no rulings returned in the window, and closed with the counts — every number and ID traceable to the assembled data.
+
 ### Recognizing campaigns
 
 Prior sightings match on an *exact* shared indicator. Real campaigns are looser than that — three brute-force alerts from `185.220.101.10`, `.14`, and `.47` hitting different hosts in the same hour are obviously one operation, but they share no exact IOC. `AlertHistoryStore.correlate()` handles that broader relatedness.
@@ -306,11 +314,13 @@ soc-copilot/
 │   ├── config.py           # Settings + env loading
 │   ├── scorecard.py        # Copilot-vs-analyst accuracy record (pure functions)
 │   ├── followup.py         # Follow-up mode: interrogate a recorded investigation
-│   ├── main.py             # CLI: file / --from-elastic / --watch / --sync-feedback / --scorecard / --ask
+│   ├── digest.py           # SOC morning digest: deterministic assembly + narrated briefing
+│   ├── main.py             # CLI: file / --from-elastic / --watch / --sync-feedback / --scorecard / --ask / --digest
 │   ├── prompts/
 │   │   ├── system.py       # Phase 1 system prompt
 │   │   ├── agentic.py      # Phase 2 system prompt
-│   │   └── followup.py     # Follow-up mode system prompt (record-bounded answers)
+│   │   ├── followup.py     # Follow-up mode system prompt (record-bounded answers)
+│   │   └── digest.py       # Briefing system prompt (cite IDs, no padding, calibrated voice)
 │   └── tools/
 │       ├── base.py         # Tool ABC, ToolResult model
 │       ├── registry.py     # Tool registration + dispatch
@@ -341,6 +351,7 @@ soc-copilot/
 │   ├── test_scorecard.py   # Accuracy-record math + rendering (no API)
 │   ├── test_assets.py      # Asset-inventory matcher unit tests (no API)
 │   ├── test_followup.py    # Full-record storage + grounding builder + session (no API)
+│   ├── test_digest.py      # Digest windowing, dedupe, ruling joins, quiet path (no API)
 │   ├── alert_loading.py    # Shared loader: native fixtures + ECS hits via normalize_hit
 │   └── expectations.py     # Per-alert correctness criteria
 ├── data/
@@ -402,6 +413,11 @@ uv run python -m src.main --scorecard
 # the same conversation.
 uv run python -m src.main --ask ALRT-2026-0419-001 "why true positive?"
 uv run python -m src.main --ask ALRT-2026-0419-001
+
+# The SOC morning digest: investigations in the window, rulings that
+# came back, what needs a human first. A quiet window costs no API
+# call. (`--sync-feedback && --digest` is the intended morning cron.)
+uv run python -m src.main --digest 24
 
 # Run the eval harness (13 alerts x 2 modes, live API calls)
 uv run pytest tests/test_investigations.py -v

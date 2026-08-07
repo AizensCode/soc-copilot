@@ -26,6 +26,10 @@
     # or an interactive session without one. Answers are grounded in
     # the stored record — no new tool calls, no re-investigation.
     uv run python -m src.main --ask ALERT_ID ["question"]
+
+    # The SOC morning digest: what the copilot investigated in the
+    # window, what rulings came back, what needs a human first.
+    uv run python -m src.main --digest [hours]
 """
 import asyncio
 import json
@@ -46,8 +50,28 @@ USAGE = (
     "  python -m src.main --watch [interval_seconds] [--agentic] [--auto-close] [--case]\n"
     "  python -m src.main --sync-feedback\n"
     "  python -m src.main --scorecard\n"
-    "  python -m src.main --ask ALERT_ID [\"question\"]"
+    "  python -m src.main --ask ALERT_ID [\"question\"]\n"
+    "  python -m src.main --digest [hours]"
 )
+
+
+async def _run_digest() -> None:
+    """Print the SOC briefing for the reporting window (default 24h).
+
+    A quiet window is answered deterministically — no API call is spent
+    narrating an empty day.
+    """
+    from .config import settings
+    from .digest import build_digest_data, render_quiet, write_briefing
+    from .history import AlertHistoryStore
+
+    hours = int(_arg_after("--digest") or 24)
+    store = AlertHistoryStore(settings.HISTORY_PATH)
+    data = build_digest_data(store, since_hours=hours)
+    if data["quiet"]:
+        print(render_quiet(data))
+        return
+    print(await write_briefing(data))
 
 
 async def _run_ask() -> None:
@@ -437,6 +461,8 @@ async def main() -> None:
         await _run_scorecard()
     elif sys.argv[1] == "--ask":
         await _run_ask()
+    elif sys.argv[1] == "--digest":
+        await _run_digest()
     elif sys.argv[1] == "--from-elastic":
         await _run_elastic(agentic)
     elif sys.argv[1] == "--watch":

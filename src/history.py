@@ -14,7 +14,7 @@ import ipaddress
 import json
 import re
 from collections.abc import Iterator
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from .models import (
@@ -127,6 +127,9 @@ class AlertHistoryStore:
             "human_verdict": human_verdict,
             "source": source,
             "summary": summary,
+            # When the ruling was SYNCED (not when the analyst clicked in
+            # TheHive) — enough for "what came back since yesterday".
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
         }
         self.dispositions_path.parent.mkdir(parents=True, exist_ok=True)
         with self.dispositions_path.open("a") as f:
@@ -155,7 +158,12 @@ class AlertHistoryStore:
         """
         rec = {
             "alert_id": alert.alert_id,
+            # The alert's own time vs when the copilot worked it: memory
+            # correlates on the former, the daily digest windows on the
+            # latter. Records written before investigated_at existed
+            # simply lack it (and fall outside any digest window).
             "timestamp": alert.timestamp.isoformat(),
+            "investigated_at": datetime.now(timezone.utc).isoformat(),
             "title": alert.title,
             "verdict": investigation.verdict,
             "confidence": investigation.confidence,
