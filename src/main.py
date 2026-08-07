@@ -65,7 +65,7 @@ async def _run_digest() -> None:
     from .digest import build_digest_data, render_quiet, write_briefing
     from .history import AlertHistoryStore
 
-    hours = int(_arg_after("--digest") or 24)
+    hours = _positive_int_after("--digest", 24, "window hours")
     store = AlertHistoryStore(settings.HISTORY_PATH)
     data = build_digest_data(store, since_hours=hours)
     if data["quiet"]:
@@ -235,6 +235,33 @@ def _arg_after(flag: str) -> str | None:
     return None
 
 
+def _positive_int_after(flag: str, default: int, what: str) -> int:
+    """The numeric value following a flag, validated, or the default.
+
+    _arg_after's leading-dash check (there so a following flag like
+    --agentic isn't consumed as a value) also swallows negative numbers
+    — `--digest -1` would silently run with the default. A numeric
+    token is always the user's intended value, so parse it even with a
+    leading dash, then reject anything that isn't a positive integer
+    loudly instead of guessing.
+    """
+    idx = sys.argv.index(flag)
+    if idx + 1 >= len(sys.argv):
+        return default
+    raw = sys.argv[idx + 1]
+    if raw.startswith("-") and not raw.lstrip("-").isdigit():
+        return default  # another flag, not a value
+    try:
+        value = int(raw)
+    except ValueError:
+        print(f"{flag}: {what} must be a positive integer, got {raw!r}")
+        sys.exit(2)
+    if value <= 0:
+        print(f"{flag}: {what} must be a positive integer, got {value}")
+        sys.exit(2)
+    return value
+
+
 async def _investigate(
     copilot: SOCCopilot, alert: Alert, agentic: bool
 ) -> Investigation:
@@ -289,7 +316,7 @@ async def _run_file(agentic: bool) -> None:
 async def _run_elastic(agentic: bool) -> None:
     from .elastic import ElasticAlertSource
 
-    limit = int(_arg_after("--from-elastic") or 3)
+    limit = _positive_int_after("--from-elastic", 3, "alert limit")
     try:
         source = ElasticAlertSource()
     except RuntimeError as e:
@@ -358,7 +385,7 @@ async def _run_watch(agentic: bool) -> None:
     from .config import settings
     from .elastic import ElasticAlertSource
 
-    interval = int(_arg_after("--watch") or 60)
+    interval = _positive_int_after("--watch", 60, "poll interval seconds")
     try:
         source = ElasticAlertSource()
     except RuntimeError as e:
