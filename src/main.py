@@ -312,14 +312,36 @@ def _positive_int_after(flag: str, default: int, what: str) -> int:
     return value
 
 
+def _telemetry_line(inv: Investigation) -> str:
+    """One-line cost/latency summary, or '' when nothing was recorded."""
+    tel = inv.telemetry
+    if not tel:
+        return ""
+    from .pricing import is_priced
+
+    cost = f"${tel.cost_usd:.4f}" if is_priced(tel.model) else "cost unpriced"
+    tools = f" tools={tel.tool_calls}" if tel.tool_calls else ""
+    retries = f" retries={tel.retries}" if tel.retries else ""
+    return (
+        f"[{cost} · {tel.duration_seconds:.1f}s · "
+        f"{tel.input_tokens}in/{tel.output_tokens}out · "
+        f"{tel.api_calls} call(s){tools}{retries}]"
+    )
+
+
 async def _investigate(
     copilot: SOCCopilot, alert: Alert, agentic: bool
 ) -> Investigation:
     if agentic:
         print("[mode: agentic — model decides tool calls]")
-        return await copilot.investigate_agentic(alert)
-    print("[mode: phase one — fixed enrichment pipeline]")
-    return await copilot.investigate(alert)
+        inv = await copilot.investigate_agentic(alert)
+    else:
+        print("[mode: phase one — fixed enrichment pipeline]")
+        inv = await copilot.investigate(alert)
+    line = _telemetry_line(inv)
+    if line:
+        print(line, flush=True)
+    return inv
 
 
 def _write_report(alert: Alert, inv: Investigation, out: Path) -> None:

@@ -186,6 +186,32 @@ class InjectionFlag(BaseModel):
     excerpt: str = Field(description="The surrounding text")
 
 
+class Telemetry(BaseModel):
+    """Cost and performance of PRODUCING an investigation — distinct from
+    its content.
+
+    Filled deterministically by the copilot from the API `usage` blocks
+    and a wall clock, never by the LLM. Cost is a list-price estimate
+    (see src/pricing.py): it does not account for prompt-cache discounts
+    or negotiated rates, so treat it as an upper bound for budgeting, not
+    a bill. This is what turns the README's hand-waved "≈$0.05 per
+    investigation" into a measured per-run number, and the basis a
+    future cheap-tier triage would have to beat.
+    """
+
+    model: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+    api_calls: int = Field(default=0, description="messages.create round-trips")
+    tool_calls: int = Field(default=0, description="tools dispatched (agentic)")
+    retries: int = Field(
+        default=0,
+        description="phase-1 report resamples or agentic JSON corrections",
+    )
+    duration_seconds: float = 0.0
+    cost_usd: float = 0.0
+
+
 class Investigation(BaseModel):
     """The final report produced for an alert."""
 
@@ -243,3 +269,11 @@ class Investigation(BaseModel):
     escalation_recommended: bool
     escalation_draft: str | None = None
     reasoning_transcript: str = ""
+    telemetry: Telemetry | None = Field(
+        default=None,
+        description=(
+            "Cost and performance of producing this investigation. Filled "
+            "deterministically by the copilot, never by the LLM. Optional "
+            "so records written before telemetry existed simply lack it."
+        ),
+    )

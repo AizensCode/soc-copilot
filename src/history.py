@@ -170,6 +170,11 @@ class AlertHistoryStore:
             "host": alert_host(alert),
             "iocs": alert_iocs(alert),
             "attack_techniques": investigation.attack_techniques,
+            # Flattened beside the summary fields (not only inside the
+            # investigation dump) so cost/latency reporting never has to
+            # parse a full record per row.
+            "cost_usd": tel.cost_usd if (tel := investigation.telemetry) else None,
+            "duration_seconds": tel.duration_seconds if tel else None,
             "alert": alert.model_dump(mode="json"),
             "investigation": investigation.model_dump(mode="json"),
         }

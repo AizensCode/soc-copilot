@@ -20,7 +20,11 @@ Lead with what needs a human first, then account for the rest:
    copilot's verdict — name what the ruling corrected.
 3. Standing disagreements between copilot and analysts — these are the
    rows the team studies to improve the copilot.
-4. The numbers: investigated count, verdict split, agreement record.
+4. The numbers: investigated count, verdict split, agreement record,
+   and — when `spend` reports measured investigations — what the window
+   cost and the mean per investigation. Report spend as the measured
+   list-price estimate it is; if some investigations are unmeasured,
+   say how many rather than implying the total covers everything.
 
 # Voice
 The copilot's verdicts are its own opinions; analyst rulings are ground

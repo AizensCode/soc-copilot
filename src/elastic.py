@@ -299,5 +299,21 @@ class ElasticAlertSource:
             "closure_reason": closure_reason,
             "investigation": investigation.model_dump(mode="json"),
         }
+        # Flattened for dashboarding: cost and latency are things a SOC
+        # lead charts over time, not fields they drill into a nested doc
+        # for. Absent (not zero) when telemetry wasn't recorded.
+        if investigation.telemetry:
+            tel = investigation.telemetry
+            doc.update(
+                {
+                    "cost_usd": tel.cost_usd,
+                    "duration_seconds": tel.duration_seconds,
+                    "input_tokens": tel.input_tokens,
+                    "output_tokens": tel.output_tokens,
+                    "api_calls": tel.api_calls,
+                    "tool_calls": tel.tool_calls,
+                    "model": tel.model,
+                }
+            )
         data = await self._post(f"/{self.results_index}/_doc", doc)
         return data.get("_id", "")

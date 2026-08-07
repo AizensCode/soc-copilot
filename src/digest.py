@@ -75,6 +75,8 @@ def build_digest_data(
             "is_campaign": bool(correlation.get("is_campaign")),
             "hypothesis": inv.get("hypothesis", ""),
             "investigated_at": rec.get("investigated_at"),
+            "cost_usd": rec.get("cost_usd"),
+            "duration_seconds": rec.get("duration_seconds"),
         }
         if ruling:
             entry["analyst_ruled"] = ruling["human_verdict"]
@@ -102,10 +104,28 @@ def build_digest_data(
             entry["note"] = "no local investigation on record"
         new_rulings.append(entry)
 
+    # Cost/latency for the window. Summed over the SAME latest-per-alert
+    # set the rest of the digest reports on, so "12 investigated, $0.41"
+    # is internally consistent. Records without telemetry contribute
+    # nothing and are counted as unmeasured rather than as zero.
+    measured = [e for e in investigated if e.get("cost_usd") is not None]
+    spend = {
+        "measured_investigations": len(measured),
+        "unmeasured_investigations": len(investigated) - len(measured),
+        "total_cost_usd": round(sum(e["cost_usd"] for e in measured), 4),
+        "mean_cost_usd": round(
+            sum(e["cost_usd"] for e in measured) / len(measured), 4
+        ) if measured else None,
+        "mean_duration_seconds": round(
+            sum(e.get("duration_seconds") or 0 for e in measured) / len(measured), 1
+        ) if measured else None,
+    }
+
     card = build_scorecard(store)
     return {
         "generated_at": now.isoformat(),
         "window_hours": since_hours,
+        "spend": spend,
         "quiet": not investigated and not new_rulings,
         "investigated": investigated,
         "counts": {"total": len(investigated), **counts},

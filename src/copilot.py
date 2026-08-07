@@ -1,11 +1,13 @@
 """SOC Copilot — phase one (fixed pipeline) and phase two (agentic loop)."""
 import json
+import time
 
 from anthropic import AsyncAnthropic
 
 from .config import settings
 from .history import AlertHistoryStore
 from .injection import scan_for_injection, scan_untrusted
+from .pricing import estimate_cost
 from .mitre_groups import match_groups
 from .models import (
     Alert,
@@ -16,6 +18,7 @@ from .models import (
     Investigation,
     PriorSighting,
     SigmaMatch,
+    Telemetry,
 )
 from .assets import match_assets
 from .sigma import match_sigma_rules
@@ -380,6 +383,7 @@ class SOCCopilot:
 
     async def investigate(self, alert: Alert) -> Investigation:
         """Phase 1 entrypoint: pre-enrich, then one LLM call to write the report."""
+        started = time.monotonic()
         evidence = await self.enrich(alert)
         priors = self.history.prior_sightings(alert)
         # Correlate on alert-level signals now, so a detected campaign can
@@ -419,13 +423,19 @@ class SOCCopilot:
         )
 
         last_err: ValueError | None = None
-        for _ in range(MAX_REPORT_ATTEMPTS):
+        usage_in = usage_out = api_calls = 0
+        for attempt in range(MAX_REPORT_ATTEMPTS):
             response = await self.client.messages.create(
                 model=settings.MODEL,
                 max_tokens=16000,
                 system=SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": user_message}],
             )
+            # Count every round-trip, including resamples: a retried
+            # investigation really did cost twice.
+            api_calls += 1
+            usage_in += response.usage.input_tokens
+            usage_out += response.usage.output_tokens
 
             if response.stop_reason == "max_tokens":
                 raise RuntimeError(
@@ -467,8 +477,36 @@ class SOCCopilot:
         investigation.injection_flags = injection_flags
         investigation.sigma_matches = sigma_matches
         investigation.asset_matches = asset_matches
+        investigation.telemetry = self._telemetry(
+            started, usage_in, usage_out, api_calls, retries=api_calls - 1
+        )
         self.history.record(alert, investigation)
         return investigation
+
+    @staticmethod
+    def _telemetry(
+        started: float,
+        input_tokens: int,
+        output_tokens: int,
+        api_calls: int,
+        retries: int = 0,
+        tool_calls: int = 0,
+    ) -> Telemetry:
+        """Assemble the run's telemetry. Deterministic — token counts come
+        from the API's own usage blocks, cost from the committed price
+        table, duration from a monotonic clock."""
+        return Telemetry(
+            model=settings.MODEL,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            api_calls=api_calls,
+            tool_calls=tool_calls,
+            retries=retries,
+            duration_seconds=round(time.monotonic() - started, 2),
+            cost_usd=round(
+                estimate_cost(settings.MODEL, input_tokens, output_tokens), 6
+            ),
+        )
 
     # ------------------------------------------------------------------
     # Phase 2: agentic investigation
@@ -485,6 +523,7 @@ class SOCCopilot:
         (stop_reason='end_turn') or until max_iterations is reached
         as a safety stop against runaway loops.
         """
+        started = time.monotonic()
         priors = self.history.prior_sightings(alert)
         pre_correlation = self.history.correlate(
             alert, window_hours=settings.CORRELATION_WINDOW_HOURS
@@ -522,6 +561,7 @@ class SOCCopilot:
         tool_schemas = anthropic_tool_schemas()
         evidence_collected: list[Evidence] = []
         correction_attempts = 0
+        usage_in = usage_out = api_calls = tool_calls = 0
 
         for iteration in range(max_iterations):
             response = await self.client.messages.create(
@@ -531,6 +571,9 @@ class SOCCopilot:
                 tools=tool_schemas,
                 messages=messages,
             )
+            api_calls += 1
+            usage_in += response.usage.input_tokens
+            usage_out += response.usage.output_tokens
 
             messages.append({"role": "assistant", "content": response.content})
 
@@ -569,6 +612,14 @@ class SOCCopilot:
                 investigation.injection_flags = injection_flags
                 investigation.sigma_matches = sigma_matches
                 investigation.asset_matches = asset_matches
+                investigation.telemetry = self._telemetry(
+                    started,
+                    usage_in,
+                    usage_out,
+                    api_calls,
+                    retries=correction_attempts,
+                    tool_calls=tool_calls,
+                )
                 self.history.record(alert, investigation)
                 return investigation
 
@@ -585,6 +636,7 @@ class SOCCopilot:
                         continue
 
                     result = await dispatch(block.name, block.input)
+                    tool_calls += 1
                     evidence_collected.append(
                         self._tool_result_to_evidence(result)
                     )
