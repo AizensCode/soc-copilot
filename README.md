@@ -205,6 +205,14 @@ Two design decisions carry it. First, the same grounding split as everywhere els
 
 The live run behaved like the artifact it imitates: it led with the one escalation-recommended investigation under "Needs a human" (phishing chain, typosquatted domain, benign-payload-but-real-behavior nuance intact from the hypothesis), filed the benign SCCM PowerShell burst under "Other investigated", stated outright that no rulings returned in the window, and closed with the counts — every number and ID traceable to the assembled data.
 
+### Rulings become the regression corpus
+
+The scorecard section above makes a claim — *every fix this project made started life as a disagreement row* — that was, until now, a manual process: a human reads the disagreement, hand-authors a fixture, hand-writes an expectation. `--export-case` operationalizes it. Any investigation an analyst has ruled on can be exported as a labeled case under `data/evals/cases/` (the full alert as investigated, the ruling as label, the copilot's verdict at export time), and `tests/test_regression_cases.py` replays every case live: fresh investigation, isolated store, verdict checked against the **analyst's** ruling — the one label in this project that is ground truth rather than calibrated taste.
+
+Two honesty rules bound what can be exported. Only rulings can label a case — an unruled investigation has nothing but the copilot's own opinion to grade against, and self-graded regression is an echo chamber. And only full records can be exported — pre-upgrade summary-only records lack the alert itself, so there is nothing to replay; the CLI says exactly that and names re-investigation as the unlock. The agreement stamp then decides the case's role: cases where copilot and analyst agreed are hard regression gates (a later prompt or model change must not lose them), while disagreement cases are declared improvement targets — `xfail`, so a known-wrong verdict doesn't break the suite, and an `XPASS` is the visible moment the copilot earned the case.
+
+Verified as one continuous live loop: `--case` opened a TheHive alert for the phishing investigation; the analyst promoted it and closed the case `TruePositive` with a closing note; `--sync-feedback` brought the ruling home; `--export-case` wrote the labeled case (and skipped the two ruled-but-pre-upgrade records with the re-investigate remedy); the regression replay re-investigated the alert on an isolated store and matched the ruling. Production disagreement → eval corpus → measured improvement is now a pipeline, not a story.
+
 ### Recognizing campaigns
 
 Prior sightings match on an *exact* shared indicator. Real campaigns are looser than that — three brute-force alerts from `185.220.101.10`, `.14`, and `.47` hitting different hosts in the same hour are obviously one operation, but they share no exact IOC. `AlertHistoryStore.correlate()` handles that broader relatedness.
@@ -315,7 +323,8 @@ soc-copilot/
 │   ├── scorecard.py        # Copilot-vs-analyst accuracy record (pure functions)
 │   ├── followup.py         # Follow-up mode: interrogate a recorded investigation
 │   ├── digest.py           # SOC morning digest: deterministic assembly + narrated briefing
-│   ├── main.py             # CLI: file / --from-elastic / --watch / --sync-feedback / --scorecard / --ask / --digest
+│   ├── evalcase.py         # Export analyst-ruled investigations as labeled eval cases
+│   ├── main.py             # CLI: file / --from-elastic / --watch / --sync-feedback / --scorecard / --ask / --digest / --export-case
 │   ├── prompts/
 │   │   ├── system.py       # Phase 1 system prompt
 │   │   ├── agentic.py      # Phase 2 system prompt
@@ -352,6 +361,8 @@ soc-copilot/
 │   ├── test_assets.py      # Asset-inventory matcher unit tests (no API)
 │   ├── test_followup.py    # Full-record storage + grounding builder + session (no API)
 │   ├── test_digest.py      # Digest windowing, dedupe, ruling joins, quiet path (no API)
+│   ├── test_evalcase.py    # Exporter shape, refusals, agreement stamp (no API)
+│   ├── test_regression_cases.py   # Replay ruled cases vs analyst labels (API-backed)
 │   ├── alert_loading.py    # Shared loader: native fixtures + ECS hits via normalize_hit
 │   └── expectations.py     # Per-alert correctness criteria
 ├── data/
@@ -361,6 +372,7 @@ soc-copilot/
 │   ├── sigma/              # Curated SigmaHQ rules + provenance (DRL-licensed)
 │   ├── mitre/              # Generated technique→group lookup (committed)
 │   ├── history/            # Runtime case history (gitignored)
+│   ├── evals/cases/        # Analyst-ruled regression cases (--export-case)
 │   └── evals/runs/         # Captured before/after investigations
 └── pyproject.toml
 ```
@@ -418,6 +430,12 @@ uv run python -m src.main --ask ALRT-2026-0419-001
 # came back, what needs a human first. A quiet window costs no API
 # call. (`--sync-feedback && --digest` is the intended morning cron.)
 uv run python -m src.main --digest 24
+
+# Export analyst-ruled investigations as labeled regression cases
+# (all eligible, or one by ID), then replay them against the live
+# copilot — verdicts are checked against the ANALYST's ruling
+uv run python -m src.main --export-case
+uv run pytest tests/test_regression_cases.py -v
 
 # Run the eval harness (13 alerts x 2 modes, live API calls)
 uv run pytest tests/test_investigations.py -v

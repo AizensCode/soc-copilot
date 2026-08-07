@@ -30,6 +30,11 @@
     # The SOC morning digest: what the copilot investigated in the
     # window, what rulings came back, what needs a human first.
     uv run python -m src.main --digest [hours]
+
+    # Export analyst-ruled investigations as labeled eval cases under
+    # data/evals/cases/, replayed by tests/test_regression_cases.py.
+    # Without an ID, exports everything eligible.
+    uv run python -m src.main --export-case [ALERT_ID]
 """
 import asyncio
 import json
@@ -51,8 +56,53 @@ USAGE = (
     "  python -m src.main --sync-feedback\n"
     "  python -m src.main --scorecard\n"
     "  python -m src.main --ask ALERT_ID [\"question\"]\n"
-    "  python -m src.main --digest [hours]"
+    "  python -m src.main --digest [hours]\n"
+    "  python -m src.main --export-case [ALERT_ID]"
 )
+
+
+async def _run_export_case() -> None:
+    """Export ruled investigations as labeled eval cases.
+
+    With an alert ID, exports that one (and says exactly why not, when
+    it can't). Without, exports everything eligible and lists the ruled
+    alerts that can't be exported yet so the operator knows what a
+    re-investigation would unlock.
+    """
+    from .config import settings
+    from .evalcase import export_case, exportable_alert_ids
+    from .history import AlertHistoryStore
+
+    store = AlertHistoryStore(settings.HISTORY_PATH)
+    alert_id = sys.argv[2] if len(sys.argv) > 2 else None
+
+    if alert_id:
+        try:
+            path = export_case(store, alert_id)
+        except ValueError as e:
+            print(e)
+            sys.exit(1)
+        print(f"Exported {alert_id} -> {path}")
+        return
+
+    eligible = exportable_alert_ids(store)
+    for aid in eligible:
+        print(f"Exported {aid} -> {export_case(store, aid)}")
+    known = {r["alert_id"] for r in store._iter_records()}
+    blocked = [
+        aid for aid in store.dispositions()
+        if aid in known and aid not in eligible
+    ]
+    for aid in blocked:
+        print(
+            f"Skipped {aid}: ruled, but the record predates full-record "
+            f"storage — re-investigate to make it exportable."
+        )
+    if not eligible and not blocked:
+        print(
+            "Nothing to export: no analyst-ruled investigations on "
+            "record. Sync feedback after analysts work the queue."
+        )
 
 
 async def _run_digest() -> None:
@@ -490,6 +540,8 @@ async def main() -> None:
         await _run_ask()
     elif sys.argv[1] == "--digest":
         await _run_digest()
+    elif sys.argv[1] == "--export-case":
+        await _run_export_case()
     elif sys.argv[1] == "--from-elastic":
         await _run_elastic(agentic)
     elif sys.argv[1] == "--watch":
