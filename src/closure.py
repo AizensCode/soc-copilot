@@ -20,11 +20,38 @@ when ALL of these hold:
 - no campaign correlation — a false positive that clusters with related
   alerts deserves human eyes on the cluster
 
+Analyst rulings gate closure in ONE direction — protective only:
+
+- BLOCK: if any prior sighting on a shared indicator carries a ruling
+  that OVERTURNED the copilot's recorded verdict, the copilot has a
+  documented miss on exactly this indicator — nothing touching it may
+  auto-close, however confident today's investigation is.
+
+A symmetric PERMIT gate (relax the high-confidence bar to medium on a
+confirming false-positive precedent) was designed and then cut in
+review: prior sightings match on a single shared IOC and a dismissal
+("Ignored") counts as a confirming false positive, so an attack the
+model merely hedged to a medium-confidence false positive — while
+sharing one benign indicator with a previously-dismissed alert — would
+have auto-closed. That removes the human backstop in exactly the
+medium-confidence zone this policy reserves for humans. Hardening is
+not symmetry: the block gate reduces risk, a permit gate expands it, so
+only the block gate ships.
+
 Everything that fails a gate keeps today's behavior (acknowledged, human
 reviews it). The returned reason string is recorded with the closure so
 the audit trail says exactly why the copilot acted.
 """
-from .models import Investigation
+from .models import Investigation, PriorSighting
+
+
+def _overturned_precedent(investigation: Investigation) -> PriorSighting | None:
+    """The first prior sighting whose analyst ruling overturned the
+    copilot's recorded verdict, if any."""
+    for p in investigation.prior_sightings:
+        if p.human_verdict and p.human_verdict != p.verdict:
+            return p
+    return None
 
 
 def should_auto_close(investigation: Investigation) -> tuple[bool, str]:
@@ -36,6 +63,13 @@ def should_auto_close(investigation: Investigation) -> tuple[bool, str]:
     """
     if investigation.verdict != "false_positive":
         return False, f"verdict is {investigation.verdict}, not false_positive"
+    overturned = _overturned_precedent(investigation)
+    if overturned:
+        return False, (
+            f"analyst ruling on {overturned.alert_id} overturned the "
+            f"copilot's {overturned.verdict} to {overturned.human_verdict} "
+            f"on a shared indicator; documented miss — human review required"
+        )
     if investigation.confidence != "high":
         return False, (
             f"confidence is {investigation.confidence}; autonomous closure "

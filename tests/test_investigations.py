@@ -291,6 +291,44 @@ async def test_sigma_matches(
     )
 
 
+# --- Autonomy safety gate ---------------------------------------------------
+
+
+def _attack_cases() -> list[tuple[str, str]]:
+    """(alert, mode) pairs whose expectations do NOT permit false_positive
+    — the harness's own labels, reused as 'this is an attack'."""
+    attack_files = []
+    for alert_file, expected in EXPECTATIONS.items():
+        permitted = expected.get("allowed_verdicts") or [
+            expected.get("expected_verdict")
+        ]
+        if "false_positive" not in permitted:
+            attack_files.append(alert_file)
+    return [(a, m) for a in attack_files for m in MODES]
+
+
+@pytest.mark.parametrize("alert_file,mode", _attack_cases())
+async def test_attack_labeled_alerts_never_qualify_for_auto_close(
+    alert_file: str,
+    mode: str,
+    investigations: dict[tuple[str, str], Investigation],
+):
+    """The composition --watch --auto-close actually runs is real model
+    output × closure policy — and until now it had no eval coverage.
+    Whatever the model said about an attack-labeled fixture, the policy
+    must refuse autonomous closure; this test fails if a policy change
+    (or a model regression the verdict tests happen to miss) ever lets
+    an attack self-close."""
+    from src.closure import should_auto_close
+
+    inv = investigations[(alert_file, mode)]
+    close, reason = should_auto_close(inv)
+    assert not close, (
+        f"{alert_file} [{mode}] qualified for autonomous closure "
+        f"({reason}) — an attack-labeled alert must always reach a human"
+    )
+
+
 @pytest.mark.parametrize("alert_file,mode,expected", _cases())
 async def test_injection_flags(
     alert_file: str,

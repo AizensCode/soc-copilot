@@ -81,3 +81,60 @@ def test_non_campaign_correlation_does_not_block():
     corr = Correlation(is_campaign=False, window_hours=72, summary="none")
     close, _ = should_auto_close(_inv(correlation=corr))
     assert close is True
+
+
+# --- Precedent-aware gates: analyst rulings steer autonomy -------------------
+
+from datetime import datetime, timezone
+
+from src.models import PriorSighting
+
+_T = datetime(2026, 6, 1, tzinfo=timezone.utc)
+
+
+def _sighting(verdict: str, human_verdict: str | None = None) -> PriorSighting:
+    return PriorSighting(
+        alert_id="OLD-1", timestamp=_T, verdict=verdict, confidence="high",
+        title="prior alert", matched_iocs=["9.9.9.9"],
+        human_verdict=human_verdict,
+    )
+
+
+def test_overturned_precedent_blocks_even_a_high_confidence_fp():
+    """The copilot was wrong on this indicator before — an analyst said so.
+    Nothing touching it may auto-close."""
+    inv = _inv(prior_sightings=[_sighting("false_positive", "true_positive")])
+    close, reason = should_auto_close(inv)
+    assert close is False
+    assert "overturned" in reason and "OLD-1" in reason
+
+
+def test_overturning_in_the_other_direction_also_blocks():
+    inv = _inv(prior_sightings=[_sighting("true_positive", "false_positive")])
+    close, reason = should_auto_close(inv)
+    assert close is False
+    assert "overturned" in reason
+
+
+def test_confirming_fp_precedent_does_not_permit_medium_confidence():
+    """A symmetric PERMIT gate was designed and cut in review: because
+    prior sightings match on a single shared IOC (and a dismissal counts
+    as a confirming FP), it would let an attack the model hedged to a
+    medium-confidence false positive auto-close on one benign shared
+    indicator. Medium confidence still means a human looks, precedent or
+    not."""
+    inv = _inv(
+        confidence="medium",
+        prior_sightings=[_sighting("false_positive", "false_positive")],
+    )
+    close, reason = should_auto_close(inv)
+    assert close is False
+    assert "requires high" in reason
+
+
+def test_high_confidence_fp_with_confirming_precedent_still_closes():
+    """A confirming precedent must never be the thing standing between a
+    clean high-confidence FP and closure — the block gate is one-way."""
+    inv = _inv(prior_sightings=[_sighting("false_positive", "false_positive")])
+    close, _ = should_auto_close(inv)
+    assert close is True

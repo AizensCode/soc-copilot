@@ -70,31 +70,44 @@ def _excerpt(text: str, match: re.Match, width: int = 80) -> str:
     return f"…{snippet}…" if (start > 0 or end < len(text)) else snippet
 
 
-def scan_for_injection(alert: Alert) -> list[InjectionFlag]:
-    """Scan an alert's text content for instruction-injection patterns.
+def scan_untrusted(value, root: str) -> list[InjectionFlag]:
+    """Scan any untrusted value (string / dict / list) for
+    instruction-injection patterns.
 
-    Walks the title, raw_log, and indicators. At most one flag per
-    (location, pattern) pair.
+    The alert was the first untrusted span this project scanned, but not
+    the only one that reaches a prompt: tool outputs carry text other
+    people wrote (AbuseIPDB community comments, URLScan page titles), and
+    memory renders titles recorded from past alerts. Anything
+    attacker-writable goes through here before the model reads it. At
+    most one flag per (location, pattern) pair.
     """
     flags: list[InjectionFlag] = []
     seen: set[tuple[str, str]] = set()
+    for path, text in _walk(value, root):
+        for label, pattern in _PATTERNS:
+            match = pattern.search(text)
+            if match and (path, label) not in seen:
+                seen.add((path, label))
+                flags.append(
+                    InjectionFlag(
+                        location=path,
+                        pattern=label,
+                        excerpt=_excerpt(text, match),
+                    )
+                )
+    return flags
 
-    fields = [
+
+def scan_for_injection(alert: Alert) -> list[InjectionFlag]:
+    """Scan an alert's text content for instruction-injection patterns.
+
+    Walks the title, raw_log, and indicators.
+    """
+    flags: list[InjectionFlag] = []
+    for root, value in [
         ("title", alert.title),
         ("raw_log", alert.raw_log),
         ("indicators", alert.indicators),
-    ]
-    for root, value in fields:
-        for path, text in _walk(value, root):
-            for label, pattern in _PATTERNS:
-                match = pattern.search(text)
-                if match and (path, label) not in seen:
-                    seen.add((path, label))
-                    flags.append(
-                        InjectionFlag(
-                            location=path,
-                            pattern=label,
-                            excerpt=_excerpt(text, match),
-                        )
-                    )
+    ]:
+        flags.extend(scan_untrusted(value, root))
     return flags
