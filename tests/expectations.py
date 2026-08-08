@@ -394,6 +394,42 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
         ],
         "min_sigma_matches": 1,
     },
+    # Ransomware precursor: shadow-copy deletion (T1490) during active
+    # file encryption. Calibrated 12/12 true_positive / high / escalate
+    # across both modes; T1490 mapped 12/12 (T1486 too, but T1490 is the
+    # behavior the Sigma rule detects and the fixture's point); the
+    # host-isolation pivot fired 12/12.
+    "ransomware_shadow_deletion.json": {
+        "expected_verdict": "true_positive",
+        "min_confidence": "high",
+        "required_techniques": ["T1490"],
+        "must_escalate": True,
+        "min_sigma_matches": 1,
+        "min_associated_groups": 1,
+        "pivots_must_include": [
+            ["isolat", "contain"],  # isolate/contain the host — 12/12
+        ],
+    },
+    # The benign twin. It trips the SAME shadow-deletion Sigma rule as the
+    # ransomware fixture (a detection match is corroboration, not a
+    # verdict), but the operator inventory verifies the backup host, the
+    # svc-backup account, and the scoped /oldest action. Calibrated 12/12
+    # false_positive / HIGH confidence / no-escalate across both modes —
+    # the inventory match is strong enough for a confident benign call,
+    # not a hedge to inconclusive. min_sigma_matches stays 1: the whole
+    # point is that a match coexists with a benign verdict. Techniques
+    # vary by mode (agentic notes T1490 6/6, phase-one 1/6), so none are
+    # pinned; the verdict is the assertion.
+    "benign_backup_shadow_prune.json": {
+        "expected_verdict": "false_positive",
+        "min_confidence": "high",
+        "must_escalate": False,
+        "min_sigma_matches": 1,
+        "pivots_must_include": [
+            # verify the activity against the backup asset/inventory
+            ["inventory", "backup-01", "svc-backup"],
+        ],
+    },
 }
 
 

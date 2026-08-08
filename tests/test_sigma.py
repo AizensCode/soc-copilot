@@ -175,6 +175,39 @@ def test_persistence_matches_schtasks_rule():
     assert ids == {SCHTASKS_RULE}
 
 
+SHADOW_RULE = "c947b146-0abc-4c87-9c64-b17e9d7274a2"  # shadow-copy deletion
+
+
+def test_contains_all_modifier_requires_every_pattern():
+    """The `all` quantifier flips a value list to every-of. The
+    shadow-deletion rule's CommandLine|contains|all: [shadow, delete]
+    must need BOTH substrings, not either."""
+    both = _field_matches(
+        {"command_line": "vssadmin delete shadows /all"},
+        "CommandLine|contains|all", ["shadow", "delete"],
+    )
+    only_one = _field_matches(
+        {"command_line": "vssadmin list shadows"},
+        "CommandLine|contains|all", ["shadow", "delete"],
+    )
+    assert both is True and only_one is False
+
+
+def test_ransomware_and_benign_prune_both_match_the_shadow_rule():
+    """The point of the benign twin: a Sigma match is corroboration, not a
+    verdict. Both the ransomware `delete shadows /all` and the sanctioned
+    backup `delete shadows /oldest` trip the SAME rule — the inventory,
+    not the detection, is what separates them."""
+    attack = {m.rule_id for m in match_sigma_rules(
+        _alert("ransomware_shadow_deletion.json")
+    )}
+    benign = {m.rule_id for m in match_sigma_rules(
+        _alert("benign_backup_shadow_prune.json")
+    )}
+    assert attack == {SHADOW_RULE}
+    assert benign == {SHADOW_RULE}
+
+
 def test_system_created_task_is_filtered_out():
     # Same schtasks command line, but SYSTEM context: the rule's own
     # false-positive filter must suppress it (requires the User mapping).

@@ -1,0 +1,28 @@
+{
+  "alert_id": "ALRT-2026-0514-014",
+  "timestamp": "2026-05-14T02:18:11Z",
+  "source": "edr",
+  "severity": "critical",
+  "title": "Volume shadow copies deleted during suspected file-encryption activity",
+  "raw_log": {
+    "event_type": "process_creation",
+    "host": "fs-06.corp.internal",
+    "user": "CORP\\a.turner",
+    "parent_process": "invoice_scan_9418.exe",
+    "parent_process_path": "C:\\Users\\a.turner\\AppData\\Local\\Temp\\invoice_scan_9418.exe",
+    "parent_signature_status": "unsigned",
+    "parent_file_created": "2026-05-14T02:16:52Z",
+    "process": "vssadmin.exe",
+    "process_path": "C:\\Windows\\System32\\vssadmin.exe",
+    "command_line": "vssadmin.exe delete shadows /all /quiet",
+    "integrity_level": "high",
+    "concurrent_file_activity": "1,914 files renamed with extension .l0cked across \\\\fs-06\\finance and \\\\fs-06\\hr in the preceding 120s",
+    "ransom_note_observed": "READ_ME_TO_RECOVER.txt written to 37 directories on fs-06",
+    "prior_identical_commands_30d": 0
+  },
+  "indicators": {
+    "ips": [],
+    "hashes": [],
+    "users": ["a.turner"]
+  }
+}

@@ -24,3 +24,4 @@ threshold logic instead.
 | `proc_creation_win_office_outlook_execution_from_temp.yml` | Executables running from Outlook's secure temp folder | T1566.001 |
 | `proc_creation_win_schtasks_creation.yml` | Scheduled task created via schtasks.exe (SYSTEM-context tasks filtered out) | T1053.005 |
 | `proc_creation_win_wmic_remote_execution.yml` | WMIC invoked against a remote node (`/node:`), localhost excluded | T1047 |
+| `proc_creation_win_susp_shadow_copies_deletion.yml` | Volume shadow copies deleted/resized via OS utilities (vssadmin, wmic, wbadmin, …) — a ransomware precursor | T1490, T1070 |

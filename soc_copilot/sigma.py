@@ -15,7 +15,8 @@ subset our curated rules use, not a full Sigma engine —
   the serialized raw log
 - field modifiers: contains, startswith, endswith; unmodified values
   compare equal, with ``*`` wildcards honored; everything matches
-  case-insensitively per the Sigma spec
+  case-insensitively per the Sigma spec. The ``all`` quantifier flips a
+  value list from any-of to every-of (``CommandLine|contains|all``)
 - conditions: identifiers combined with and/or/not, parentheses, and
   ``1 of pattern`` / ``all of pattern`` / ``... of them``
 - aggregation rules (near/count) are out of scope — SigmaHQ itself parks
@@ -85,7 +86,12 @@ def _lookup(raw_log: dict, path: str) -> list[str]:
 # a grounding claim, so "quietly wrong" is the one outcome we cannot allow.
 _MATCH_MODIFIERS = {"contains", "startswith", "endswith"}
 _VALUE_MODIFIERS = {"windash"}
-SUPPORTED_MODIFIERS = _MATCH_MODIFIERS | _VALUE_MODIFIERS
+# Quantifier: `all` flips a value list from any-of to every-of, so
+# `CommandLine|contains|all: [shadow, delete]` requires BOTH substrings
+# (as the canonical shadow-copy-deletion rule does). Without it, that
+# list would be read as any-of and the rule would over-match.
+_QUANTIFIER_MODIFIERS = {"all"}
+SUPPORTED_MODIFIERS = _MATCH_MODIFIERS | _VALUE_MODIFIERS | _QUANTIFIER_MODIFIERS
 
 # Sigma's `windash` modifier: the pattern's leading dash/slash may appear as
 # any of these in real command lines (including unicode dashes attackers use).
@@ -133,6 +139,12 @@ def _field_matches(raw_log: dict, sigma_field: str, patterns: object) -> bool:
         pats = [variant for p in pats for variant in _expand_windash(p)]
 
     match_mod = next((m for m in modifiers if m in _MATCH_MODIFIERS), None)
+    if "all" in modifiers:
+        # Every pattern must match some value (each with the match
+        # modifier's semantics), not merely one of them.
+        return all(
+            any(_match_value(v, p, match_mod) for v in values) for p in pats
+        )
     return any(_match_value(v, p, match_mod) for v in values for p in pats)
 
 

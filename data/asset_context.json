@@ -3,7 +3,7 @@
     "Operator-maintained asset inventory: the environment knowledge a SOC",
     "analyst brings to triage. Entries describe the SANCTIONED role of",
     "hosts, IPs, and service accounts — what they are FOR, where they act",
-    "from, and on what schedule. The matcher (src/assets.py) surfaces the",
+    "from, and on what schedule. The matcher (soc_copilot/assets.py) surfaces the",
     "entries relevant to an alert deterministically; the model may cite",
     "them but can never add to them. Describe sanctioned use positively;",
     "do not editorialize about what would be suspicious — judging observed",
@@ -40,6 +40,16 @@
       "expected_activity": [
         "daily hardware/software inventory cycle at 04:00 UTC executes PowerShell (including encoded commands) under SYSTEM via CcmExec.exe"
       ]
+    },
+    "backup-01.corp.internal": {
+      "role": "enterprise backup and replication server",
+      "owner": "infrastructure",
+      "notes": "Runs the sanctioned backup agent (signed, publisher 'Acme Data Protection, Inc.'); manages Volume Shadow Copy storage as part of its retention schedule.",
+      "expected_activity": [
+        "nightly backup-maintenance window, daily 01:00-02:00 UTC, runs as svc-backup",
+        "prunes the OLDEST shadow copy per volume during that window (vssadmin delete shadows /oldest, or resize shadowstorage) — bounded retention management, never /all",
+        "shadow-copy operations originate on backup-01 only, from the signed backup agent"
+      ]
     }
   },
   "ips": {
@@ -71,6 +81,15 @@
       "expected_activity": [
         "password resets and account unlocks via the helpdesk console (helpdesk-web-01.corp.internal)",
         "business hours only (08:00-18:00 local)"
+      ]
+    },
+    "svc-backup": {
+      "role": "backup and replication service account",
+      "owner": "infrastructure",
+      "expected_activity": [
+        "runs the sanctioned backup agent on backup-01.corp.internal only",
+        "manages Volume Shadow Copy storage during the nightly backup-maintenance window (01:00-02:00 UTC): creates snapshots and prunes the OLDEST copy per volume",
+        "never deletes all shadow copies and never runs shadow operations off backup-01"
       ]
     }
   }

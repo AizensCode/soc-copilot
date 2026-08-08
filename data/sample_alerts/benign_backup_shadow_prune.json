@@ -1,0 +1,29 @@
+{
+  "alert_id": "ALRT-2026-0514-015",
+  "timestamp": "2026-05-14T01:14:06Z",
+  "source": "edr",
+  "severity": "high",
+  "title": "Volume shadow copy deleted via vssadmin",
+  "raw_log": {
+    "event_type": "process_creation",
+    "host": "backup-01.corp.internal",
+    "user": "CORP\\svc-backup",
+    "parent_process": "AcmeBackupAgent.exe",
+    "parent_process_path": "C:\\Program Files\\Acme Data Protection\\Agent\\AcmeBackupAgent.exe",
+    "parent_signature_status": "signed (Acme Data Protection, Inc.)",
+    "process": "vssadmin.exe",
+    "process_path": "C:\\Windows\\System32\\vssadmin.exe",
+    "command_line": "vssadmin.exe delete shadows /for=C: /oldest /quiet",
+    "integrity_level": "high",
+    "task_context": "nightly shadow-storage retention prune",
+    "cron_window_match": "backup-maintenance daily 01:00-02:00 UTC",
+    "prior_identical_commands_30d": 27,
+    "first_seen": "2026-05-14T01:14:04Z",
+    "last_seen": "2026-05-14T01:14:06Z"
+  },
+  "indicators": {
+    "ips": [],
+    "hashes": [],
+    "users": ["svc-backup"]
+  }
+}
