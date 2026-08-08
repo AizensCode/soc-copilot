@@ -40,6 +40,7 @@
     # Without an ID, exports everything eligible.
     uv run python -m src.main --export-case [ALERT_ID]
 """
+import argparse
 import asyncio
 import json
 import sys
@@ -65,7 +66,7 @@ USAGE = (
 )
 
 
-async def _run_export_case() -> None:
+async def _run_export_case(args: argparse.Namespace) -> None:
     """Export ruled investigations as labeled eval cases.
 
     With an alert ID, exports that one (and says exactly why not, when
@@ -78,7 +79,7 @@ async def _run_export_case() -> None:
     from .history import AlertHistoryStore
 
     store = AlertHistoryStore(settings.HISTORY_PATH)
-    alert_id = sys.argv[2] if len(sys.argv) > 2 else None
+    alert_id = args.alert_id
 
     if alert_id:
         try:
@@ -109,7 +110,7 @@ async def _run_export_case() -> None:
         )
 
 
-async def _run_digest() -> None:
+async def _run_digest(args: argparse.Namespace) -> None:
     """Print the SOC briefing for the reporting window (default 24h).
 
     A quiet window is answered deterministically — no API call is spent
@@ -119,9 +120,8 @@ async def _run_digest() -> None:
     from .digest import build_digest_data, render_quiet, write_briefing
     from .history import AlertHistoryStore
 
-    hours = _positive_int_after("--digest", 24, "window hours")
     store = AlertHistoryStore(settings.HISTORY_PATH)
-    data = build_digest_data(store, since_hours=hours)
+    data = build_digest_data(store, since_hours=args.hours)
     if data["quiet"]:
         print(render_quiet(data))
         return
@@ -131,7 +131,7 @@ async def _run_digest() -> None:
     print(await write_briefing(data))
 
 
-async def _run_ask() -> None:
+async def _run_ask(args: argparse.Namespace) -> None:
     """Follow-up mode: interrogate a recorded investigation.
 
     With a question argument, answers once and exits (scriptable).
@@ -142,11 +142,8 @@ async def _run_ask() -> None:
     from .followup import FollowUpSession
     from .history import AlertHistoryStore
 
-    if len(sys.argv) < 3:
-        print(USAGE)
-        sys.exit(1)
     settings.require("ANTHROPIC_KEY")  # every answer is an LLM call
-    alert_id = sys.argv[2]
+    alert_id = args.alert_id
     store = AlertHistoryStore(settings.HISTORY_PATH)
     try:
         session = FollowUpSession(alert_id, history_store=store)
@@ -159,7 +156,7 @@ async def _run_ask() -> None:
                 print(f"  {aid}")
         sys.exit(1)
 
-    question = sys.argv[3] if len(sys.argv) > 3 else None
+    question = args.question
     if question:
         print(await session.ask(question))
         return
@@ -264,7 +261,7 @@ async def _run_sync_feedback() -> None:
 
 
 async def _maybe_open_case(
-    alert: Alert, investigation: Investigation
+    alert: Alert, investigation: Investigation, case: bool
 ) -> str | None:
     """Open a TheHive alert when --case is set and the policy says a human
     should own this. Returns the created TheHive alert id (so a caller can
@@ -272,7 +269,7 @@ async def _maybe_open_case(
     channel, so a TheHive outage must not lose an investigation that
     already succeeded.
     """
-    if "--case" not in sys.argv:
+    if not case:
         return None
     from .casemgmt import TheHiveClient, should_open_case
 
@@ -292,6 +289,7 @@ async def _maybe_open_case(
 async def _maybe_notify(
     alert: Alert,
     investigation: Investigation,
+    notify: bool,
     thehive_alert_id: str | None = None,
 ) -> None:
     """Page a webhook when --notify is set and the investigation is an
@@ -299,7 +297,7 @@ async def _maybe_notify(
     investigation. Fires only for page-worthy findings — routine
     acknowledgements stay silent so the channel doesn't become noise.
     """
-    if "--notify" not in sys.argv:
+    if not notify:
         return
     from .config import settings
     from .notify import WebhookClient, build_notification, should_notify
@@ -320,41 +318,119 @@ async def _maybe_notify(
         print(f"Webhook notification failed: {e}", flush=True)
 
 
-def _arg_after(flag: str) -> str | None:
-    """Return the value following a flag, if present and not another flag."""
-    if flag not in sys.argv:
-        return None
-    idx = sys.argv.index(flag)
-    if idx + 1 < len(sys.argv) and not sys.argv[idx + 1].startswith("-"):
-        return sys.argv[idx + 1]
-    return None
+def positive_int(what: str):
+    """An argparse `type` that accepts only positive integers, rejecting
+    anything else loudly. A numeric token is always the user's intended
+    value — argparse treats a lone `-1` as a value here (no option looks
+    like a negative number), so `--digest -1` is rejected, never silently
+    defaulted."""
+
+    def _parse(raw: str) -> int:
+        try:
+            value = int(raw)
+        except ValueError:
+            raise argparse.ArgumentTypeError(
+                f"{what} must be a positive integer, got {raw!r}"
+            )
+        if value <= 0:
+            raise argparse.ArgumentTypeError(
+                f"{what} must be a positive integer, got {value}"
+            )
+        return value
+
+    return _parse
 
 
-def _positive_int_after(flag: str, default: int, what: str) -> int:
-    """The numeric value following a flag, validated, or the default.
+# Command token -> (canonical name, parser-builder). The token keeps the
+# historical `--command` shape so every documented invocation still works;
+# each command gets its OWN argparse parser, so an unknown or misspelled
+# flag (a typo'd --auto-close in a systemd unit) is now REJECTED with a
+# clear error instead of silently ignored — the whole point of this
+# change, since a swallowed flag silently changes autonomous behavior.
+def _p(prog: str) -> argparse.ArgumentParser:
+    # allow_abbrev=False is load-bearing: with argparse's default (True) a
+    # truncated flag like `--au` is silently accepted as `--auto-close`,
+    # which would re-open the exact silent-autonomous-behavior hole this
+    # change exists to close. Only exact flag names are accepted.
+    return argparse.ArgumentParser(
+        prog=f"src.main {prog}", add_help=True, allow_abbrev=False
+    )
 
-    _arg_after's leading-dash check (there so a following flag like
-    --agentic isn't consumed as a value) also swallows negative numbers
-    — `--digest -1` would silently run with the default. A numeric
-    token is always the user's intended value, so parse it even with a
-    leading dash, then reject anything that isn't a positive integer
-    loudly instead of guessing.
-    """
-    idx = sys.argv.index(flag)
-    if idx + 1 >= len(sys.argv):
-        return default
-    raw = sys.argv[idx + 1]
-    if raw.startswith("-") and not raw.lstrip("-").isdigit():
-        return default  # another flag, not a value
-    try:
-        value = int(raw)
-    except ValueError:
-        print(f"{flag}: {what} must be a positive integer, got {raw!r}")
-        sys.exit(2)
-    if value <= 0:
-        print(f"{flag}: {what} must be a positive integer, got {value}")
-        sys.exit(2)
-    return value
+
+def _parse_args(argv: list[str]) -> tuple[str, argparse.Namespace]:
+    """Pick the command from argv[0] and parse the rest with that
+    command's parser. Returns (command, namespace). Exits (argparse's
+    own code 2) on an unknown command or flag, or a bad value."""
+    if not argv or argv[0] in ("-h", "--help"):
+        print(USAGE)
+        sys.exit(0 if argv else 1)
+
+    cmd, rest = argv[0], argv[1:]
+
+    if not cmd.startswith("-"):
+        # Default command: investigate a local alert file.
+        p = _p("<alert.json>")
+        p.add_argument("file")
+        p.add_argument("--agentic", action="store_true")
+        p.add_argument(
+            "--report", nargs="?", const="investigation_report.html",
+            default=None, metavar="OUT.html",
+        )
+        p.add_argument("--case", action="store_true")
+        return "file", p.parse_args(argv)
+
+    if cmd == "--from-elastic":
+        p = _p("--from-elastic")
+        p.add_argument("limit", nargs="?", type=positive_int("alert limit"),
+                       default=3)
+        p.add_argument("--agentic", action="store_true")
+        p.add_argument("--push", action="store_true")
+        p.add_argument("--report", action="store_true")
+        p.add_argument("--case", action="store_true")
+        return "from-elastic", p.parse_args(rest)
+
+    if cmd == "--watch":
+        p = _p("--watch")
+        p.add_argument("interval", nargs="?",
+                       type=positive_int("poll interval seconds"), default=60)
+        p.add_argument("--agentic", action="store_true")
+        p.add_argument("--auto-close", action="store_true")
+        p.add_argument("--case", action="store_true")
+        p.add_argument("--notify", action="store_true")
+        return "watch", p.parse_args(rest)
+
+    if cmd == "--ask":
+        # The question is free text and can legitimately begin with a dash
+        # ("--why did you escalate?"), so it must NOT pass through
+        # argparse's option detection — parse it verbatim, exactly as the
+        # old sys.argv[2]/[3] handling did.
+        if not rest:
+            print(f"--ask requires an ALERT_ID.\n\n{USAGE}", file=sys.stderr)
+            sys.exit(2)
+        return "ask", argparse.Namespace(
+            alert_id=rest[0],
+            question=rest[1] if len(rest) > 1 else None,
+        )
+
+    if cmd == "--digest":
+        p = _p("--digest")
+        p.add_argument("hours", nargs="?", type=positive_int("window hours"),
+                       default=24)
+        return "digest", p.parse_args(rest)
+
+    if cmd == "--export-case":
+        p = _p("--export-case")
+        p.add_argument("alert_id", nargs="?", default=None)
+        return "export-case", p.parse_args(rest)
+
+    if cmd in ("--sync-feedback", "--scorecard"):
+        _p(cmd).parse_args(rest)  # accepts nothing; rejects stray args
+        return cmd.lstrip("-"), argparse.Namespace()
+
+    # A leading-dash token that is not a known command: don't silently
+    # treat it as a filename — say so and exit.
+    print(f"Unknown command '{cmd}'.\n\n{USAGE}", file=sys.stderr)
+    sys.exit(2)
 
 
 def _telemetry_line(inv: Investigation) -> str:
@@ -407,20 +483,20 @@ def _write_report(alert: Alert, inv: Investigation, out: Path) -> None:
     print(f"HTML report written to {out}")
 
 
-async def _run_file(agentic: bool) -> None:
+async def _run_file(args: argparse.Namespace) -> None:
     _require_investigation_keys()
-    alert_path = Path(sys.argv[1])
+    alert_path = Path(args.file)
     with alert_path.open() as f:
         alert = Alert(**json.load(f))
 
     copilot = SOCCopilot()
-    investigation = await _investigate(copilot, alert, agentic)
+    investigation = await _investigate(copilot, alert, args.agentic)
 
     debug_path = Path("last_run_debug.json")
     with debug_path.open("w") as f:
         json.dump(
             {
-                "mode": "agentic" if agentic else "phase_one",
+                "mode": "agentic" if args.agentic else "phase_one",
                 "alert": alert.model_dump(mode="json"),
                 "evidence_raw": [
                     e.model_dump(mode="json") for e in investigation.evidence
@@ -433,20 +509,19 @@ async def _run_file(agentic: bool) -> None:
         )
     print(f"Full debug written to {debug_path}")
 
-    if "--report" in sys.argv:
-        out = Path(_arg_after("--report") or "investigation_report.html")
-        _write_report(alert, investigation, out)
+    if args.report:
+        _write_report(alert, investigation, Path(args.report))
 
-    await _maybe_open_case(alert, investigation)
+    await _maybe_open_case(alert, investigation, args.case)
 
     print(investigation.model_dump_json(indent=2))
 
 
-async def _run_elastic(agentic: bool) -> None:
+async def _run_elastic(args: argparse.Namespace) -> None:
     from .elastic import ElasticAlertSource
 
     _require_investigation_keys()
-    limit = _positive_int_after("--from-elastic", 3, "alert limit")
+    limit = args.limit
     try:
         source = ElasticAlertSource()
     except RuntimeError as e:
@@ -461,7 +536,7 @@ async def _run_elastic(agentic: bool) -> None:
     copilot = SOCCopilot()
     for alert in alerts:
         print(f"\n=== {alert.alert_id} — {alert.title} ===")
-        investigation = await _investigate(copilot, alert, agentic)
+        investigation = await _investigate(copilot, alert, args.agentic)
 
         campaign = bool(
             investigation.correlation and investigation.correlation.is_campaign
@@ -474,18 +549,18 @@ async def _run_elastic(agentic: bool) -> None:
             f"injection_flags={len(investigation.injection_flags)}"
         )
 
-        if "--report" in sys.argv:
+        if args.report:
             reports_dir = Path("reports")
             reports_dir.mkdir(exist_ok=True)
             _write_report(
                 alert, investigation, reports_dir / f"{alert.alert_id}.html"
             )
 
-        if "--push" in sys.argv:
+        if args.push:
             doc_id = await source.push_investigation(alert, investigation)
             print(f"Pushed investigation to Elastic (doc id: {doc_id})")
 
-        await _maybe_open_case(alert, investigation)
+        await _maybe_open_case(alert, investigation, args.case)
 
 
 def _prioritize(
@@ -517,7 +592,7 @@ def _prioritize(
     return [(doc_id, alert, why) for _, doc_id, alert, why in scored]
 
 
-async def _run_watch(agentic: bool) -> None:
+async def _run_watch(args: argparse.Namespace) -> None:
     """Continuous mode: the copilot works the open-alert queue by itself.
 
     Each cycle: fetch open alerts, order them by deterministic priority
@@ -548,15 +623,16 @@ async def _run_watch(agentic: bool) -> None:
     from .elastic import ElasticAlertSource
 
     _require_investigation_keys()
-    interval = _positive_int_after("--watch", 60, "poll interval seconds")
+    interval = args.interval
+    agentic = args.agentic
+    auto_close = args.auto_close
+    notify = args.notify
     try:
         source = ElasticAlertSource()
     except RuntimeError as e:
         print(e)
         sys.exit(1)
 
-    auto_close = "--auto-close" in sys.argv
-    notify = "--notify" in sys.argv
     if notify and not settings.WEBHOOK_URL:
         # Fail loudly at startup rather than silently never paging.
         print("--notify requires WEBHOOK_URL in your .env")
@@ -628,8 +704,12 @@ async def _run_watch(agentic: bool) -> None:
                     # noise or a page; everything else is offered to the
                     # policies. The page links to the case when one opened.
                     if not close:
-                        case_id = await _maybe_open_case(alert, investigation)
-                        await _maybe_notify(alert, investigation, case_id)
+                        case_id = await _maybe_open_case(
+                            alert, investigation, args.case
+                        )
+                        await _maybe_notify(
+                            alert, investigation, notify, case_id
+                        )
                     disposition = (
                         f"alert CLOSED autonomously ({reason})"
                         if close
@@ -651,36 +731,34 @@ async def _run_watch(agentic: bool) -> None:
         await asyncio.sleep(interval)
 
 
-async def main() -> None:
-    if len(sys.argv) < 2:
-        print(USAGE)
-        sys.exit(1)
-
-    agentic = "--agentic" in sys.argv
-    if sys.argv[1] == "--sync-feedback":
+async def _dispatch(command: str, args: argparse.Namespace) -> None:
+    if command == "sync-feedback":
         await _run_sync_feedback()
-    elif sys.argv[1] == "--scorecard":
+    elif command == "scorecard":
         await _run_scorecard()
-    elif sys.argv[1] == "--ask":
-        await _run_ask()
-    elif sys.argv[1] == "--digest":
-        await _run_digest()
-    elif sys.argv[1] == "--export-case":
-        await _run_export_case()
-    elif sys.argv[1] == "--from-elastic":
-        await _run_elastic(agentic)
-    elif sys.argv[1] == "--watch":
+    elif command == "ask":
+        await _run_ask(args)
+    elif command == "digest":
+        await _run_digest(args)
+    elif command == "export-case":
+        await _run_export_case(args)
+    elif command == "from-elastic":
+        await _run_elastic(args)
+    elif command == "watch":
         try:
-            await _run_watch(agentic)
+            await _run_watch(args)
         except KeyboardInterrupt:
             print("\nWatch stopped.")
     else:
-        await _run_file(agentic)
+        await _run_file(args)
 
 
 if __name__ == "__main__":
+    # Parse synchronously (argparse exits with code 2 on a bad flag/value,
+    # which is the whole safety point) before entering the event loop.
+    command, args = _parse_args(sys.argv[1:])
     try:
-        asyncio.run(main())
+        asyncio.run(_dispatch(command, args))
     except RuntimeError as e:
         # A missing-key (or other configuration) error should read as one
         # clear line, not a stack trace — the message already names the

@@ -1,42 +1,118 @@
 """Unit tests for CLI argument parsing (no API, no network).
 
-Born from a live catch: `--digest -1` silently ran the default 24h
-window, because _arg_after's leading-dash check (there so a following
-flag isn't consumed as a value) also swallowed negative numbers. A
-numeric token is always the user's intended value — parse it, validate
-it, and refuse it loudly rather than guessing.
+The CLI keeps its historical `--command` shape (so every documented
+invocation still works), but each command now parses its own args with
+argparse instead of scanning sys.argv. Two properties matter and are
+locked here: an unknown or misspelled flag is REJECTED (a typo'd
+--auto-close in a systemd unit silently changed autonomous behavior
+before), and a bad numeric value is refused loudly rather than silently
+defaulted (the original `--digest -1` catch).
 
     uv run pytest tests/test_cli.py -v
 """
+import argparse
+
 import pytest
 
-from src.main import _positive_int_after
+from src.main import _parse_args, positive_int
+
+# --- positive_int type -------------------------------------------------------
 
 
-def _argv(monkeypatch, *args):
-    monkeypatch.setattr("sys.argv", ["src.main", *args])
+def test_positive_int_parses_a_valid_value():
+    assert positive_int("window hours")("48") == 48
 
 
-def test_valid_value_is_parsed(monkeypatch):
-    _argv(monkeypatch, "--digest", "48")
-    assert _positive_int_after("--digest", 24, "window hours") == 48
+@pytest.mark.parametrize("bad", ["-1", "0", "abc", "1.5"])
+def test_positive_int_rejects_non_positive_and_non_integer(bad):
+    with pytest.raises(argparse.ArgumentTypeError, match="positive integer"):
+        positive_int("window hours")(bad)
 
 
-def test_absent_value_falls_back_to_default(monkeypatch):
-    _argv(monkeypatch, "--digest")
-    assert _positive_int_after("--digest", 24, "window hours") == 24
+# --- command parsing ---------------------------------------------------------
 
 
-def test_following_flag_is_not_consumed_as_a_value(monkeypatch):
-    _argv(monkeypatch, "--watch", "--agentic")
-    assert _positive_int_after("--watch", 60, "poll interval seconds") == 60
+def test_default_command_investigates_a_file():
+    command, args = _parse_args(["alert.json", "--agentic", "--case"])
+    assert command == "file"
+    assert args.file == "alert.json"
+    assert args.agentic is True and args.case is True
+    assert args.report is None
 
 
-@pytest.mark.parametrize("bad", ["-1", "0", "abc", "--5", "1.5"])
-def test_invalid_values_exit_loudly_instead_of_guessing(monkeypatch, bad, capsys):
-    """The live bug: `--digest -1` ran a 24h window without a word."""
-    _argv(monkeypatch, "--digest", bad)
+def test_report_takes_an_optional_value():
+    _, bare = _parse_args(["alert.json", "--report"])
+    assert bare.report == "investigation_report.html"
+    _, named = _parse_args(["alert.json", "--report", "out.html"])
+    assert named.report == "out.html"
+
+
+def test_watch_optional_interval_and_flags():
+    command, args = _parse_args(["--watch", "30", "--auto-close", "--notify"])
+    assert command == "watch"
+    assert args.interval == 30
+    assert args.auto_close is True and args.notify is True
+    assert args.case is False
+    # A following flag is not swallowed as the interval.
+    _, defaulted = _parse_args(["--watch", "--agentic"])
+    assert defaulted.interval == 60 and defaulted.agentic is True
+
+
+def test_digest_negative_value_is_rejected_not_defaulted(capsys):
+    """The original live bug, now enforced by argparse's own validation."""
     with pytest.raises(SystemExit) as exc:
-        _positive_int_after("--digest", 24, "window hours")
+        _parse_args(["--digest", "-1"])
     assert exc.value.code == 2
-    assert "must be a positive integer" in capsys.readouterr().out
+    assert "positive integer" in capsys.readouterr().err
+
+
+def test_ask_requires_an_alert_id_but_question_is_optional():
+    command, args = _parse_args(["--ask", "ALRT-1"])
+    assert command == "ask" and args.alert_id == "ALRT-1"
+    assert args.question is None
+    _, with_q = _parse_args(["--ask", "ALRT-1", "why true positive?"])
+    assert with_q.question == "why true positive?"
+    with pytest.raises(SystemExit):        # missing required alert_id
+        _parse_args(["--ask"])
+
+
+def test_ask_question_may_begin_with_a_dash():
+    """The question is free text, not an argparse token: a dash-prefixed
+    question must be taken verbatim, not rejected as an unknown option."""
+    _, args = _parse_args(["--ask", "ALRT-1", "--why did you escalate?"])
+    assert args.question == "--why did you escalate?"
+
+
+@pytest.mark.parametrize("truncated", ["--au", "--not", "--c"])
+def test_truncated_flag_prefixes_are_rejected_not_silently_applied(
+    truncated, capsys
+):
+    """allow_abbrev=False: `--au` must NOT silently enable --auto-close.
+    Accepting prefixes would re-open the silent-autonomous-behavior hole
+    this whole change closes."""
+    with pytest.raises(SystemExit) as exc:
+        _parse_args(["--watch", "60", truncated])
+    assert exc.value.code == 2
+    assert "unrecognized arguments" in capsys.readouterr().err
+
+
+def test_unknown_flag_on_a_command_is_rejected(capsys):
+    """The safety fix: a misspelled --auto-close must error, not vanish."""
+    with pytest.raises(SystemExit) as exc:
+        _parse_args(["--watch", "60", "--auto-clsoe"])
+    assert exc.value.code == 2
+    assert "unrecognized arguments" in capsys.readouterr().err
+
+
+def test_unknown_command_is_rejected_not_treated_as_a_file(capsys):
+    with pytest.raises(SystemExit) as exc:
+        _parse_args(["--waaatch"])
+    assert exc.value.code == 2
+    assert "Unknown command" in capsys.readouterr().err
+
+
+def test_flagless_commands_reject_stray_arguments(capsys):
+    command, _ = _parse_args(["--scorecard"])
+    assert command == "scorecard"
+    with pytest.raises(SystemExit):
+        _parse_args(["--scorecard", "extra"])
