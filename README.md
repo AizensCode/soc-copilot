@@ -223,6 +223,12 @@ The design choice that keeps it useful rather than noisy is what counts as a lin
 
 Like the rest of the memory layer, correlation is deterministic and Python-owned — the campaign assessment traces to concrete signals, not the model's intuition — so it's covered by fast API-free tests (same-/24 linking, technique-alone *not* linking, window exclusion, the campaign threshold).
 
+### Working the queue in the right order
+
+Watch mode fetches up to ten open alerts a cycle and, at first, worked them in whatever order Elastic returned — fine when the queue is short, wrong during a backlog, which is exactly when ordering matters. A critical campaign-linked alert should not wait behind low-severity noise. And the signals to order them like a human lead already exist *before* any model call is spent: the alert's own severity, whether it shares an indicator with a past **true** positive, and a pre-investigation correlation pass. `src/triage.py` scores those into a priority the loop sorts on, highest first, ties keeping Elastic's recency order.
+
+The weighting says what the SOC cares about: a coordinated campaign outranks everything, a recurring true positive outranks raw severity, and severity breaks the rest. The one subtlety is ruling-aware, like everything else in the memory layer — "recurring true positive" uses the *effective* verdict, so an analyst who overturned a past call (copilot said true positive, human ruled false positive) correctly keeps that alert from jumping the queue, while a confirmed true positive the copilot had only hedged on does jump it. The scorer is a pure function of already-computed signals — no API, no store access — so the ordering is tested without a live copilot, and the watch heartbeat prints each alert's priority reason (`[priority: severity=high, campaign-correlated, recurs a true positive (OLD-1)]`) so the reordering is never a black box.
+
 ### Closing the loop: context that decides, not just describes
 
 The three features above — threat-actor overlap, prior sightings, campaign correlation — are only as sharp as their effect on the verdict. It's not enough for the copilot to *know* an alert is part of a campaign; that knowledge has to change what it recommends. Otherwise it's a fact-lister, not an analyst.
@@ -348,6 +354,7 @@ soc-copilot/
 │   ├── models.py           # Pydantic models: Alert, Evidence, GroupMatch, PriorSighting, Correlation, InjectionFlag, Telemetry, Investigation
 │   ├── mitre_groups.py     # Technique→threat-group matcher (reads the local map)
 │   ├── history.py          # AlertHistoryStore: cross-alert memory + campaign correlation
+│   ├── triage.py           # Deterministic watch-queue priority ordering
 │   ├── injection.py        # Prompt-injection scanner for untrusted alert content
 │   ├── sigma.py            # Sigma rule matcher: which detection logic fires on this raw log
 │   ├── assets.py           # Asset-inventory matcher: verified environment context
@@ -393,6 +400,7 @@ soc-copilot/
 │   ├── test_elastic.py     # ECS normalization + Elastic HTTP unit tests (no API)
 │   ├── test_casemgmt.py    # TheHive payload mapping + HTTP unit tests (no API)
 │   ├── test_notify.py      # Webhook policy, payload, HTTP wrapper (no API)
+│   ├── test_triage.py      # Priority scorer + store-backed ordering (no API)
 │   ├── test_tools.py       # Tool dispatch guardrails (no API)
 │   ├── test_campaign_scenario.py  # Multi-stage campaign eval (API-backed, own store)
 │   ├── test_feedback.py    # Analyst-ruling sync + memory annotation (no API)
@@ -592,7 +600,7 @@ The review's sharpest finding: three independent lenses converged on the autonom
 - **Precedent-aware closure.** Analyst rulings should gate auto-close in both directions: block it when a prior sighting on a shared indicator carries an OVERTURNING ruling, permit a recurring analyst-confirmed FP to close at medium confidence. Pure functions, deterministic reasons, beside the existing policy.
 - **Scan every untrusted span, not just the alert.** `scan_for_injection` covers alert content, but tool outputs are attacker-writable too — AbuseIPDB community comments land in the prompt verbatim. Scan tool results and memory-rendered titles, and add an adversarial eval that plants an instruction in a recorded tool response.
 - ~~**Telemetry**~~ ✅ Implemented. Per-investigation tokens, cost, latency, API round-trips, tool calls, and retries are recorded deterministically and flattened into the history store and Elastic docs; the digest rolls them into a spend section that counts unmeasured runs separately. See "What an investigation actually costs". Still open from this item: automation rate and time-to-verdict as first-class scorecard metrics.
-- **Watch-queue priority.** Investigate by severity + prior-true-positive + campaign signals instead of fetch order, so backlog triage matches what a human lead would work first.
+- ~~**Watch-queue priority.**~~ ✅ Implemented — the watch loop orders each cycle by deterministic pre-LLM signals (campaign and recurring-true-positive ahead of raw severity), so backlog triage matches what a human lead would work first. See "Working the queue in the right order".
 - ~~**Escalation webhook (`--notify`).**~~ ✅ Implemented — a webhook POST for escalations and campaigns only (never routine acks) makes `--watch` safe outside staffed hours. See "Paging a human when it can't wait".
 - **Hygiene bundle.** Lazy component-scoped config ✅ and CI running the free suite on every push ✅ (see "Tests that run themselves"). Still open: argparse subcommands (a typo'd `--auto-close` in a systemd unit is silently ignored today — the same silent-default class as the rejected `--digest -1`), a real package name with a console entry point, and removing the CWD debug-file writes.
 - **Alert families with benign twins.** Ransomware precursors (shadow-copy deletion), OAuth consent abuse, WAF-visible web attacks — each with a calibrated benign twin, so false-positive discipline scales with coverage instead of eroding under it.

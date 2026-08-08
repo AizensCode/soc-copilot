@@ -488,14 +488,46 @@ async def _run_elastic(agentic: bool) -> None:
         await _maybe_open_case(alert, investigation)
 
 
+def _prioritize(
+    copilot: SOCCopilot, fresh: list[tuple[str, Alert]]
+) -> list[tuple[str, Alert, str]]:
+    """Order this cycle's fresh alerts the way a human lead would — a
+    coordinated campaign and recurring true positives ahead of raw
+    severity — using only deterministic pre-LLM signals (severity, prior
+    sightings, a correlation pass). Returns (doc_id, alert, reason),
+    highest priority first; ties keep Elastic's recency order.
+
+    The signals are recomputed from the store here, cheaply and without
+    the API, so a backlog is triaged before any model call is spent —
+    the investigation recomputes the same memory internally, which is a
+    small duplicate read the summary-index roadmap item will remove.
+    """
+    from .config import settings
+    from .triage import priority_score
+
+    scored = []
+    for doc_id, alert in fresh:
+        priors = copilot.history.prior_sightings(alert)
+        correlation = copilot.history.correlate(
+            alert, window_hours=settings.CORRELATION_WINDOW_HOURS
+        )
+        score, why = priority_score(alert, priors, correlation)
+        scored.append((score, doc_id, alert, why))
+    scored.sort(key=lambda t: t[0], reverse=True)  # stable: ties keep order
+    return [(doc_id, alert, why) for _, doc_id, alert, why in scored]
+
+
 async def _run_watch(agentic: bool) -> None:
     """Continuous mode: the copilot works the open-alert queue by itself.
 
-    Each cycle: fetch open alerts, investigate each, push the result,
-    acknowledge the alert in Elastic (which removes it from the next
-    poll — acknowledgement IS the dedupe). A per-session seen-set guards
-    against re-investigating if an acknowledgement fails; a failed alert
-    is logged and retried on a later cycle rather than killing the loop.
+    Each cycle: fetch open alerts, order them by deterministic priority
+    (src/triage.py — campaign and recurring-true-positive signals ahead
+    of raw severity, so a backlog is worked the way a human lead would),
+    investigate each, push the result, acknowledge the alert in Elastic
+    (which removes it from the next poll — acknowledgement IS the dedupe).
+    A per-session seen-set guards against re-investigating if an
+    acknowledgement fails; a failed alert is logged and retried on a
+    later cycle rather than killing the loop.
 
     With --auto-close, investigations that pass the deterministic closure
     policy (src/closure.py: high-confidence false positive, no
@@ -568,8 +600,12 @@ async def _run_watch(agentic: bool) -> None:
         try:
             hits = await source.fetch_alert_hits(limit=10, status="open")
             fresh = [(d, a) for d, a in hits if d not in seen]
-            for doc_id, alert in fresh:
-                print(f"\n=== {alert.alert_id} — {alert.title} ===", flush=True)
+            for doc_id, alert, why in _prioritize(copilot, fresh):
+                print(
+                    f"\n=== {alert.alert_id} — {alert.title} "
+                    f"[priority: {why}] ===",
+                    flush=True,
+                )
                 try:
                     investigation = await _investigate(copilot, alert, agentic)
                     close, reason = (
