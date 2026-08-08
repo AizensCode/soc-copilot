@@ -14,10 +14,10 @@ from types import SimpleNamespace
 
 import httpx
 
-from src.digest import build_digest_data
-from src.history import AlertHistoryStore
-from src.models import Alert, Investigation, Telemetry
-from src.pricing import estimate_cost, is_priced
+from soc_copilot.digest import build_digest_data
+from soc_copilot.history import AlertHistoryStore
+from soc_copilot.models import Alert, Investigation, Telemetry
+from soc_copilot.pricing import estimate_cost, is_priced
 
 _T = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
 
@@ -98,7 +98,7 @@ def _final_json(alert_id="A1") -> str:
 
 
 def _copilot(tmp_path, responses):
-    from src.copilot import SOCCopilot
+    from soc_copilot.copilot import SOCCopilot
 
     copilot = SOCCopilot(
         history_store=AlertHistoryStore(tmp_path / "investigations.jsonl")
@@ -138,8 +138,8 @@ async def test_phase_one_counts_a_resample_as_a_retry_and_bills_both(tmp_path):
 
 
 async def test_agentic_counts_tool_calls_and_every_round_trip(tmp_path, monkeypatch):
-    import src.copilot as copilot_mod
-    from src.tools.base import ToolResult
+    import soc_copilot.copilot as copilot_mod
+    from soc_copilot.tools.base import ToolResult
 
     async def fake_dispatch(name, tool_input):
         return ToolResult(tool_name=name, success=True, data={"score": 0})
@@ -185,7 +185,7 @@ def test_history_record_without_telemetry_stores_none_not_zero(tmp_path):
 
 
 async def test_elastic_doc_carries_flattened_telemetry():
-    from src.elastic import ElasticAlertSource
+    from soc_copilot.elastic import ElasticAlertSource
 
     captured = {}
 
@@ -208,7 +208,7 @@ async def test_elastic_doc_carries_flattened_telemetry():
 
 
 async def test_elastic_doc_omits_telemetry_fields_when_absent():
-    from src.elastic import ElasticAlertSource
+    from soc_copilot.elastic import ElasticAlertSource
 
     captured = {}
 

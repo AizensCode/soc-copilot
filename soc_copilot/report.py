@@ -6,7 +6,7 @@ dependency-free HTML file — no external CSS, fonts, or scripts — that reads 
 a SOC console: verdict and escalation at a glance up top, evidence and pivots
 below, attacker-controlled text safely escaped throughout.
 
-    from src.report import render_report
+    from soc_copilot.report import render_report
     Path("report.html").write_text(render_report(alert, investigation))
 """
 from html import escape

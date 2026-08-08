@@ -12,9 +12,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.followup import FollowUpSession, build_grounding
-from src.history import AlertHistoryStore
-from src.models import Alert, Evidence, Investigation
+from soc_copilot.followup import FollowUpSession, build_grounding
+from soc_copilot.history import AlertHistoryStore
+from soc_copilot.models import Alert, Evidence, Investigation
 
 _T = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
 

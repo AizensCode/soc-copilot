@@ -14,7 +14,7 @@ import argparse
 
 import pytest
 
-from src.main import _parse_args, positive_int
+from soc_copilot.main import _parse_args, positive_int
 
 # --- positive_int type -------------------------------------------------------
 

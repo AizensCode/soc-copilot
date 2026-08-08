@@ -1,17 +1,17 @@
 """CLI entry point.
 
     # Investigate a local alert file
-    uv run python -m src.main <alert.json> [--agentic] [--report [out.html]] [--case] [--debug [out.json]]
+    uv run soc-copilot <alert.json> [--agentic] [--report [out.html]] [--case] [--debug [out.json]]
 
     # Pull open detection alerts from Elastic and investigate each
-    uv run python -m src.main --from-elastic [N] [--agentic] [--push] [--report] [--case]
+    uv run soc-copilot --from-elastic [N] [--agentic] [--push] [--report] [--case]
 
     # Stay running: poll Elastic, investigate every new open alert,
     # push the result, acknowledge the alert. With --auto-close, alerts
     # whose investigation passes the closure policy (high-confidence
     # false positive, no escalation/injection/campaign) are closed
     # autonomously instead of acknowledged.
-    uv run python -m src.main --watch [interval_seconds] [--agentic] [--auto-close] [--case] [--notify]
+    uv run soc-copilot --watch [interval_seconds] [--agentic] [--auto-close] [--case] [--notify]
 
     --case opens a TheHive alert for investigations a human should own
     (escalated, true-positive, or campaign-correlated). Requires
@@ -24,21 +24,21 @@
     # Pull analyst rulings from TheHive back into the copilot's memory:
     # prior sightings then carry the human's verdict beside the
     # copilot's own, and a ruling outranks the recorded opinion.
-    uv run python -m src.main --sync-feedback
+    uv run soc-copilot --sync-feedback
 
     # Interrogate a recorded investigation: one-shot with a question,
     # or an interactive session without one. Answers are grounded in
     # the stored record — no new tool calls, no re-investigation.
-    uv run python -m src.main --ask ALERT_ID ["question"]
+    uv run soc-copilot --ask ALERT_ID ["question"]
 
     # The SOC morning digest: what the copilot investigated in the
     # window, what rulings came back, what needs a human first.
-    uv run python -m src.main --digest [hours]
+    uv run soc-copilot --digest [hours]
 
     # Export analyst-ruled investigations as labeled eval cases under
     # data/evals/cases/, replayed by tests/test_regression_cases.py.
     # Without an ID, exports everything eligible.
-    uv run python -m src.main --export-case [ALERT_ID]
+    uv run soc-copilot --export-case [ALERT_ID]
 """
 import argparse
 import asyncio
@@ -55,14 +55,14 @@ FEEDBACK_SYNC_INTERVAL = 300
 
 USAGE = (
     "Usage:\n"
-    "  python -m src.main <path/to/alert.json> [--agentic] [--report [out.html]] [--case] [--debug [out.json]]\n"
-    "  python -m src.main --from-elastic [N] [--agentic] [--push] [--report] [--case]\n"
-    "  python -m src.main --watch [interval_seconds] [--agentic] [--auto-close] [--case] [--notify]\n"
-    "  python -m src.main --sync-feedback\n"
-    "  python -m src.main --scorecard\n"
-    "  python -m src.main --ask ALERT_ID [\"question\"]\n"
-    "  python -m src.main --digest [hours]\n"
-    "  python -m src.main --export-case [ALERT_ID]"
+    "  soc-copilot <path/to/alert.json> [--agentic] [--report [out.html]] [--case] [--debug [out.json]]\n"
+    "  soc-copilot --from-elastic [N] [--agentic] [--push] [--report] [--case]\n"
+    "  soc-copilot --watch [interval_seconds] [--agentic] [--auto-close] [--case] [--notify]\n"
+    "  soc-copilot --sync-feedback\n"
+    "  soc-copilot --scorecard\n"
+    "  soc-copilot --ask ALERT_ID [\"question\"]\n"
+    "  soc-copilot --digest [hours]\n"
+    "  soc-copilot --export-case [ALERT_ID]"
 )
 
 
@@ -353,7 +353,7 @@ def _p(prog: str) -> argparse.ArgumentParser:
     # which would re-open the exact silent-autonomous-behavior hole this
     # change exists to close. Only exact flag names are accepted.
     return argparse.ArgumentParser(
-        prog=f"src.main {prog}", add_help=True, allow_abbrev=False
+        prog=f"soc-copilot {prog}", add_help=True, allow_abbrev=False
     )
 
 
@@ -458,7 +458,7 @@ def _telemetry_line(inv: Investigation) -> str:
 def _require_investigation_keys() -> None:
     """Every real investigation calls the model and the enrichment tools;
     demand those keys up front so a keyless run fails fast and legibly
-    (the library itself stays lazy — see src/config.py)."""
+    (the library itself stays lazy — see soc_copilot/config.py)."""
     from .config import settings
 
     settings.require(
@@ -605,7 +605,7 @@ async def _run_watch(args: argparse.Namespace) -> None:
     """Continuous mode: the copilot works the open-alert queue by itself.
 
     Each cycle: fetch open alerts, order them by deterministic priority
-    (src/triage.py — campaign and recurring-true-positive signals ahead
+    (soc_copilot/triage.py — campaign and recurring-true-positive signals ahead
     of raw severity, so a backlog is worked the way a human lead would),
     investigate each, push the result, acknowledge the alert in Elastic
     (which removes it from the next poll — acknowledgement IS the dedupe).
@@ -614,7 +614,7 @@ async def _run_watch(args: argparse.Namespace) -> None:
     later cycle rather than killing the loop.
 
     With --auto-close, investigations that pass the deterministic closure
-    policy (src/closure.py: high-confidence false positive, no
+    policy (soc_copilot/closure.py: high-confidence false positive, no
     escalation/injection/campaign signals) close the alert autonomously,
     with the policy reason recorded in the results index. Everything else
     is acknowledged for a human, exactly as without the flag.
@@ -762,7 +762,8 @@ async def _dispatch(command: str, args: argparse.Namespace) -> None:
         await _run_file(args)
 
 
-if __name__ == "__main__":
+def cli() -> None:
+    """Console entry point (`soc-copilot`), also used by `python -m`."""
     # Parse synchronously (argparse exits with code 2 on a bad flag/value,
     # which is the whole safety point) before entering the event loop.
     command, args = _parse_args(sys.argv[1:])
@@ -774,3 +775,7 @@ if __name__ == "__main__":
         # exact environment variable to set.
         print(f"Configuration error: {e}", file=sys.stderr)
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    cli()

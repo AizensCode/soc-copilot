@@ -7,8 +7,8 @@ its logic is validated without touching Anthropic. Run:
 """
 from datetime import datetime, timedelta, timezone
 
-from src.history import AlertHistoryStore, alert_iocs
-from src.models import Alert, Investigation
+from soc_copilot.history import AlertHistoryStore, alert_iocs
+from soc_copilot.models import Alert, Investigation
 
 
 def _alert(

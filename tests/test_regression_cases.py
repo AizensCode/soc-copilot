@@ -18,9 +18,9 @@ from pathlib import Path
 
 import pytest
 
-from src.copilot import SOCCopilot
-from src.history import AlertHistoryStore
-from src.models import Alert
+from soc_copilot.copilot import SOCCopilot
+from soc_copilot.history import AlertHistoryStore
+from soc_copilot.models import Alert
 
 CASES_DIR = Path("data/evals/cases")
 CASES = sorted(CASES_DIR.glob("*.json")) if CASES_DIR.is_dir() else []

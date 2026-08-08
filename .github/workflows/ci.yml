@@ -28,7 +28,7 @@ jobs:
       # importing the package and running the free suite must work with
       # an empty environment, exactly as CI has it here.
       - name: Lint
-        run: uv run ruff check src/ tests/
+        run: uv run ruff check soc_copilot/ tests/
 
       - name: Free test suite (no network, no API keys)
         run: uv run pytest -m "not live"

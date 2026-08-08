@@ -12,10 +12,10 @@ from datetime import datetime, timezone
 
 import httpx
 
-from src.casemgmt import TheHiveClient, sync_dispositions
-from src.copilot import SOCCopilot
-from src.history import AlertHistoryStore
-from src.models import Alert, Investigation, PriorSighting
+from soc_copilot.casemgmt import TheHiveClient, sync_dispositions
+from soc_copilot.copilot import SOCCopilot
+from soc_copilot.history import AlertHistoryStore
+from soc_copilot.models import Alert, Investigation, PriorSighting
 
 _T = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
 
@@ -165,7 +165,7 @@ async def test_annotate_disposition_updates_each_matching_doc():
     needs privileges a least-privilege SIEM key doesn't carry), with
     human_agrees computed against EACH doc's own verdict: a
     re-investigated alert shows which attempt the human agreed with."""
-    from src.elastic import ElasticAlertSource
+    from soc_copilot.elastic import ElasticAlertSource
 
     updates: dict[str, dict] = {}
 

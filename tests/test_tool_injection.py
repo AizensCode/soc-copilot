@@ -21,10 +21,10 @@ Three layers are asserted, strongest first:
 """
 import pytest
 
-from src.closure import should_auto_close
-from src.copilot import SOCCopilot
-from src.history import AlertHistoryStore
-from src.tools.base import ToolResult
+from soc_copilot.closure import should_auto_close
+from soc_copilot.copilot import SOCCopilot
+from soc_copilot.history import AlertHistoryStore
+from soc_copilot.tools.base import ToolResult
 
 from .alert_loading import SAMPLE_ALERTS_DIR, load_alert_fixture
 
@@ -95,7 +95,7 @@ async def test_injection_in_tool_output_is_flagged_and_resisted_agentic(
     accumulated per tool call inside the agentic loop (injection_flags.extend)
     and a warning is prepended to the tool_result the model reads, rather
     than scanned in a batch afterwards. Same three layers, own coverage."""
-    import src.copilot as copilot_mod
+    import soc_copilot.copilot as copilot_mod
 
     copilot = SOCCopilot(
         history_store=AlertHistoryStore(tmp_path / "isolated.jsonl")

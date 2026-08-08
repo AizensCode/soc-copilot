@@ -26,9 +26,9 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
-from src.copilot import SOCCopilot
-from src.history import CAMPAIGN_MIN_RELATED, AlertHistoryStore
-from src.models import Alert, Investigation
+from soc_copilot.copilot import SOCCopilot
+from soc_copilot.history import CAMPAIGN_MIN_RELATED, AlertHistoryStore
+from soc_copilot.models import Alert, Investigation
 
 from .alert_loading import load_alert_fixture
 

@@ -7,11 +7,11 @@ push channel, so --watch --auto-close is really only safe to run while
 the desk is staffed. This adds the channel: a webhook POST fired ONLY
 for escalations and campaigns — never for a routine acknowledgement, or
 the notification becomes the very noise it exists to cut. That is the
-same restraint src/casemgmt.py applies to case creation, and
+same restraint soc_copilot/casemgmt.py applies to case creation, and
 deliberately NARROWER: a true positive the copilot did not escalate is
 worth a case, but not worth a page.
 
-Design mirrors src/casemgmt.py and src/elastic.py: `build_notification`
+Design mirrors soc_copilot/casemgmt.py and soc_copilot/elastic.py: `build_notification`
 is a pure function tested against fixtures with no network, and the HTTP
 layer is a thin httpx wrapper testable via MockTransport. The webhook is
 optional — the copilot runs fine without WEBHOOK_URL — and posting is

@@ -4,9 +4,9 @@
 """
 from datetime import datetime, timezone
 
-from src.history import AlertHistoryStore
-from src.models import Alert, Investigation
-from src.scorecard import build_scorecard, render_scorecard
+from soc_copilot.history import AlertHistoryStore
+from soc_copilot.models import Alert, Investigation
+from soc_copilot.scorecard import build_scorecard, render_scorecard
 
 _T = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
 

@@ -7,9 +7,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from src.evalcase import export_case, exportable_alert_ids
-from src.history import AlertHistoryStore
-from src.models import Alert, Investigation
+from soc_copilot.evalcase import export_case, exportable_alert_ids
+from soc_copilot.history import AlertHistoryStore
+from soc_copilot.models import Alert, Investigation
 
 _T = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
 

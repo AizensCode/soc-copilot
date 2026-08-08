@@ -11,9 +11,9 @@ import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from src.digest import build_digest_data, render_quiet, write_briefing
-from src.history import AlertHistoryStore
-from src.models import Alert, Correlation, Investigation
+from soc_copilot.digest import build_digest_data, render_quiet, write_briefing
+from soc_copilot.history import AlertHistoryStore
+from soc_copilot.models import Alert, Correlation, Investigation
 
 _T = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
 

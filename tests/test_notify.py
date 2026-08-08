@@ -12,8 +12,8 @@ from datetime import datetime, timezone
 import httpx
 import pytest
 
-from src.models import Alert, Correlation, Investigation
-from src.notify import WebhookClient, build_notification, should_notify
+from soc_copilot.models import Alert, Correlation, Investigation
+from soc_copilot.notify import WebhookClient, build_notification, should_notify
 
 _T = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
 

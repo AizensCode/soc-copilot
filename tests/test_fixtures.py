@@ -8,8 +8,8 @@ the harness assumes but cannot see.
 """
 import pytest
 
-from src.history import alert_host, alert_iocs
-from src.models import Alert
+from soc_copilot.history import alert_host, alert_iocs
+from soc_copilot.models import Alert
 from tests.alert_loading import load_all_fixtures
 from tests.expectations import EXPECTATIONS
 

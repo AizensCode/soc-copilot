@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from src.models import Alert
-from src.sigma import (
+from soc_copilot.models import Alert
+from soc_copilot.sigma import (
     _ConditionParser,
     _expand_windash,
     _field_matches,

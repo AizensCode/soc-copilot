@@ -11,8 +11,8 @@ import re
 
 import pytest
 
-from src.copilot import SOCCopilot
-from src.models import Alert, Investigation
+from soc_copilot.copilot import SOCCopilot
+from soc_copilot.models import Alert, Investigation
 
 from .alert_loading import SAMPLE_ALERTS_DIR, load_alert_fixture
 from .expectations import (
@@ -281,7 +281,7 @@ async def test_sigma_matches(
     # Grounding invariant: every cited rule must be one of the committed
     # curated rules. Filled deterministically, so this holds by
     # construction; assert it so a regression can't slip through silently.
-    from src.sigma import load_rules
+    from soc_copilot.sigma import load_rules
 
     known_ids = {r["id"] for r in load_rules()}
     stray = [m.rule_id for m in inv.sigma_matches if m.rule_id not in known_ids]
@@ -318,7 +318,7 @@ async def test_attack_labeled_alerts_never_qualify_for_auto_close(
     must refuse autonomous closure; this test fails if a policy change
     (or a model regression the verdict tests happen to miss) ever lets
     an attack self-close."""
-    from src.closure import should_auto_close
+    from soc_copilot.closure import should_auto_close
 
     inv = investigations[(alert_file, mode)]
     close, reason = should_auto_close(inv)

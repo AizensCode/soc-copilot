@@ -16,7 +16,7 @@ docs.strangebee.com/thehive/api-docs):
     severity: integer 1..4  (1=Low, 2=Medium, 3=High, 4=Critical)
     observables[]: {dataType, data, ioc, message, tags}
 
-Design mirrors src/elastic.py: `investigation_to_alert` is a pure function
+Design mirrors soc_copilot/elastic.py: `investigation_to_alert` is a pure function
 tested against fixtures with no network, and the HTTP layer is a thin httpx
 wrapper testable via MockTransport. TheHive is optional — the copilot runs
 fine without it.
@@ -55,7 +55,7 @@ _DATATYPES = {
 def should_open_case(investigation: Investigation) -> tuple[bool, str]:
     """Decide whether an investigation deserves a case-management alert.
 
-    The mirror image of src/closure.py: closure answers "can this be
+    The mirror image of soc_copilot/closure.py: closure answers "can this be
     dropped without a human?", this answers "must a human own this?".
     Deliberately not the negation of each other — an inconclusive
     medium-confidence alert qualifies for neither, and correctly stays a

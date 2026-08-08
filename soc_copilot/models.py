@@ -192,7 +192,7 @@ class Telemetry(BaseModel):
 
     Filled deterministically by the copilot from the API `usage` blocks
     and a wall clock, never by the LLM. Cost is a list-price estimate
-    (see src/pricing.py): it does not account for prompt-cache discounts
+    (see soc_copilot/pricing.py): it does not account for prompt-cache discounts
     or negotiated rates, so treat it as an upper bound for budgeting, not
     a bill. This is what turns the README's hand-waved "≈$0.05 per
     investigation" into a measured per-run number, and the basis a

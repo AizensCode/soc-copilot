@@ -10,7 +10,7 @@ settings were documented as overridable but silently weren't.
 """
 import pytest
 
-from src.config import Settings
+from soc_copilot.config import Settings
 
 _KEY_VARS = [
     "ANTHROPIC_API_KEY", "ABUSEIPDB_API_KEY",

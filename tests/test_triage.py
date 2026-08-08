@@ -10,8 +10,8 @@ everywhere else.
 """
 from datetime import datetime, timezone
 
-from src.models import Alert, Correlation, PriorSighting, RelatedAlert
-from src.triage import priority_score
+from soc_copilot.models import Alert, Correlation, PriorSighting, RelatedAlert
+from soc_copilot.triage import priority_score
 
 _T = datetime(2026, 6, 1, 12, 0, tzinfo=timezone.utc)
 
@@ -120,9 +120,9 @@ def test_prioritize_reorders_a_real_queue_from_the_store(tmp_path):
     higher-severity one with no history."""
     from types import SimpleNamespace
 
-    from src.history import AlertHistoryStore
-    from src.main import _prioritize
-    from src.models import Investigation
+    from soc_copilot.history import AlertHistoryStore
+    from soc_copilot.main import _prioritize
+    from soc_copilot.models import Investigation
 
     store = AlertHistoryStore(tmp_path / "investigations.jsonl")
     # A past true positive on IP 5.5.5.5, ruled by an analyst.

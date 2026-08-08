@@ -7,8 +7,8 @@ inert for un-inventoried alerts.
 """
 import json
 
-from src.assets import match_assets
-from src.models import Alert
+from soc_copilot.assets import match_assets
+from soc_copilot.models import Alert
 
 INVENTORY = {
     "hosts": {

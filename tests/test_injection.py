@@ -7,8 +7,8 @@ recall are validated without touching Anthropic. Run:
 """
 from datetime import datetime, timezone
 
-from src.injection import scan_for_injection
-from src.models import Alert
+from soc_copilot.injection import scan_for_injection
+from soc_copilot.models import Alert
 
 
 def _alert(raw_log: dict, title: str = "t", indicators: dict | None = None) -> Alert:
@@ -98,7 +98,7 @@ def test_one_flag_per_location_pattern_pair():
 def test_scan_untrusted_walks_nested_tool_data_with_located_flags():
     """Tool outputs carry text other people wrote — AbuseIPDB community
     comments are the canonical attacker-writable span."""
-    from src.injection import scan_untrusted
+    from soc_copilot.injection import scan_untrusted
 
     data = {
         "abuseConfidenceScore": 0,
@@ -112,15 +112,15 @@ def test_scan_untrusted_walks_nested_tool_data_with_located_flags():
 
 
 def test_scan_untrusted_clean_tool_data_flags_nothing():
-    from src.injection import scan_untrusted
+    from soc_copilot.injection import scan_untrusted
 
     data = {"abuseConfidenceScore": 12, "country": "NL", "totalReports": 3}
     assert scan_untrusted(data, "tool_output:check_ip_reputation") == []
 
 
 def test_evidence_scanning_locates_the_offending_tool():
-    from src.copilot import SOCCopilot
-    from src.models import Evidence
+    from soc_copilot.copilot import SOCCopilot
+    from soc_copilot.models import Evidence
 
     poisoned = Evidence(
         source_tool="check_ip_reputation",
@@ -143,8 +143,8 @@ def test_evidence_scanning_locates_the_offending_tool():
 def test_memory_titles_are_scanned_as_untrusted():
     """A title recorded from a past alert is alert-controlled text;
     replaying it from the store into a later prompt keeps it untrusted."""
-    from src.copilot import SOCCopilot
-    from src.models import PriorSighting
+    from soc_copilot.copilot import SOCCopilot
+    from soc_copilot.models import PriorSighting
 
     sighting = PriorSighting(
         alert_id="OLD-1",

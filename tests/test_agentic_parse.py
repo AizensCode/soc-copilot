@@ -14,8 +14,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from src.copilot import AgenticReportError, SOCCopilot
-from src.history import AlertHistoryStore
+from soc_copilot.copilot import AgenticReportError, SOCCopilot
+from soc_copilot.history import AlertHistoryStore
 
 
 def _copilot(tmp_path) -> SOCCopilot:

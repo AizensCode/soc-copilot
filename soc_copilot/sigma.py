@@ -239,7 +239,7 @@ def _validate_modifiers(selection: object, where: str) -> None:
             if unknown:
                 raise ValueError(
                     f"{where}: Unsupported Sigma modifier(s) {unknown} on "
-                    f"field '{field}'. Implement them in src/sigma.py or drop "
+                    f"field '{field}'. Implement them in soc_copilot/sigma.py or drop "
                     f"the rule — a rule that cannot be evaluated correctly "
                     f"must not be curated."
                 )

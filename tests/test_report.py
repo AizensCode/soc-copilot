@@ -9,7 +9,7 @@ injection vector itself.
 """
 from datetime import datetime, timezone
 
-from src.models import (
+from soc_copilot.models import (
     Alert,
     Correlation,
     Evidence,
@@ -20,7 +20,7 @@ from src.models import (
     PriorSighting,
     RelatedAlert,
 )
-from src.report import render_report, render_report_body
+from soc_copilot.report import render_report, render_report_body
 
 
 def _alert(title: str = "Encoded PowerShell from Office macro") -> Alert:

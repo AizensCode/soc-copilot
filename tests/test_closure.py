@@ -8,8 +8,8 @@ reachable and each reason string must say which gate stopped closure.
 """
 from datetime import datetime, timezone
 
-from src.closure import should_auto_close
-from src.models import Correlation, InjectionFlag, Investigation, PriorSighting
+from soc_copilot.closure import should_auto_close
+from soc_copilot.models import Correlation, InjectionFlag, Investigation, PriorSighting
 
 _T = datetime(2026, 6, 1, tzinfo=timezone.utc)
 

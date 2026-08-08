@@ -2,7 +2,7 @@
 
 Native fixtures are Alert JSON. ECS-shaped fixtures are raw Elastic hits
 ({"_id": ..., "_source": {...}}) and are loaded through the REAL
-normalizer (src/elastic.py normalize_hit) — so the harness evaluates the
+normalizer (soc_copilot/elastic.py normalize_hit) — so the harness evaluates the
 same code path a production alert takes, normalization included. A
 divergence between the two paths (observed live before this existed) is
 exactly what these fixtures are for.
@@ -10,8 +10,8 @@ exactly what these fixtures are for.
 import json
 from pathlib import Path
 
-from src.elastic import normalize_hit
-from src.models import Alert
+from soc_copilot.elastic import normalize_hit
+from soc_copilot.models import Alert
 
 SAMPLE_ALERTS_DIR = Path("data/sample_alerts")
 

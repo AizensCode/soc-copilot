@@ -11,8 +11,8 @@ import json
 import httpx
 import pytest
 
-from src.elastic import ElasticAlertSource, normalize_hit
-from src.models import Investigation
+from soc_copilot.elastic import ElasticAlertSource, normalize_hit
+from soc_copilot.models import Investigation
 
 # A detection alert hit the way Elastic returns it: nested _source objects.
 NESTED_HIT = {
@@ -228,7 +228,7 @@ def test_unconfigured_source_raises_helpfully(monkeypatch):
     # Settings is a frozen dataclass; swap the module's reference with a stub.
     from types import SimpleNamespace
 
-    from src import elastic as elastic_mod
+    from soc_copilot import elastic as elastic_mod
 
     stub = SimpleNamespace(
         ELASTIC_URL=None,

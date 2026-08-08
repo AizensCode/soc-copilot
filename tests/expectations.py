@@ -320,7 +320,7 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
         ],
     },
     # --- ECS-shaped fixtures: raw Elastic hits loaded through
-    # src/elastic.py normalize_hit, so the harness evaluates the production
+    # soc_copilot/elastic.py normalize_hit, so the harness evaluates the production
     # ingestion path end-to-end — normalization included. Added after a live
     # watch-mode demo showed the ECS path hedging to inconclusive/low where
     # the native path was a confident false_positive: all earlier fixtures

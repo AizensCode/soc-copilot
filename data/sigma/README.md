@@ -6,7 +6,7 @@ Unmodified community detection rules from [SigmaHQ/sigma](https://github.com/Sig
 Each file keeps its original `id`, `author`, `references`, and `date` fields —
 that is the attribution trail.
 
-The copilot's matcher (`src/sigma.py`) evaluates these directly against an
+The copilot's matcher (`soc_copilot/sigma.py`) evaluates these directly against an
 alert's `raw_log` and injects any matches into the investigation as grounded
 detection-logic context ("this behavior is what community rule X detects").
 

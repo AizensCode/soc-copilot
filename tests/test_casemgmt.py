@@ -12,13 +12,13 @@ from dataclasses import replace
 import httpx
 import pytest
 
-from src import casemgmt as casemgmt_mod
-from src.casemgmt import (
+from soc_copilot import casemgmt as casemgmt_mod
+from soc_copilot.casemgmt import (
     TheHiveClient,
     investigation_to_alert,
     should_open_case,
 )
-from src.models import (
+from soc_copilot.models import (
     Alert,
     Correlation,
     Evidence,
@@ -290,7 +290,7 @@ async def test_http_error_surfaces_with_context():
 def test_unconfigured_client_raises_helpfully(monkeypatch):
     from types import SimpleNamespace
 
-    from src import casemgmt as casemgmt_mod
+    from soc_copilot import casemgmt as casemgmt_mod
 
     monkeypatch.setattr(
         casemgmt_mod,

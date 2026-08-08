@@ -197,7 +197,7 @@ class SOCCopilot:
 
         Returns "" when nothing matched, so alerts outside the curated rules'
         coverage leave the prompt unchanged. Matches are deterministic (see
-        src/sigma.py), so every rule cited here traces to a committed SigmaHQ
+        soc_copilot/sigma.py), so every rule cited here traces to a committed SigmaHQ
         rule file — the model corroborates with them, it cannot invent them.
         """
         if not matches:
@@ -221,7 +221,7 @@ class SOCCopilot:
 
         Returns "" when nothing matched, so alerts about un-inventoried
         infrastructure leave the prompt unchanged. Matches are deterministic
-        (see src/assets.py), so every entry cited here traces to the
+        (see soc_copilot/assets.py), so every entry cited here traces to the
         committed, operator-owned inventory file — the one source whose
         legitimacy claims are trusted by provenance, unlike alert content.
         """

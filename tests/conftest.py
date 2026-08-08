@@ -4,8 +4,8 @@ import inspect
 import pytest
 import pytest_asyncio
 
-from src.copilot import SOCCopilot
-from src.history import AlertHistoryStore
+from soc_copilot.copilot import SOCCopilot
+from soc_copilot.history import AlertHistoryStore
 
 
 def pytest_collection_modifyitems(config, items):

@@ -8,7 +8,7 @@ investigation. All cases here fail before any network call is made.
 
     uv run pytest tests/test_tools.py -v
 """
-from src.tools.registry import all_tools, anthropic_tool_schemas, dispatch
+from soc_copilot.tools.registry import all_tools, anthropic_tool_schemas, dispatch
 
 
 async def test_unknown_tool_returns_failed_result():
