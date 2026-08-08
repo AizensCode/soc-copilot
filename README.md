@@ -265,6 +265,14 @@ An investigation that stops at a JSON blob or a dashboard row is still homework.
 
 TheHive was chosen over DFIR-IRIS on one engineering point, after reading both APIs' official docs: TheHive's payload uses stable, self-describing values (`severity: 3`, `dataType: "ip"`), while DFIR-IRIS requires per-installation integer foreign keys (`alert_customer_id`, `ioc_type_id: 76`) that differ between deployments. Hardcoding those would be unverifiable magic numbers in a project whose whole argument is that claims should be checkable.
 
+### Paging a human when it can't wait
+
+Case creation and dashboard rows are *pull* channels — they wait to be looked at. An escalation or campaign that lands at 03:00 during an unattended `--watch --auto-close` run therefore sits until shift start, which is exactly when it matters least. `--notify` adds the *push* channel: a webhook POST (`WEBHOOK_URL`, Slack / Mattermost / any generic incoming hook) fired the moment a page-worthy finding is investigated.
+
+The policy is the whole game. `should_notify` pages on escalations and campaigns and **nothing else** — deliberately narrower than `should_open_case`, which also fires on any true positive. A true positive the copilot did not escalate is worth a case in the morning, but not worth waking someone; a channel that pages on routine findings becomes the noise it exists to cut, and gets muted, and then misses the one that mattered. Auto-closed alerts never page by construction (a high-confidence false positive fails every `should_notify` gate anyway). The payload carries both a human-readable `text` that renders in a Slack channel out of the box — headline, verdict, techniques, the escalation draft, and a deep link to the TheHive alert when `--case` opened one — and the same facts as structured fields for a programmatic consumer.
+
+Built and verified like the other output channels: `build_notification` is a pure function tested field-by-field, the HTTP layer is MockTransport-tested (including a 500 surfacing as the `RuntimeError` the never-fatal caller swallows), and the whole path was shaken out end-to-end against a real local listener — a genuine socket POST carrying an escalated-and-campaign investigation arrived with both reasons named, draft and case link intact. `--notify` is opt-in, fails fast at startup if `WEBHOOK_URL` is unset, and — like `--case` — never fatal: a webhook outage prints a warning and leaves the investigation and its acknowledgement untouched.
+
 ### The fixtures are load-bearing, so they get tests too
 
 Eval fixtures look like inert data, but a flaw in one silently weakens every assertion built on it — and the harness cannot see the flaw, because from its perspective the tests still pass. Two real bugs taught this. First, cross-alert memory is *global to a harness run*: a benign vulnerability-scan fixture originally targeted the same host the brute-force fixture attacks, so whichever ran second inherited the other's prior sighting and its verdict moved (the copilot was right to hedge; the experiment was broken). Second, an expectation key is only honored if spelled exactly — every assertion skips when its key is absent, so a typo produces a green test that checks nothing.
@@ -347,6 +355,7 @@ soc-copilot/
 │   ├── report.py           # Renders an investigation as a self-contained HTML report
 │   ├── elastic.py          # Elastic SIEM source: pull ECS alerts, push results
 │   ├── casemgmt.py         # TheHive output: investigation → alert with observables
+│   ├── notify.py           # Escalation webhook: page a human on escalations/campaigns
 │   ├── config.py           # Settings + lazy env loading (require() validates at use)
 │   ├── scorecard.py        # Copilot-vs-analyst accuracy record (pure functions)
 │   ├── pricing.py          # Committed model price table (cost estimation)
@@ -383,6 +392,7 @@ soc-copilot/
 │   ├── test_report.py      # HTML report rendering + escaping unit tests (no API)
 │   ├── test_elastic.py     # ECS normalization + Elastic HTTP unit tests (no API)
 │   ├── test_casemgmt.py    # TheHive payload mapping + HTTP unit tests (no API)
+│   ├── test_notify.py      # Webhook policy, payload, HTTP wrapper (no API)
 │   ├── test_tools.py       # Tool dispatch guardrails (no API)
 │   ├── test_campaign_scenario.py  # Multi-stage campaign eval (API-backed, own store)
 │   ├── test_feedback.py    # Analyst-ruling sync + memory annotation (no API)
@@ -440,9 +450,11 @@ uv run python -m src.main --from-elastic 3 --push --report
 uv run python -m src.main --watch 60
 
 # Fully hands-off: also close high-confidence false positives autonomously
-# (deterministic policy — see src/closure.py) and open a TheHive alert for
-# anything a human should own (requires THEHIVE_URL / THEHIVE_API_KEY)
-uv run python -m src.main --watch 60 --auto-close --case
+# (deterministic policy — see src/closure.py), open a TheHive alert for
+# anything a human should own (requires THEHIVE_URL / THEHIVE_API_KEY), and
+# page a webhook for escalations/campaigns so 03:00 findings don't wait for
+# shift start (requires WEBHOOK_URL)
+uv run python -m src.main --watch 60 --auto-close --case --notify
 
 # Pull analyst rulings back from TheHive into the copilot's memory, so
 # prior sightings carry the human's verdict beside the copilot's own
@@ -581,7 +593,7 @@ The review's sharpest finding: three independent lenses converged on the autonom
 - **Scan every untrusted span, not just the alert.** `scan_for_injection` covers alert content, but tool outputs are attacker-writable too — AbuseIPDB community comments land in the prompt verbatim. Scan tool results and memory-rendered titles, and add an adversarial eval that plants an instruction in a recorded tool response.
 - ~~**Telemetry**~~ ✅ Implemented. Per-investigation tokens, cost, latency, API round-trips, tool calls, and retries are recorded deterministically and flattened into the history store and Elastic docs; the digest rolls them into a spend section that counts unmeasured runs separately. See "What an investigation actually costs". Still open from this item: automation rate and time-to-verdict as first-class scorecard metrics.
 - **Watch-queue priority.** Investigate by severity + prior-true-positive + campaign signals instead of fetch order, so backlog triage matches what a human lead would work first.
-- **Escalation webhook (`--notify`).** An escalation or campaign at 03:00 currently waits to be noticed; a webhook post (escalations and campaigns only, never routine acks) makes `--watch` safe outside staffed hours.
+- ~~**Escalation webhook (`--notify`).**~~ ✅ Implemented — a webhook POST for escalations and campaigns only (never routine acks) makes `--watch` safe outside staffed hours. See "Paging a human when it can't wait".
 - **Hygiene bundle.** Lazy component-scoped config ✅ and CI running the free suite on every push ✅ (see "Tests that run themselves"). Still open: argparse subcommands (a typo'd `--auto-close` in a systemd unit is silently ignored today — the same silent-default class as the rejected `--digest -1`), a real package name with a console entry point, and removing the CWD debug-file writes.
 - **Alert families with benign twins.** Ransomware precursors (shadow-copy deletion), OAuth consent abuse, WAF-visible web attacks — each with a calibrated benign twin, so false-positive discipline scales with coverage instead of eroding under it.
 

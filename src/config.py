@@ -47,6 +47,9 @@ class Settings:
     THEHIVE_URL: str | None = None
     THEHIVE_API_KEY: str | None = None
     THEHIVE_ORGANISATION: str | None = None
+    # Escalation webhook (Slack/Mattermost/generic) — optional. When set and
+    # --notify is passed in watch mode, escalations and campaigns POST here.
+    WEBHOOK_URL: str | None = None
 
     def require(self, *attrs: str) -> None:
         """Assert the given settings are present, or raise naming the
@@ -77,6 +80,7 @@ class Settings:
             "THEHIVE_URL": os.environ.get("THEHIVE_URL"),
             "THEHIVE_API_KEY": os.environ.get("THEHIVE_API_KEY"),
             "THEHIVE_ORGANISATION": os.environ.get("THEHIVE_ORGANISATION"),
+            "WEBHOOK_URL": os.environ.get("WEBHOOK_URL"),
         }
         # These two carry non-None defaults and were previously documented
         # as env-overridable but silently weren't — only override when set.

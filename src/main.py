@@ -11,11 +11,15 @@
     # whose investigation passes the closure policy (high-confidence
     # false positive, no escalation/injection/campaign) are closed
     # autonomously instead of acknowledged.
-    uv run python -m src.main --watch [interval_seconds] [--agentic] [--auto-close] [--case]
+    uv run python -m src.main --watch [interval_seconds] [--agentic] [--auto-close] [--case] [--notify]
 
     --case opens a TheHive alert for investigations a human should own
     (escalated, true-positive, or campaign-correlated). Requires
     THEHIVE_URL and THEHIVE_API_KEY.
+
+    --notify POSTs a webhook for escalations and campaigns only (never
+    routine acknowledgements), so an unattended --watch can page an
+    on-call analyst. Requires WEBHOOK_URL.
 
     # Pull analyst rulings from TheHive back into the copilot's memory:
     # prior sightings then carry the human's verdict beside the
@@ -52,7 +56,7 @@ USAGE = (
     "Usage:\n"
     "  python -m src.main <path/to/alert.json> [--agentic] [--report [out.html]] [--case]\n"
     "  python -m src.main --from-elastic [N] [--agentic] [--push] [--report] [--case]\n"
-    "  python -m src.main --watch [interval_seconds] [--agentic] [--auto-close] [--case]\n"
+    "  python -m src.main --watch [interval_seconds] [--agentic] [--auto-close] [--case] [--notify]\n"
     "  python -m src.main --sync-feedback\n"
     "  python -m src.main --scorecard\n"
     "  python -m src.main --ask ALERT_ID [\"question\"]\n"
@@ -259,24 +263,61 @@ async def _run_sync_feedback() -> None:
     )
 
 
-async def _maybe_open_case(alert: Alert, investigation: Investigation) -> None:
+async def _maybe_open_case(
+    alert: Alert, investigation: Investigation
+) -> str | None:
     """Open a TheHive alert when --case is set and the policy says a human
-    should own this. Never fatal: case management is an output channel, so
-    a TheHive outage must not lose an investigation that already succeeded.
+    should own this. Returns the created TheHive alert id (so a caller can
+    link to it), or None. Never fatal: case management is an output
+    channel, so a TheHive outage must not lose an investigation that
+    already succeeded.
     """
     if "--case" not in sys.argv:
-        return
+        return None
     from .casemgmt import TheHiveClient, should_open_case
 
     open_case, reason = should_open_case(investigation)
     if not open_case:
         print(f"No case opened ({reason})", flush=True)
-        return
+        return None
     try:
         case_id = await TheHiveClient().create_alert(alert, investigation)
         print(f"Opened TheHive alert {case_id} ({reason})", flush=True)
+        return case_id
     except RuntimeError as e:
         print(f"Case creation failed: {e}", flush=True)
+        return None
+
+
+async def _maybe_notify(
+    alert: Alert,
+    investigation: Investigation,
+    thehive_alert_id: str | None = None,
+) -> None:
+    """Page a webhook when --notify is set and the investigation is an
+    escalation or campaign. Never fatal: a webhook outage must not lose an
+    investigation. Fires only for page-worthy findings — routine
+    acknowledgements stay silent so the channel doesn't become noise.
+    """
+    if "--notify" not in sys.argv:
+        return
+    from .config import settings
+    from .notify import WebhookClient, build_notification, should_notify
+
+    page, reason = should_notify(investigation)
+    if not page:
+        return
+    case_link = None
+    if thehive_alert_id and settings.THEHIVE_URL:
+        base = settings.THEHIVE_URL.rstrip("/")
+        case_link = f"{base}/index.html#!/alert/{thehive_alert_id}/details"
+    try:
+        await WebhookClient().post(
+            build_notification(alert, investigation, case_link)
+        )
+        print(f"Notified webhook ({reason})", flush=True)
+    except RuntimeError as e:
+        print(f"Webhook notification failed: {e}", flush=True)
 
 
 def _arg_after(flag: str) -> str | None:
@@ -483,6 +524,11 @@ async def _run_watch(agentic: bool) -> None:
         sys.exit(1)
 
     auto_close = "--auto-close" in sys.argv
+    notify = "--notify" in sys.argv
+    if notify and not settings.WEBHOOK_URL:
+        # Fail loudly at startup rather than silently never paging.
+        print("--notify requires WEBHOOK_URL in your .env")
+        sys.exit(1)
     copilot = SOCCopilot()
     seen: set[str] = set()
     mode = "agentic" if agentic else "phase one"
@@ -493,6 +539,7 @@ async def _run_watch(agentic: bool) -> None:
     print(
         f"Watching {source.alerts_index} every {interval}s ({mode} mode"
         f"{', auto-close on' if auto_close else ''}"
+        f"{', notifications on' if notify else ''}"
         f"{', analyst-feedback sync on' if feedback else ''}). "
         f"Ctrl+C to stop.",
         flush=True,
@@ -542,9 +589,11 @@ async def _run_watch(agentic: bool) -> None:
                     seen.add(doc_id)
                     # An auto-closed alert needs no human owner by
                     # definition, so it never generates case-management
-                    # noise; everything else is offered to the policy.
+                    # noise or a page; everything else is offered to the
+                    # policies. The page links to the case when one opened.
                     if not close:
-                        await _maybe_open_case(alert, investigation)
+                        case_id = await _maybe_open_case(alert, investigation)
+                        await _maybe_notify(alert, investigation, case_id)
                     disposition = (
                         f"alert CLOSED autonomously ({reason})"
                         if close
