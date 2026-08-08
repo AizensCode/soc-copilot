@@ -5,7 +5,6 @@ from .threat_actor import ThreatActorTool
 from .urlscan import URLScanTool
 from .virustotal import VirusTotalTool
 
-
 # Instantiate once. These are stateless, so a single instance is fine.
 _TOOLS: list[Tool] = [
     AbuseIPDBTool(),

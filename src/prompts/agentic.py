@@ -74,8 +74,8 @@ it into your verdict and escalation.
    of the same parent unless the alert genuinely shows multiple
    distinct delivery vectors. Get technique names right: T1566.001
    is "Spearphishing Attachment", T1566.002 is "Spearphishing Link",
-   T1566.003 is "Spearphishing via Service". 
-   
+   T1566.003 is "Spearphishing via Service".
+
    T1598 (Phishing for Information) is for RECONNAISSANCE phishing
    — collecting credentials or info, no malicious payload delivery.
    T1566 is for INTRUSION phishing — delivering malware or links to

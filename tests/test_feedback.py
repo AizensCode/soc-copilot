@@ -11,7 +11,6 @@ import json
 from datetime import datetime, timezone
 
 import httpx
-import pytest
 
 from src.casemgmt import TheHiveClient, sync_dispositions
 from src.copilot import SOCCopilot

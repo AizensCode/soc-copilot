@@ -60,7 +60,7 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
     "brute_force_ssh.json": {
         "expected_verdict": "true_positive",
         "min_confidence": "high",
-        # T1110 family (any sub-technique) is what matters — 
+        # T1110 family (any sub-technique) is what matters —
         # the specific sub-technique choice is an analyst judgment call
         # between .001 guessing / .003 spraying / .004 stuffing
         "required_techniques": ["T1110"],  # was ["T1110.001", "T1110.003"]
@@ -104,7 +104,7 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
             "T1110",       # brute force shouldn't appear
             "T1566.002",   # spearphishing-link doesn't apply (no link in alert)
             "T1566.003",   # spearphishing-service doesn't apply either
-            "T1598",       # phishing-for-information family doesn't apply (T1598.002 was hallucinated last run)        
+            "T1598",       # phishing-for-information family doesn't apply (T1598.002 was hallucinated last run)
         ],
         "must_escalate": True,
         "pivots_must_include": [

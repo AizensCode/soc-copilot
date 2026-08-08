@@ -1,5 +1,4 @@
 """Sanity check — pytest infrastructure works."""
-import pytest
 
 
 async def test_pytest_runs():

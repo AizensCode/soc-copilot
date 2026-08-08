@@ -121,6 +121,9 @@ async def _run_digest() -> None:
     if data["quiet"]:
         print(render_quiet(data))
         return
+    # Only the narrated path spends the API — require the key here, not
+    # up front, so a quiet digest still costs nothing (and needs no key).
+    settings.require("ANTHROPIC_KEY")
     print(await write_briefing(data))
 
 
@@ -138,6 +141,7 @@ async def _run_ask() -> None:
     if len(sys.argv) < 3:
         print(USAGE)
         sys.exit(1)
+    settings.require("ANTHROPIC_KEY")  # every answer is an LLM call
     alert_id = sys.argv[2]
     store = AlertHistoryStore(settings.HISTORY_PATH)
     try:
@@ -329,6 +333,17 @@ def _telemetry_line(inv: Investigation) -> str:
     )
 
 
+def _require_investigation_keys() -> None:
+    """Every real investigation calls the model and the enrichment tools;
+    demand those keys up front so a keyless run fails fast and legibly
+    (the library itself stays lazy — see src/config.py)."""
+    from .config import settings
+
+    settings.require(
+        "ANTHROPIC_KEY", "ABUSEIPDB_KEY", "VIRUSTOTAL_KEY", "URLSCAN_KEY"
+    )
+
+
 async def _investigate(
     copilot: SOCCopilot, alert: Alert, agentic: bool
 ) -> Investigation:
@@ -352,6 +367,7 @@ def _write_report(alert: Alert, inv: Investigation, out: Path) -> None:
 
 
 async def _run_file(agentic: bool) -> None:
+    _require_investigation_keys()
     alert_path = Path(sys.argv[1])
     with alert_path.open() as f:
         alert = Alert(**json.load(f))
@@ -388,6 +404,7 @@ async def _run_file(agentic: bool) -> None:
 async def _run_elastic(agentic: bool) -> None:
     from .elastic import ElasticAlertSource
 
+    _require_investigation_keys()
     limit = _positive_int_after("--from-elastic", 3, "alert limit")
     try:
         source = ElasticAlertSource()
@@ -457,6 +474,7 @@ async def _run_watch(agentic: bool) -> None:
     from .config import settings
     from .elastic import ElasticAlertSource
 
+    _require_investigation_keys()
     interval = _positive_int_after("--watch", 60, "poll interval seconds")
     try:
         source = ElasticAlertSource()
@@ -576,4 +594,11 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except RuntimeError as e:
+        # A missing-key (or other configuration) error should read as one
+        # clear line, not a stack trace — the message already names the
+        # exact environment variable to set.
+        print(f"Configuration error: {e}", file=sys.stderr)
+        sys.exit(1)

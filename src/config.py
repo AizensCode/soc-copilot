@@ -1,6 +1,14 @@
 """
 Centralized configuration. Loads secrets from .env via python-dotenv.
 Never hardcode API keys; never commit .env.
+
+Loading is deliberately lazy: `from_env()` never raises for a missing
+key, so importing any module (and running the free, network-free test
+suite) works with no .env at all — the CI that guards this repo has no
+secrets. A key is validated at the moment a command that needs it runs,
+via `require()`, which names the exact environment variable to set. The
+old behavior — demand all four keys at import — meant the 190+ offline
+tests couldn't even import without a fully populated .env.
 """
 import os
 from dataclasses import dataclass
@@ -9,13 +17,22 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# Settings attribute -> the environment variable a human actually sets,
+# so require()'s error message names what to add to .env.
+_ENV_NAMES = {
+    "ANTHROPIC_KEY": "ANTHROPIC_API_KEY",
+    "ABUSEIPDB_KEY": "ABUSEIPDB_API_KEY",
+    "VIRUSTOTAL_KEY": "VIRUSTOTAL_API_KEY",
+    "URLSCAN_KEY": "URLSCAN_API_KEY",
+}
+
 
 @dataclass(frozen=True)
 class Settings:
-    ANTHROPIC_KEY: str
-    ABUSEIPDB_KEY: str
-    VIRUSTOTAL_KEY: str
-    URLSCAN_KEY: str
+    ANTHROPIC_KEY: str | None = None
+    ABUSEIPDB_KEY: str | None = None
+    VIRUSTOTAL_KEY: str | None = None
+    URLSCAN_KEY: str | None = None
     MODEL: str = "claude-sonnet-5"
     # Case-history store (cross-alert memory). Not a secret; overridable per env.
     HISTORY_PATH: str = "data/history/investigations.jsonl"
@@ -31,46 +48,50 @@ class Settings:
     THEHIVE_API_KEY: str | None = None
     THEHIVE_ORGANISATION: str | None = None
 
-    @classmethod
-    def from_env(cls) -> "Settings":
-        anthropic_key = os.environ.get("ANTHROPIC_API_KEY")
-        abuseipdb_key = os.environ.get("ABUSEIPDB_API_KEY")
-        virustotal_key = os.environ.get("VIRUSTOTAL_API_KEY")
-        urlscan_key = os.environ.get("URLSCAN_API_KEY")
-
-        missing = []
-        if not anthropic_key:
-            missing.append("ANTHROPIC_API_KEY")
-        if not abuseipdb_key:
-            missing.append("ABUSEIPDB_API_KEY")
-        if not virustotal_key:
-            missing.append("VIRUSTOTAL_API_KEY")
-        if not urlscan_key:
-            missing.append("URLSCAN_API_KEY")
-
+    def require(self, *attrs: str) -> None:
+        """Assert the given settings are present, or raise naming the
+        exact environment variables to set. Called at CLI entry points
+        (not in the library) so imports and injected-client tests stay
+        key-free while a real keyless run fails fast and legibly."""
+        missing = [
+            _ENV_NAMES.get(a, a) for a in attrs if not getattr(self, a)
+        ]
         if missing:
             raise RuntimeError(
-                f"Missing required environment variables: {', '.join(missing)}. "
-                f"Add them to your .env file."
+                f"Missing required environment variable(s): "
+                f"{', '.join(missing)}. Add them to your .env file."
             )
 
-        return cls(
-            ANTHROPIC_KEY=anthropic_key,
-            ABUSEIPDB_KEY=abuseipdb_key,
-            VIRUSTOTAL_KEY=virustotal_key,
-            URLSCAN_KEY=urlscan_key,
-            ELASTIC_URL=os.environ.get("ELASTIC_URL"),
-            ELASTIC_API_KEY=os.environ.get("ELASTIC_API_KEY"),
-            ELASTIC_ALERTS_INDEX=os.environ.get(
-                "ELASTIC_ALERTS_INDEX", ".alerts-security.alerts-default"
-            ),
-            ELASTIC_RESULTS_INDEX=os.environ.get(
-                "ELASTIC_RESULTS_INDEX", "soc-copilot-investigations"
-            ),
-            THEHIVE_URL=os.environ.get("THEHIVE_URL"),
-            THEHIVE_API_KEY=os.environ.get("THEHIVE_API_KEY"),
-            THEHIVE_ORGANISATION=os.environ.get("THEHIVE_ORGANISATION"),
-        )
+    @classmethod
+    def from_env(cls) -> "Settings":
+        # Only override a default when the env var is actually set, so the
+        # dataclass defaults stay the single source of truth (and a typo'd
+        # HISTORY_PATH env var can't silently blank the path).
+        overrides: dict[str, object] = {
+            "ANTHROPIC_KEY": os.environ.get("ANTHROPIC_API_KEY"),
+            "ABUSEIPDB_KEY": os.environ.get("ABUSEIPDB_API_KEY"),
+            "VIRUSTOTAL_KEY": os.environ.get("VIRUSTOTAL_API_KEY"),
+            "URLSCAN_KEY": os.environ.get("URLSCAN_API_KEY"),
+            "ELASTIC_URL": os.environ.get("ELASTIC_URL"),
+            "ELASTIC_API_KEY": os.environ.get("ELASTIC_API_KEY"),
+            "THEHIVE_URL": os.environ.get("THEHIVE_URL"),
+            "THEHIVE_API_KEY": os.environ.get("THEHIVE_API_KEY"),
+            "THEHIVE_ORGANISATION": os.environ.get("THEHIVE_ORGANISATION"),
+        }
+        # These two carry non-None defaults and were previously documented
+        # as env-overridable but silently weren't — only override when set.
+        for name in ("ELASTIC_ALERTS_INDEX", "ELASTIC_RESULTS_INDEX",
+                     "HISTORY_PATH", "MODEL"):
+            if (val := os.environ.get(name)) is not None:
+                overrides[name] = val
+        if (raw := os.environ.get("CORRELATION_WINDOW_HOURS")) is not None:
+            try:
+                overrides["CORRELATION_WINDOW_HOURS"] = int(raw)
+            except ValueError:
+                raise RuntimeError(
+                    f"CORRELATION_WINDOW_HOURS must be an integer, got {raw!r}"
+                )
+        return cls(**overrides)
 
 
 settings = Settings.from_env()

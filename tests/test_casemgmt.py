@@ -29,6 +29,7 @@ from src.models import (
     SigmaMatch,
 )
 
+
 @pytest.fixture(autouse=True)
 def _no_thehive_env(monkeypatch):
     """Decouple from the developer's .env: TheHiveClient falls back to

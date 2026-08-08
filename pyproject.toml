@@ -16,7 +16,21 @@ dependencies = [
 dev = [
     "pytest>=9.0.3",
     "pytest-asyncio>=1.3.0",
+    "ruff>=0.16.2",
 ]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+# A focused, high-signal set: pyflakes (F) catches the bugs a compiler
+# would — unused imports, undefined names — while E/W/I keep whitespace
+# and import order honest. Deliberately NOT the opinionated refactor
+# rules (UP/FURB/SIM/…): line length in the prompt strings is a
+# considered choice, and CI should flag defects, not taste.
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]  # long lines are intentional in prompt/message text
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

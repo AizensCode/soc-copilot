@@ -6,8 +6,12 @@ reachable and each reason string must say which gate stopped closure.
 
     uv run pytest tests/test_closure.py -v
 """
+from datetime import datetime, timezone
+
 from src.closure import should_auto_close
-from src.models import Correlation, InjectionFlag, Investigation
+from src.models import Correlation, InjectionFlag, Investigation, PriorSighting
+
+_T = datetime(2026, 6, 1, tzinfo=timezone.utc)
 
 
 def _inv(**overrides) -> Investigation:
@@ -84,12 +88,6 @@ def test_non_campaign_correlation_does_not_block():
 
 
 # --- Precedent-aware gates: analyst rulings steer autonomy -------------------
-
-from datetime import datetime, timezone
-
-from src.models import PriorSighting
-
-_T = datetime(2026, 6, 1, tzinfo=timezone.utc)
 
 
 def _sighting(verdict: str, human_verdict: str | None = None) -> PriorSighting:
