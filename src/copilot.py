@@ -36,6 +36,24 @@ from .tools.virustotal import VirusTotalTool
 MAX_REPORT_ATTEMPTS = 3      # phase 1: full resamples of the report call
 MAX_JSON_CORRECTIONS = 2     # agentic: in-conversation correction turns
 
+# How much of a rejected final turn to quote when the agentic loop gives
+# up — enough to diagnose, bounded so an error message stays readable.
+FINAL_TURN_EXCERPT = 2000
+
+
+class AgenticReportError(ValueError):
+    """The agent's final turn did not yield a valid Investigation.
+
+    Subclasses ValueError so the loop's existing correction handling
+    catches it unchanged; carries the offending text so a caller can
+    report it without this module writing debug files into the process's
+    working directory.
+    """
+
+    def __init__(self, message: str, final_text: str) -> None:
+        super().__init__(message)
+        self.final_text = final_text
+
 
 class SOCCopilot:
     def __init__(self, history_store: AlertHistoryStore | None = None) -> None:
@@ -588,9 +606,21 @@ class SOCCopilot:
                 except ValueError as err:
                     correction_attempts += 1
                     if correction_attempts > MAX_JSON_CORRECTIONS:
+                        # Giving up is the one moment a human needs the
+                        # offending text, so quote it here — the model
+                        # already has its own turn in `messages`, so the
+                        # correction path below deliberately does not.
+                        offending = getattr(err, "final_text", "")
+                        excerpt = (
+                            f"\n\nModel's final turn (first "
+                            f"{FINAL_TURN_EXCERPT} chars):\n"
+                            f"{offending[:FINAL_TURN_EXCERPT]}"
+                            if offending else ""
+                        )
                         raise RuntimeError(
                             f"Final JSON still invalid after "
-                            f"{MAX_JSON_CORRECTIONS} correction attempts: {err}"
+                            f"{MAX_JSON_CORRECTIONS} correction attempts: "
+                            f"{err}{excerpt}"
                         ) from err
                     messages.append(
                         {
@@ -692,12 +722,21 @@ class SOCCopilot:
 
         final_text = text_blocks[-1]
 
-        # DEBUG: write the final turn text so we can inspect it on failure
-        from pathlib import Path
-        Path("last_agentic_final_turn.txt").write_text(final_text)
+        try:
+            report_json = self._extract_json(final_text)
+            investigation = Investigation(
+                **report_json, evidence=evidence_collected
+            )
+        except ValueError as err:
+            # Carry the offending text ON the exception rather than
+            # writing it to the current directory: this is library code,
+            # so a filesystem side effect here fires from the test suite
+            # and from watch mode, and two processes sharing a CWD would
+            # overwrite each other's evidence. The caller decides what to
+            # surface. AgenticReportError subclasses ValueError, so the
+            # correction loop's `except ValueError` is unaffected.
+            raise AgenticReportError(str(err), final_text) from err
 
-        report_json = self._extract_json(final_text)
-        investigation = Investigation(**report_json, evidence=evidence_collected)
         investigation.associated_groups = match_groups(
             investigation.attack_techniques
         )

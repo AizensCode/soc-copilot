@@ -40,6 +40,16 @@ def test_default_command_investigates_a_file():
     assert args.report is None
 
 
+def test_debug_dump_is_opt_in_with_an_optional_path():
+    """A run must not drop a debug file into the operator's CWD unasked."""
+    _, default = _parse_args(["alert.json"])
+    assert default.debug is None                      # off unless requested
+    _, bare = _parse_args(["alert.json", "--debug"])
+    assert bare.debug == "last_run_debug.json"
+    _, named = _parse_args(["alert.json", "--debug", "out.json"])
+    assert named.debug == "out.json"
+
+
 def test_report_takes_an_optional_value():
     _, bare = _parse_args(["alert.json", "--report"])
     assert bare.report == "investigation_report.html"

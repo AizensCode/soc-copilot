@@ -1,7 +1,7 @@
 """CLI entry point.
 
     # Investigate a local alert file
-    uv run python -m src.main <alert.json> [--agentic] [--report [out.html]] [--case]
+    uv run python -m src.main <alert.json> [--agentic] [--report [out.html]] [--case] [--debug [out.json]]
 
     # Pull open detection alerts from Elastic and investigate each
     uv run python -m src.main --from-elastic [N] [--agentic] [--push] [--report] [--case]
@@ -55,7 +55,7 @@ FEEDBACK_SYNC_INTERVAL = 300
 
 USAGE = (
     "Usage:\n"
-    "  python -m src.main <path/to/alert.json> [--agentic] [--report [out.html]] [--case]\n"
+    "  python -m src.main <path/to/alert.json> [--agentic] [--report [out.html]] [--case] [--debug [out.json]]\n"
     "  python -m src.main --from-elastic [N] [--agentic] [--push] [--report] [--case]\n"
     "  python -m src.main --watch [interval_seconds] [--agentic] [--auto-close] [--case] [--notify]\n"
     "  python -m src.main --sync-feedback\n"
@@ -376,6 +376,11 @@ def _parse_args(argv: list[str]) -> tuple[str, argparse.Namespace]:
             "--report", nargs="?", const="investigation_report.html",
             default=None, metavar="OUT.html",
         )
+        p.add_argument(
+            "--debug", nargs="?", const="last_run_debug.json",
+            default=None, metavar="OUT.json",
+            help="also dump the full alert/evidence/investigation JSON",
+        )
         p.add_argument("--case", action="store_true")
         return "file", p.parse_args(argv)
 
@@ -492,22 +497,26 @@ async def _run_file(args: argparse.Namespace) -> None:
     copilot = SOCCopilot()
     investigation = await _investigate(copilot, alert, args.agentic)
 
-    debug_path = Path("last_run_debug.json")
-    with debug_path.open("w") as f:
-        json.dump(
-            {
-                "mode": "agentic" if args.agentic else "phase_one",
-                "alert": alert.model_dump(mode="json"),
-                "evidence_raw": [
-                    e.model_dump(mode="json") for e in investigation.evidence
-                ],
-                "investigation": investigation.model_dump(mode="json"),
-            },
-            f,
-            indent=2,
-            default=str,
-        )
-    print(f"Full debug written to {debug_path}")
+    # Opt-in: a tool should not drop files into the operator's working
+    # directory unasked. The investigation JSON still prints to stdout
+    # below, so nothing is lost by default.
+    if args.debug:
+        debug_path = Path(args.debug)
+        with debug_path.open("w") as f:
+            json.dump(
+                {
+                    "mode": "agentic" if args.agentic else "phase_one",
+                    "alert": alert.model_dump(mode="json"),
+                    "evidence_raw": [
+                        e.model_dump(mode="json") for e in investigation.evidence
+                    ],
+                    "investigation": investigation.model_dump(mode="json"),
+                },
+                f,
+                indent=2,
+                default=str,
+            )
+        print(f"Full debug written to {debug_path}")
 
     if args.report:
         _write_report(alert, investigation, Path(args.report))
