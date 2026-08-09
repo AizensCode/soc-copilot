@@ -1,6 +1,7 @@
 """Tool registry — single source of truth for which tools the agent can use."""
 from .abuseipdb import AbuseIPDBTool
 from .base import Tool, ToolResult
+from .logsearch import SearchLogsTool
 from .threat_actor import ThreatActorTool
 from .urlscan import URLScanTool
 from .virustotal import VirusTotalTool
@@ -11,6 +12,7 @@ _TOOLS: list[Tool] = [
     VirusTotalTool(),
     URLScanTool(),
     ThreatActorTool(),
+    SearchLogsTool(),
 ]
 
 

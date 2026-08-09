@@ -43,6 +43,10 @@ class Settings:
     ELASTIC_API_KEY: str | None = None
     ELASTIC_ALERTS_INDEX: str = ".alerts-security.alerts-default"
     ELASTIC_RESULTS_INDEX: str = "soc-copilot-investigations"
+    # Raw event telemetry the agentic search_internal_logs tool queries to
+    # answer "did this actually happen?" pivots. Optional; the tool
+    # degrades gracefully when unset.
+    ELASTIC_EVENTS_INDEX: str = "soc-events-demo"
     # TheHive case management — optional; the copilot runs fine without it.
     THEHIVE_URL: str | None = None
     THEHIVE_API_KEY: str | None = None
@@ -85,7 +89,7 @@ class Settings:
         # These two carry non-None defaults and were previously documented
         # as env-overridable but silently weren't — only override when set.
         for name in ("ELASTIC_ALERTS_INDEX", "ELASTIC_RESULTS_INDEX",
-                     "HISTORY_PATH", "MODEL"):
+                     "ELASTIC_EVENTS_INDEX", "HISTORY_PATH", "MODEL"):
             if (val := os.environ.get(name)) is not None:
                 overrides[name] = val
         if (raw := os.environ.get("CORRELATION_WINDOW_HOURS")) is not None:

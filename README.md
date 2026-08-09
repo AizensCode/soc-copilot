@@ -261,6 +261,19 @@ Two ECS-shaped fixtures hold this to account, because the underlying eval hole w
 
 One hazard surfaced during the build and earned a permanent warning in the inventory file itself: my first SCCM entry said the inventory cycle runs 06:00–07:00 UTC while the fixtures say 04:00 — an inventory error doesn't just miss, it actively misleads, turning routine activity into "deviation from sanctioned schedule." A stale entry that blesses a decommissioned scanner is an attacker's best friend. The inventory is load-bearing data, exactly like the fixtures — treat edits to it with the same care as expectation changes.
 
+### The pivot it used to hand to a human
+
+Every commercial AI-SOC product's core claim is that the AI queries the customer's own telemetry mid-investigation; until now this copilot only enriched from external reputation feeds, and its single most common suggested pivot — "was there a **successful** authentication from this IP?" — was one it wrote down and handed to a human. Reputation answers "is this indicator known-bad"; only the environment's own logs answer "did the thing happen *here*". `search_internal_logs` (an agentic tool, `soc_copilot/tools/logsearch.py`) gives the model that answer, and it's the difference between "brute force attempted" and "brute force succeeded".
+
+Because this tool reads the SIEM under the direction of a model that is consuming attacker-influenced indicators, security *is* the design:
+
+- **It is not a query interface.** The model never writes a query string. It picks `field`/`value` filters from a fixed allowlist (ECS field names, keyword/ip-typed), enforced both by the schema `enum` and re-validated server-side, and each filter becomes an exact Elasticsearch `term`. A hostile indicator value like `root OR host.name:*` is matched as a *literal string* — the query-injection surface every "let the LLM write ES/KQL" design carries simply does not exist here. (A multi-agent security review of this file caught the one place "exact term" wasn't literal: on `ip`-typed fields Elasticsearch reads a CIDR value like `0.0.0.0/0` as a *subnet range*, so an attacker-shaped CIDR indicator could have broadened "from this IP" to "from anywhere" and steered the verdict — IP fields now reject anything that isn't a single literal address.)
+- **Read-only, bounded, time-boxed.** Only `_search` (never `_update`), a hard result-size cap, at most five AND-ed filters, a `@timestamp` range via server-side date math, and a query timeout. An alert with hundreds of IOCs cannot turn it into an unbounded scan.
+- **Least privilege, verified.** The tool wants read on the events index and nothing more. The existing SIEM key — scoped to the alerts and results indices — correctly `403`s on the events index (a good sign, not a bug); the dev key gains **read-only** on `soc-events-demo`, and a write attempt to that index still `403`s. The tool-output injection scan added earlier already covers the returned log lines, which carry real attacker-influenced text.
+- **Degrades gracefully.** No Elastic, no events index — the tool returns a clear not-configured result and the agent defers the pivot to a human, exactly as the rest of the copilot runs without Elastic.
+
+Demonstrated end to end against the live dev stack (`scripts/elastic_dev_events_seed.sh` seeds the events index): investigating the SSH brute-force alert in agentic mode, the copilot composed exactly the canonical pivot on its own — `source.ip=185.220.101.47 AND event.outcome=success` — found the two smoking-gun events the seed plants (an *accepted* root login from the attacker IP, then that root account running `wget` a minute later), and rewrote its own conclusion: *"Internal telemetry confirms the attack succeeded: a root-level SSH login from this exact IP was accepted, followed within one minute by the compromised root account fetching a file."* It moved from a plausible `true_positive` about an *attempt* to a `high`-confidence, escalated verdict about a *confirmed compromise with post-exploitation* — the inconclusive-to-confident jump, made by the copilot rather than deferred. (This is an agentic-mode capability: phase one runs a fixed enrichment pipeline and doesn't pivot; the model-driven loop is what turns a hypothesis into a targeted question against the logs.)
+
 ### Closing the loop into case management
 
 An investigation that stops at a JSON blob or a dashboard row is still homework. `--case` pushes it into TheHive, where SOC work actually gets owned: the write-up becomes the alert description, the alert's own indicators become typed observables, and verdict, techniques, groups, campaign, and injection status become filterable tags. Two details are deliberate. Observables are marked `ioc: true` **only** when the copilot concluded true positive — flagging indicators from a false positive would poison the shared IOC store, which is a worse outcome than under-tagging. And the copilot creates *alerts*, not cases: an alert is TheHive's triage inbox, so a human still decides what becomes a case. That is the same restraint the closure policy applies from the other end.
@@ -383,11 +396,13 @@ soc-copilot/
 │       ├── abuseipdb.py    # IP reputation
 │       ├── virustotal.py   # File hash reputation
 │       ├── urlscan.py      # Domain reputation
-│       └── threat_actor.py # MITRE ATT&CK Groups (TTP → threat actor)
+│       ├── threat_actor.py # MITRE ATT&CK Groups (TTP → threat actor)
+│       └── logsearch.py    # Internal SIEM log search (allowlisted, read-only, agentic)
 ├── scripts/
 │   ├── build_group_map.py  # One-time: STIX bundle → committed group map
 │   ├── elastic_dev_up.sh   # Start/restart the local dev Elastic stack
 │   ├── elastic_dev_seed.sh # Seed the demo alerts index
+│   ├── elastic_dev_events_seed.sh # Seed the events index (search_internal_logs)
 │   ├── kibana_dashboard_import.sh   # Install the analyst console
 │   ├── kibana_soc_dashboard.ndjson  # The console, as saved objects
 │   └── thehive_dev_up.sh   # Start + bootstrap a local TheHive (Docker)
@@ -404,6 +419,7 @@ soc-copilot/
 │   ├── test_notify.py      # Webhook policy, payload, HTTP wrapper (no API)
 │   ├── test_triage.py      # Priority scorer + store-backed ordering (no API)
 │   ├── test_tools.py       # Tool dispatch guardrails (no API)
+│   ├── test_logsearch.py   # Log-search allowlist, term-safety, bounds, degradation (no API)
 │   ├── test_campaign_scenario.py  # Multi-stage campaign eval (API-backed, own store)
 │   ├── test_feedback.py    # Analyst-ruling sync + memory annotation (no API)
 │   ├── test_scorecard.py   # Accuracy-record math + rendering (no API)
@@ -535,18 +551,26 @@ ES_JAVA_OPTS="-Xms1g -Xmx1g" ./bin/elasticsearch
 # 3. Seed the demo alerts index (6 ECS detection alerts)
 ES_PASS=<your-password> ./scripts/elastic_dev_seed.sh
 
+# 3b. Seed the events index for search_internal_logs (raw telemetry,
+#     incl. the brute-force smoking gun). The copilot's log-search key
+#     needs READ (only) on soc-events-demo — see step 4.
+ES_PASS=<your-password> ./scripts/elastic_dev_events_seed.sh
+
 # 4. Mint a least-privilege API key for the copilot
-#    (read + doc-write on both indices: write on alerts is what lets
-#    --watch acknowledge/close what it handled; read + doc-write on
-#    results is what lets --sync-feedback stamp analyst rulings onto
-#    past investigation docs. Still no cluster privileges, and no
-#    update_by_query — annotation is per-doc by design.)
+#    (read + doc-write on the alerts/results indices: write on alerts is
+#    what lets --watch acknowledge/close what it handled; read + doc-write
+#    on results is what lets --sync-feedback stamp analyst rulings onto
+#    past investigation docs. The events index gets READ ONLY — the
+#    search_internal_logs tool only queries it, never writes. Still no
+#    cluster privileges, and no update_by_query — annotation is per-doc.)
 curl -u elastic:<your-password> -X POST http://127.0.0.1:9200/_security/api_key \
   -H 'Content-Type: application/json' -d '{
   "name": "soc-copilot",
   "role_descriptors": {"soc_copilot": {"indices": [
     {"names": ["soc-alerts-demo", "soc-copilot-investigations"],
-     "privileges": ["read", "write", "view_index_metadata"]}
+     "privileges": ["read", "write", "view_index_metadata"]},
+    {"names": ["soc-events-demo"],
+     "privileges": ["read", "view_index_metadata"]}
   ]}}}'
 
 # 5. Wire .env with the "encoded" field from the response
@@ -609,7 +633,7 @@ The review's sharpest finding: three independent lenses converged on the autonom
 
 ### Medium-term: give the copilot the SIEM
 
-- **Internal log search as a tool.** The copilot's most common pivot — "was there a successful authentication from this IP?" — is one it hands to a human while an Elastic cluster sits configured in `.env`. A guarded `search_logs` tool (parameterized query builder, read-only, time-boxed, index-scoped; never raw query strings from the model) is the single biggest triage-quality jump available, and the core claim of every commercial AI SOC analyst. Needs a seeded events index so the capability is calibrated in evals, not just wired.
+- ~~**Internal log search as a tool.**~~ ✅ Implemented — `search_internal_logs` (see "The pivot it used to hand to a human") lets the agentic loop answer "was there a successful authentication from this IP?" against the SIEM's own telemetry, via a guarded allowlisted field/value builder (never raw query strings), read-only and bounded. Demonstrated live: the copilot ran the pivot itself and escalated a brute-force from *attempted* to *confirmed compromise*. Follow-up: pin a formal harness expectation for the verdict shift (it needs the events index seeded as part of the eval fixtures, a small architectural step), and extend the allowlist as new probes prove useful.
 - **Volume economics.** Near-duplicate detection before the LLM spends anything, and tiered model routing (cheap first pass, deterministic promotion to the strong model for anything that isn't a clean high-confidence FP) — the $0.05-per-alert limitation, addressed.
 - **Phishing deep-dive enrichment.** Deterministic email-header analysis (SPF/DKIM/DMARC results, From/Reply-To mismatch, received-chain anomalies) and URL-chain inspection — the flagship commercial use case, currently absent from the fixture set's evidence.
 - **Eval infrastructure.** Recorded tool cassettes (external reputation drift currently entangled with model behavior — the harness depends on a Tor IP staying at 100/100), a calibration runner that turns the house 12-run discipline into recorded pass-rate data, and a model-upgrade A/B harness with property-level diffs.
