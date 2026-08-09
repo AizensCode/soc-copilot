@@ -137,14 +137,17 @@ async def test_phase_one_counts_a_resample_as_a_retry_and_bills_both(tmp_path):
     assert tel.input_tokens == 2000 and tel.output_tokens == 700
 
 
-async def test_agentic_counts_tool_calls_and_every_round_trip(tmp_path, monkeypatch):
-    import soc_copilot.copilot as copilot_mod
-    from soc_copilot.tools.base import ToolResult
+async def test_agentic_counts_tool_calls_and_every_round_trip(tmp_path):
+    from soc_copilot.tools.base import Tool, ToolResult
+    from soc_copilot.tools.registry import ToolRegistry
 
-    async def fake_dispatch(name, tool_input):
-        return ToolResult(tool_name=name, success=True, data={"score": 0})
+    class _StubTool(Tool):
+        name = "check_ip_reputation"
+        description = "stub"
+        input_schema = {"type": "object", "properties": {}}
 
-    monkeypatch.setattr(copilot_mod, "dispatch", fake_dispatch)
+        async def execute(self, **kwargs) -> ToolResult:
+            return ToolResult(tool_name=self.name, success=True, data={"score": 0})
 
     copilot = _copilot(
         tmp_path,
@@ -153,6 +156,7 @@ async def test_agentic_counts_tool_calls_and_every_round_trip(tmp_path, monkeypa
             _response(_final_json(), (1500, 400)),
         ],
     )
+    copilot.tools = ToolRegistry([_StubTool()])
     inv = await copilot.investigate_agentic(_alert())
 
     tel = inv.telemetry

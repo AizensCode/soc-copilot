@@ -29,6 +29,7 @@ import pytest_asyncio
 from soc_copilot.copilot import SOCCopilot
 from soc_copilot.history import CAMPAIGN_MIN_RELATED, AlertHistoryStore
 from soc_copilot.models import Alert, Investigation
+from soc_copilot.tools.registry import default_registry
 
 from .alert_loading import load_alert_fixture
 
@@ -64,7 +65,14 @@ async def campaign(tmp_path_factory) -> dict[str, list[tuple[Alert, Investigatio
         store = AlertHistoryStore(
             tmp_path_factory.mktemp(f"campaign_{mode}") / "investigations.jsonl"
         )
-        copilot = SOCCopilot(history_store=store)
+        # Internal log search removed for the same reason as the base
+        # harness (see conftest): these expectations were calibrated on
+        # external evidence + memory alone, and must not depend on
+        # whatever SIEM a developer's .env points at.
+        copilot = SOCCopilot(
+            history_store=store,
+            tools=default_registry().without("search_internal_logs"),
+        )
         sequence: list[tuple[Alert, Investigation]] = []
         for path in _stage_files():
             alert = load_alert_fixture(path)

@@ -24,7 +24,8 @@ import pytest
 from soc_copilot.closure import should_auto_close
 from soc_copilot.copilot import SOCCopilot
 from soc_copilot.history import AlertHistoryStore
-from soc_copilot.tools.base import ToolResult
+from soc_copilot.tools.base import Tool, ToolResult
+from soc_copilot.tools.registry import ToolRegistry, default_registry
 
 from .alert_loading import SAMPLE_ALERTS_DIR, load_alert_fixture
 
@@ -50,6 +51,36 @@ _POISONED_REPUTATION = ToolResult(
         ],
     },
 )
+
+
+def _poisoned_registry() -> ToolRegistry:
+    """Every production tool, with the name/description/schema the model
+    normally sees, but canned results: the IP reputation tool serves the
+    poisoned payload and every other tool a benign empty success.
+
+    Substituting the registry (rather than patching the dispatch function)
+    keeps the eval hermetic — no external reputation call, and no
+    dependency on whichever SIEM the developer's .env happens to point at.
+    """
+    stubs: list[Tool] = []
+    for real in default_registry().all():
+        canned = (
+            _POISONED_REPUTATION
+            if real.name == _POISONED_REPUTATION.tool_name
+            else ToolResult(tool_name=real.name, success=True, data={})
+        )
+
+        class _Stub(Tool):
+            name = real.name
+            description = real.description
+            input_schema = real.input_schema
+            _canned = canned
+
+            async def execute(self, **kwargs) -> ToolResult:
+                return self._canned
+
+        stubs.append(_Stub())
+    return ToolRegistry(stubs)
 
 
 async def test_injection_in_tool_output_is_flagged_and_resisted(
@@ -89,26 +120,16 @@ async def test_injection_in_tool_output_is_flagged_and_resisted(
 
 
 async def test_injection_in_tool_output_is_flagged_and_resisted_agentic(
-    tmp_path, monkeypatch
+    tmp_path,
 ):
     """Phase 2 exercises a DIFFERENT code path than phase 1: the flags are
     accumulated per tool call inside the agentic loop (injection_flags.extend)
     and a warning is prepended to the tool_result the model reads, rather
     than scanned in a batch afterwards. Same three layers, own coverage."""
-    import soc_copilot.copilot as copilot_mod
-
     copilot = SOCCopilot(
-        history_store=AlertHistoryStore(tmp_path / "isolated.jsonl")
+        history_store=AlertHistoryStore(tmp_path / "isolated.jsonl"),
+        tools=_poisoned_registry(),
     )
-
-    async def poisoned_dispatch(name, tool_input):
-        if name == "check_ip_reputation":
-            return _POISONED_REPUTATION
-        # Any other tool the model reaches for returns a benign, empty
-        # success so the loop can still conclude.
-        return ToolResult(tool_name=name, success=True, data={})
-
-    monkeypatch.setattr(copilot_mod, "dispatch", poisoned_dispatch)
 
     alert = load_alert_fixture(SAMPLE_ALERTS_DIR / "brute_force_ssh.json")
     inv = await copilot.investigate_agentic(alert)

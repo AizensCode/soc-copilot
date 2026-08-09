@@ -26,7 +26,7 @@ from .prompts.system import SYSTEM_PROMPT
 from .sigma import match_sigma_rules
 from .tools.abuseipdb import AbuseIPDBTool
 from .tools.base import ToolResult
-from .tools.registry import anthropic_tool_schemas, dispatch
+from .tools.registry import ToolRegistry, default_registry
 from .tools.urlscan import URLScanTool
 from .tools.virustotal import VirusTotalTool
 
@@ -56,13 +56,23 @@ class AgenticReportError(ValueError):
 
 
 class SOCCopilot:
-    def __init__(self, history_store: AlertHistoryStore | None = None) -> None:
+    def __init__(
+        self,
+        history_store: AlertHistoryStore | None = None,
+        tools: ToolRegistry | None = None,
+    ) -> None:
         self.client = AsyncAnthropic(api_key=settings.ANTHROPIC_KEY)
         self.ip_tool = AbuseIPDBTool()
         self.hash_tool = VirusTotalTool()
         self.domain_tool = URLScanTool()
         # Cross-alert memory. Injectable so tests can isolate it.
         self.history = history_store or AlertHistoryStore(settings.HISTORY_PATH)
+        # The agentic tool set. Injectable because which tools exist is an
+        # INPUT to the investigation, not a constant: an eval needs the
+        # internal-log backend under its own control (otherwise the verdict
+        # depends on whoever's SIEM the developer's .env points at), and a
+        # deployment may bind a different log backend entirely.
+        self.tools = tools or default_registry()
 
     @staticmethod
     def _format_memory_context(
@@ -576,7 +586,7 @@ class SOCCopilot:
             }
         ]
 
-        tool_schemas = anthropic_tool_schemas()
+        tool_schemas = self.tools.anthropic_schemas()
         evidence_collected: list[Evidence] = []
         correction_attempts = 0
         usage_in = usage_out = api_calls = tool_calls = 0
@@ -665,7 +675,7 @@ class SOCCopilot:
                     if block.type != "tool_use":
                         continue
 
-                    result = await dispatch(block.name, block.input)
+                    result = await self.tools.dispatch(block.name, block.input)
                     tool_calls += 1
                     evidence_collected.append(
                         self._tool_result_to_evidence(result)
