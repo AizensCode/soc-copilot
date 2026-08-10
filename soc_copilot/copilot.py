@@ -23,6 +23,7 @@ from .models import (
 from .pricing import estimate_cost
 from .prompts.agentic import AGENTIC_SYSTEM_PROMPT
 from .prompts.system import SYSTEM_PROMPT
+from .routing import should_promote
 from .sigma import match_sigma_rules
 from .tools.abuseipdb import AbuseIPDBTool
 from .tools.base import ToolResult
@@ -409,10 +410,24 @@ class SOCCopilot:
             confidence=confidence,
         )
 
-    async def investigate(self, alert: Alert) -> Investigation:
-        """Phase 1 entrypoint: pre-enrich, then one LLM call to write the report."""
+    async def investigate(
+        self,
+        alert: Alert,
+        model: str | None = None,
+        record: bool = True,
+        evidence: list[Evidence] | None = None,
+    ) -> Investigation:
+        """Phase 1 entrypoint: pre-enrich, then one LLM call to write the report.
+
+        `model` overrides the model for this call (tiered routing runs a
+        cheap pass then a strong one). `record=False` skips persisting to
+        history — the tiered orchestrator records the FINAL verdict once,
+        not each tier. `evidence`, when supplied, reuses an earlier pass's
+        enrichment instead of paying the external tool lookups again.
+        """
+        model = model or settings.MODEL
         started = time.monotonic()
-        evidence = await self.enrich(alert)
+        evidence = evidence if evidence is not None else await self.enrich(alert)
         priors = self.history.prior_sightings(alert)
         # Correlate on alert-level signals now, so a detected campaign can
         # inform the escalation decision (technique corroboration is added
@@ -454,7 +469,7 @@ class SOCCopilot:
         usage_in = usage_out = api_calls = 0
         for attempt in range(MAX_REPORT_ATTEMPTS):
             response = await self.client.messages.create(
-                model=settings.MODEL,
+                model=model,
                 max_tokens=16000,
                 system=SYSTEM_PROMPT,
                 messages=[{"role": "user", "content": user_message}],
@@ -509,9 +524,11 @@ class SOCCopilot:
         # real investigation is by definition not a suppressed duplicate.
         investigation.duplicate_of = None
         investigation.telemetry = self._telemetry(
-            started, usage_in, usage_out, api_calls, retries=api_calls - 1
+            started, usage_in, usage_out, api_calls, retries=api_calls - 1,
+            model=model,
         )
-        self.history.record(alert, investigation)
+        if record:
+            self.history.record(alert, investigation)
         return investigation
 
     @staticmethod
@@ -522,12 +539,14 @@ class SOCCopilot:
         api_calls: int,
         retries: int = 0,
         tool_calls: int = 0,
+        model: str | None = None,
     ) -> Telemetry:
         """Assemble the run's telemetry. Deterministic — token counts come
         from the API's own usage blocks, cost from the committed price
         table, duration from a monotonic clock."""
+        model = model or settings.MODEL
         return Telemetry(
-            model=settings.MODEL,
+            model=model,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
             api_calls=api_calls,
@@ -535,7 +554,7 @@ class SOCCopilot:
             retries=retries,
             duration_seconds=round(time.monotonic() - started, 2),
             cost_usd=round(
-                estimate_cost(settings.MODEL, input_tokens, output_tokens), 6
+                estimate_cost(model, input_tokens, output_tokens), 6
             ),
         )
 
@@ -547,13 +566,20 @@ class SOCCopilot:
         self,
         alert: Alert,
         max_iterations: int = 15,
+        model: str | None = None,
+        record: bool = True,
     ) -> Investigation:
         """Phase 2 entrypoint: model decides which tools to call.
 
         Loops until the model emits a final Investigation JSON
         (stop_reason='end_turn') or until max_iterations is reached
         as a safety stop against runaway loops.
+
+        `model` and `record` behave as in `investigate` — tiered routing
+        runs a cheap agentic pass and, on promotion, a strong one, and
+        records only the final verdict.
         """
+        model = model or settings.MODEL
         started = time.monotonic()
         priors = self.history.prior_sightings(alert)
         pre_correlation = self.history.correlate(
@@ -596,7 +622,7 @@ class SOCCopilot:
 
         for iteration in range(max_iterations):
             response = await self.client.messages.create(
-                model=settings.MODEL,
+                model=model,
                 max_tokens=16000,
                 system=AGENTIC_SYSTEM_PROMPT,
                 tools=tool_schemas,
@@ -665,8 +691,10 @@ class SOCCopilot:
                     api_calls,
                     retries=correction_attempts,
                     tool_calls=tool_calls,
+                    model=model,
                 )
-                self.history.record(alert, investigation)
+                if record:
+                    self.history.record(alert, investigation)
                 return investigation
 
             if response.stop_reason == "max_tokens":
@@ -725,6 +753,70 @@ class SOCCopilot:
             f"Investigation exceeded {max_iterations} iterations without "
             f"concluding. The model may be stuck in a loop."
         )
+
+    # ------------------------------------------------------------------
+    # Tiered routing: cheap first pass, promote the doubtful ones
+    # ------------------------------------------------------------------
+
+    async def investigate_tiered(
+        self, alert: Alert, agentic: bool = False
+    ) -> Investigation:
+        """Investigate on the cheap model first; promote to the strong
+        model unless the result is cleanly disposable (see
+        soc_copilot/routing.should_promote).
+
+        Records exactly one investigation — the final verdict — with
+        telemetry summed across whichever tiers ran, and a routing note
+        saying which model finalized and why. On the phase-one path a
+        promotion REUSES the cheap pass's enrichment rather than paying
+        the external tool lookups twice; the agentic path re-runs its own
+        tool loop on the strong model.
+        """
+        cheap = settings.TIER_CHEAP_MODEL
+        strong = settings.MODEL
+
+        if agentic:
+            first = await self.investigate_agentic(
+                alert, model=cheap, record=False
+            )
+        else:
+            first = await self.investigate(alert, model=cheap, record=False)
+
+        promote, reason = should_promote(first, alert)
+        if not promote:
+            first.telemetry.routing = f"{cheap} finalized — {reason}"
+            self.history.record(alert, first)
+            return first
+
+        if agentic:
+            final = await self.investigate_agentic(
+                alert, model=strong, record=False
+            )
+        else:
+            final = await self.investigate(
+                alert, model=strong, record=False, evidence=first.evidence
+            )
+        self._add_tier_cost(final.telemetry, first.telemetry)
+        final.telemetry.routing = f"{cheap} → {strong} — promoted: {reason}"
+        self.history.record(alert, final)
+        return final
+
+    @staticmethod
+    def _add_tier_cost(final: Telemetry, cheap: Telemetry) -> None:
+        """Fold the cheap pass's spend into the final telemetry: a promoted
+        alert really cost both tiers, so the recorded cost must say so or
+        the savings math (and the tiering decision it informs) is a lie.
+        The `model` field stays the authoritative (strong) model; `routing`
+        carries the full path."""
+        final.input_tokens += cheap.input_tokens
+        final.output_tokens += cheap.output_tokens
+        final.api_calls += cheap.api_calls
+        final.tool_calls += cheap.tool_calls
+        final.retries += cheap.retries
+        final.duration_seconds = round(
+            final.duration_seconds + cheap.duration_seconds, 2
+        )
+        final.cost_usd = round(final.cost_usd + cheap.cost_usd, 6)
 
     def _parse_agentic_final(
         self,

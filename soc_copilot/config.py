@@ -34,6 +34,10 @@ class Settings:
     VIRUSTOTAL_KEY: str | None = None
     URLSCAN_KEY: str | None = None
     MODEL: str = "claude-sonnet-5"
+    # The cheap first-pass model for tiered routing (--tiered). A high-
+    # confidence, unambiguous false positive is finalized here; anything
+    # else is promoted to MODEL. See soc_copilot/routing.py.
+    TIER_CHEAP_MODEL: str = "claude-haiku-4-5"
     # Case-history store (cross-alert memory). Not a secret; overridable per env.
     HISTORY_PATH: str = "data/history/investigations.jsonl"
     # Temporal window (hours) for clustering alerts into a campaign.
@@ -89,7 +93,8 @@ class Settings:
         # These two carry non-None defaults and were previously documented
         # as env-overridable but silently weren't — only override when set.
         for name in ("ELASTIC_ALERTS_INDEX", "ELASTIC_RESULTS_INDEX",
-                     "ELASTIC_EVENTS_INDEX", "HISTORY_PATH", "MODEL"):
+                     "ELASTIC_EVENTS_INDEX", "HISTORY_PATH", "MODEL",
+                     "TIER_CHEAP_MODEL"):
             if (val := os.environ.get(name)) is not None:
                 overrides[name] = val
         if (raw := os.environ.get("CORRELATION_WINDOW_HOURS")) is not None:

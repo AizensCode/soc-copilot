@@ -68,6 +68,19 @@ def test_watch_optional_interval_and_flags():
     assert defaulted.interval == 60 and defaulted.agentic is True
 
 
+def test_tiered_flag_parses_on_every_investigation_entrypoint():
+    """--tiered is opt-in on the file, from-elastic, and watch commands."""
+    _, f = _parse_args(["alert.json", "--tiered"])
+    assert f.tiered is True
+    _, e = _parse_args(["--from-elastic", "2", "--tiered"])
+    assert e.tiered is True
+    _, w = _parse_args(["--watch", "30", "--tiered", "--dedup"])
+    assert w.tiered is True and w.dedup == 24
+    # Off unless asked.
+    _, bare = _parse_args(["alert.json"])
+    assert bare.tiered is False
+
+
 def test_watch_dedup_flag_off_by_default_with_bounded_window():
     """--dedup is opt-in (suppression is an autonomous decision); bare
     --dedup gets the default window, an explicit window is honored, and a

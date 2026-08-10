@@ -210,6 +210,15 @@ class Telemetry(BaseModel):
     )
     duration_seconds: float = 0.0
     cost_usd: float = 0.0
+    routing: str | None = Field(
+        default=None,
+        description=(
+            "Tiered-routing path, when --tiered ran: whether the cheap "
+            "model finalized the verdict or it was promoted to the strong "
+            "model, and why. None for a single-model investigation. Cost "
+            "and token counts here are the SUM across tiers when promoted."
+        ),
+    )
 
 
 class Investigation(BaseModel):

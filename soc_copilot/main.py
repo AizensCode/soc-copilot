@@ -17,6 +17,12 @@
     false positives instead of re-investigating them (soc_copilot/dedup.py
     spells out the gates; window in hours, default 24).
 
+    --tiered runs a cheap first-pass model and promotes only the alerts
+    that are not a clean high-confidence false positive to the strong
+    model (soc_copilot/routing.py spells out the gates). Composes with
+    --dedup: dedup suppresses repeats first, then --tiered handles the
+    first look at whatever is left.
+
     --case opens a TheHive alert for investigations a human should own
     (escalated, true-positive, or campaign-correlated). Requires
     THEHIVE_URL and THEHIVE_API_KEY.
@@ -60,9 +66,9 @@ FEEDBACK_SYNC_INTERVAL = 300
 
 USAGE = (
     "Usage:\n"
-    "  soc-copilot <path/to/alert.json> [--agentic] [--report [out.html]] [--case] [--debug [out.json]]\n"
-    "  soc-copilot --from-elastic [N] [--agentic] [--push] [--report] [--case]\n"
-    "  soc-copilot --watch [interval_seconds] [--agentic] [--auto-close] [--case] [--notify] [--dedup [WINDOW_H]]\n"
+    "  soc-copilot <path/to/alert.json> [--agentic] [--tiered] [--report [out.html]] [--case] [--debug [out.json]]\n"
+    "  soc-copilot --from-elastic [N] [--agentic] [--tiered] [--push] [--report] [--case]\n"
+    "  soc-copilot --watch [interval_seconds] [--agentic] [--tiered] [--auto-close] [--case] [--notify] [--dedup [WINDOW_H]]\n"
     "  soc-copilot --sync-feedback\n"
     "  soc-copilot --scorecard\n"
     "  soc-copilot --ask ALERT_ID [\"question\"]\n"
@@ -377,6 +383,7 @@ def _parse_args(argv: list[str]) -> tuple[str, argparse.Namespace]:
         p = _p("<alert.json>")
         p.add_argument("file")
         p.add_argument("--agentic", action="store_true")
+        p.add_argument("--tiered", action="store_true")
         p.add_argument(
             "--report", nargs="?", const="investigation_report.html",
             default=None, metavar="OUT.html",
@@ -394,6 +401,7 @@ def _parse_args(argv: list[str]) -> tuple[str, argparse.Namespace]:
         p.add_argument("limit", nargs="?", type=positive_int("alert limit"),
                        default=3)
         p.add_argument("--agentic", action="store_true")
+        p.add_argument("--tiered", action="store_true")
         p.add_argument("--push", action="store_true")
         p.add_argument("--report", action="store_true")
         p.add_argument("--case", action="store_true")
@@ -404,6 +412,7 @@ def _parse_args(argv: list[str]) -> tuple[str, argparse.Namespace]:
         p.add_argument("interval", nargs="?",
                        type=positive_int("poll interval seconds"), default=60)
         p.add_argument("--agentic", action="store_true")
+        p.add_argument("--tiered", action="store_true")
         p.add_argument("--auto-close", action="store_true")
         p.add_argument("--case", action="store_true")
         p.add_argument("--notify", action="store_true")
@@ -460,10 +469,11 @@ def _telemetry_line(inv: Investigation) -> str:
     cost = f"${tel.cost_usd:.4f}" if is_priced(tel.model) else "cost unpriced"
     tools = f" tools={tel.tool_calls}" if tel.tool_calls else ""
     retries = f" retries={tel.retries}" if tel.retries else ""
+    routing = f"\n  routing: {tel.routing}" if tel.routing else ""
     return (
         f"[{cost} · {tel.duration_seconds:.1f}s · "
         f"{tel.input_tokens}in/{tel.output_tokens}out · "
-        f"{tel.api_calls} call(s){tools}{retries}]"
+        f"{tel.api_calls} call(s){tools}{retries}]{routing}"
     )
 
 
@@ -479,14 +489,21 @@ def _require_investigation_keys() -> None:
 
 
 async def _investigate(
-    copilot: SOCCopilot, alert: Alert, agentic: bool
+    copilot: SOCCopilot, alert: Alert, agentic: bool, tiered: bool = False
 ) -> Investigation:
-    if agentic:
-        print("[mode: agentic — model decides tool calls]")
-        inv = await copilot.investigate_agentic(alert)
+    mode = "agentic — model decides tool calls" if agentic else (
+        "phase one — fixed enrichment pipeline"
+    )
+    if tiered:
+        print(f"[mode: {mode}; tiered — cheap first pass, promote if in doubt]")
+        inv = await copilot.investigate_tiered(alert, agentic=agentic)
     else:
-        print("[mode: phase one — fixed enrichment pipeline]")
-        inv = await copilot.investigate(alert)
+        print(f"[mode: {mode}]")
+        inv = (
+            await copilot.investigate_agentic(alert)
+            if agentic
+            else await copilot.investigate(alert)
+        )
     line = _telemetry_line(inv)
     if line:
         print(line, flush=True)
@@ -507,7 +524,9 @@ async def _run_file(args: argparse.Namespace) -> None:
         alert = Alert(**json.load(f))
 
     copilot = SOCCopilot()
-    investigation = await _investigate(copilot, alert, args.agentic)
+    investigation = await _investigate(
+        copilot, alert, args.agentic, getattr(args, "tiered", False)
+    )
 
     # Opt-in: a tool should not drop files into the operator's working
     # directory unasked. The investigation JSON still prints to stdout
@@ -557,7 +576,9 @@ async def _run_elastic(args: argparse.Namespace) -> None:
     copilot = SOCCopilot()
     for alert in alerts:
         print(f"\n=== {alert.alert_id} — {alert.title} ===")
-        investigation = await _investigate(copilot, alert, args.agentic)
+        investigation = await _investigate(
+            copilot, alert, args.agentic, getattr(args, "tiered", False)
+        )
 
         campaign = bool(
             investigation.correlation and investigation.correlation.is_campaign
@@ -646,6 +667,7 @@ async def _run_watch(args: argparse.Namespace) -> None:
     _require_investigation_keys()
     interval = args.interval
     agentic = args.agentic
+    tiered = args.tiered
     auto_close = args.auto_close
     notify = args.notify
     dedup_window = args.dedup
@@ -668,6 +690,7 @@ async def _run_watch(args: argparse.Namespace) -> None:
     # the operator's only heartbeat, and block-buffering would hide it
     print(
         f"Watching {source.alerts_index} every {interval}s ({mode} mode"
+        f"{', tiered on' if tiered else ''}"
         f"{', auto-close on' if auto_close else ''}"
         f"{', notifications on' if notify else ''}"
         f"{f', dedup on ({dedup_window}h window)' if dedup_window else ''}"
@@ -722,7 +745,7 @@ async def _run_watch(args: argparse.Namespace) -> None:
                             )
                     if suppressed_reason is None:
                         investigation = await _investigate(
-                            copilot, alert, agentic
+                            copilot, alert, agentic, tiered
                         )
                     close, reason = (
                         should_auto_close(investigation)
