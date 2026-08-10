@@ -58,8 +58,15 @@ def build_scorecard(store: AlertHistoryStore) -> Scorecard:
     old one. Rulings for alerts with no local investigation record (e.g.
     a store reset) are ignored rather than guessed about.
     """
+    # Suppressed duplicates carry a BORROWED verdict, not a model judgment
+    # this copilot made about that alert — scoring them would count one
+    # anchor opinion N+1 times and let an analyst ruling on a copy inflate
+    # or deflate an accuracy record the model never earned. They are
+    # excluded from both the investigated count and the ruling join.
     latest: dict[str, dict] = {}
     for rec in store._iter_records():
+        if rec.get("duplicate_of"):
+            continue
         latest[rec["alert_id"]] = rec  # file order: last line wins
 
     rulings: list[Ruling] = []

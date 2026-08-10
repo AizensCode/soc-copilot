@@ -505,6 +505,9 @@ class SOCCopilot:
         investigation.injection_flags = injection_flags
         investigation.sigma_matches = sigma_matches
         investigation.asset_matches = asset_matches
+        # duplicate_of is dedup-policy-owned, never the model's to set — a
+        # real investigation is by definition not a suppressed duplicate.
+        investigation.duplicate_of = None
         investigation.telemetry = self._telemetry(
             started, usage_in, usage_out, api_calls, retries=api_calls - 1
         )
@@ -652,6 +655,9 @@ class SOCCopilot:
                 investigation.injection_flags = injection_flags
                 investigation.sigma_matches = sigma_matches
                 investigation.asset_matches = asset_matches
+                # dedup-policy-owned; a real investigation is never a
+                # suppressed duplicate, whatever the model emitted.
+                investigation.duplicate_of = None
                 investigation.telemetry = self._telemetry(
                     started,
                     usage_in,

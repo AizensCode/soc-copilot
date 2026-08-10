@@ -68,6 +68,20 @@ def test_watch_optional_interval_and_flags():
     assert defaulted.interval == 60 and defaulted.agentic is True
 
 
+def test_watch_dedup_flag_off_by_default_with_bounded_window():
+    """--dedup is opt-in (suppression is an autonomous decision); bare
+    --dedup gets the default window, an explicit window is honored, and a
+    negative window is rejected like every other count."""
+    _, off = _parse_args(["--watch"])
+    assert off.dedup is None
+    _, bare = _parse_args(["--watch", "--dedup"])
+    assert bare.dedup == 24
+    _, windowed = _parse_args(["--watch", "--dedup", "6"])
+    assert windowed.dedup == 6
+    with pytest.raises(SystemExit):
+        _parse_args(["--watch", "--dedup", "-3"])
+
+
 def test_digest_negative_value_is_rejected_not_defaulted(capsys):
     """The original live bug, now enforced by argparse's own validation."""
     with pytest.raises(SystemExit) as exc:

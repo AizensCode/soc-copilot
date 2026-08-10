@@ -11,7 +11,11 @@
     # whose investigation passes the closure policy (high-confidence
     # false positive, no escalation/injection/campaign) are closed
     # autonomously instead of acknowledged.
-    uv run soc-copilot --watch [interval_seconds] [--agentic] [--auto-close] [--case] [--notify]
+    uv run soc-copilot --watch [interval_seconds] [--agentic] [--auto-close] [--case] [--notify] [--dedup [WINDOW_H]]
+
+    --dedup suppresses near-duplicate repeats of recent high-confidence
+    false positives instead of re-investigating them (soc_copilot/dedup.py
+    spells out the gates; window in hours, default 24).
 
     --case opens a TheHive alert for investigations a human should own
     (escalated, true-positive, or campaign-correlated). Requires
@@ -47,6 +51,7 @@ import sys
 from pathlib import Path
 
 from .copilot import SOCCopilot
+from .dedup import DEFAULT_WINDOW_HOURS as DEDUP_WINDOW_HOURS
 from .models import Alert, Investigation
 
 # How often watch mode pulls analyst rulings back from TheHive. Rulings
@@ -57,7 +62,7 @@ USAGE = (
     "Usage:\n"
     "  soc-copilot <path/to/alert.json> [--agentic] [--report [out.html]] [--case] [--debug [out.json]]\n"
     "  soc-copilot --from-elastic [N] [--agentic] [--push] [--report] [--case]\n"
-    "  soc-copilot --watch [interval_seconds] [--agentic] [--auto-close] [--case] [--notify]\n"
+    "  soc-copilot --watch [interval_seconds] [--agentic] [--auto-close] [--case] [--notify] [--dedup [WINDOW_H]]\n"
     "  soc-copilot --sync-feedback\n"
     "  soc-copilot --scorecard\n"
     "  soc-copilot --ask ALERT_ID [\"question\"]\n"
@@ -402,6 +407,13 @@ def _parse_args(argv: list[str]) -> tuple[str, argparse.Namespace]:
         p.add_argument("--auto-close", action="store_true")
         p.add_argument("--case", action="store_true")
         p.add_argument("--notify", action="store_true")
+        p.add_argument(
+            "--dedup", nargs="?", const=DEDUP_WINDOW_HOURS,
+            type=positive_int("dedup window hours"), default=None,
+            metavar="WINDOW_H",
+            help="suppress near-duplicate repeats of recent high-confidence "
+                 "false positives instead of re-investigating them",
+        )
         return "watch", p.parse_args(rest)
 
     if cmd == "--ask":
@@ -636,6 +648,7 @@ async def _run_watch(args: argparse.Namespace) -> None:
     agentic = args.agentic
     auto_close = args.auto_close
     notify = args.notify
+    dedup_window = args.dedup
     try:
         source = ElasticAlertSource()
     except RuntimeError as e:
@@ -657,6 +670,7 @@ async def _run_watch(args: argparse.Namespace) -> None:
         f"Watching {source.alerts_index} every {interval}s ({mode} mode"
         f"{', auto-close on' if auto_close else ''}"
         f"{', notifications on' if notify else ''}"
+        f"{f', dedup on ({dedup_window}h window)' if dedup_window else ''}"
         f"{', analyst-feedback sync on' if feedback else ''}). "
         f"Ctrl+C to stop.",
         flush=True,
@@ -692,7 +706,24 @@ async def _run_watch(args: argparse.Namespace) -> None:
                     flush=True,
                 )
                 try:
-                    investigation = await _investigate(copilot, alert, agentic)
+                    suppressed_reason = None
+                    if dedup_window:
+                        from .dedup import try_suppress
+
+                        result = try_suppress(
+                            copilot.history, alert, dedup_window,
+                        )
+                        if result:
+                            investigation, suppressed_reason = result
+                            print(
+                                f"[dedup: {suppressed_reason} — no model "
+                                f"call spent]",
+                                flush=True,
+                            )
+                    if suppressed_reason is None:
+                        investigation = await _investigate(
+                            copilot, alert, agentic
+                        )
                     close, reason = (
                         should_auto_close(investigation)
                         if auto_close

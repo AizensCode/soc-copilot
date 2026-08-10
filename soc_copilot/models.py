@@ -268,6 +268,16 @@ class Investigation(BaseModel):
     )
     escalation_recommended: bool
     escalation_draft: str | None = None
+    duplicate_of: str | None = Field(
+        default=None,
+        description=(
+            "Set when this record was produced by near-duplicate "
+            "suppression instead of a fresh investigation: the alert_id "
+            "of the anchor investigation whose conclusion was reused. "
+            "Filled deterministically by the dedup policy, never by the "
+            "LLM. None for every real investigation."
+        ),
+    )
     reasoning_transcript: str = ""
     telemetry: Telemetry | None = Field(
         default=None,

@@ -58,6 +58,13 @@ def export_case(
             f"the alert itself was not kept and cannot be replayed. "
             f"Re-investigate the alert to record a full dump, then export."
         )
+    if record.get("duplicate_of"):
+        raise ValueError(
+            f"{alert_id} was suppressed as a near-duplicate of "
+            f"{record['duplicate_of']} — its verdict was borrowed, not "
+            f"produced by investigating this alert, so it cannot label an "
+            f"eval case. Export the anchor instead."
+        )
 
     case = {
         "alert_id": alert_id,
@@ -85,6 +92,6 @@ def exportable_alert_ids(store: AlertHistoryStore) -> list[str]:
     for rec in store._iter_records():
         latest[rec["alert_id"]] = rec
     for alert_id, rec in latest.items():
-        if alert_id in rulings and "alert" in rec:
+        if alert_id in rulings and "alert" in rec and not rec.get("duplicate_of"):
             ids.append(alert_id)
     return ids

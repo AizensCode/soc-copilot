@@ -297,6 +297,12 @@ class ElasticAlertSource:
             "injection_flags": len(investigation.injection_flags),
             "auto_closed": auto_closed,
             "closure_reason": closure_reason,
+            # Flattened so a dashboard can EXCLUDE suppressed duplicates
+            # from cost aggregations: their true $0.00 would otherwise pull
+            # the mean cost-per-investigation toward zero in Kibana exactly
+            # as it would have in the digest (which filters on this field).
+            "duplicate_of": investigation.duplicate_of,
+            "is_duplicate": investigation.duplicate_of is not None,
             "investigation": investigation.model_dump(mode="json"),
         }
         # Flattened for dashboarding: cost and latency are things a SOC

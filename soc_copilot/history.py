@@ -175,6 +175,9 @@ class AlertHistoryStore:
             # parse a full record per row.
             "cost_usd": tel.cost_usd if (tel := investigation.telemetry) else None,
             "duration_seconds": tel.duration_seconds if tel else None,
+            # Flattened so dedup's anchor scan and the digest can skip
+            # suppressed records without parsing the investigation dump.
+            "duplicate_of": investigation.duplicate_of,
             "alert": alert.model_dump(mode="json"),
             "investigation": investigation.model_dump(mode="json"),
         }

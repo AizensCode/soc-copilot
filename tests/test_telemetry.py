@@ -29,10 +29,15 @@ def _alert(alert_id: str = "A1") -> Alert:
     )
 
 
-def _inv(alert_id: str = "A1", telemetry: Telemetry | None = None) -> Investigation:
+def _inv(
+    alert_id: str = "A1",
+    telemetry: Telemetry | None = None,
+    **kwargs,
+) -> Investigation:
     return Investigation(
         alert_id=alert_id, verdict="false_positive", confidence="high",
         hypothesis="h", escalation_recommended=False, telemetry=telemetry,
+        **kwargs,
     )
 
 
@@ -269,3 +274,25 @@ def test_digest_spend_is_none_when_nothing_is_measured(tmp_path):
     spend = build_digest_data(store, since_hours=24)["spend"]
     assert spend["mean_cost_usd"] is None
     assert spend["total_cost_usd"] == 0
+
+
+def test_digest_separates_suppressed_duplicates_and_estimates_savings(tmp_path):
+    """A suppressed repeat's genuine $0.00 must not drag the mean cost of
+    a REAL investigation (the number tiering decisions read), and the
+    savings estimate is the anchors' recorded costs — what re-running
+    them would actually have spent."""
+    store = AlertHistoryStore(tmp_path / "investigations.jsonl")
+    _record_with_cost(store, "A1", 0.10, duration=20.0)
+    # Two suppressed repeats anchored on A1, one on an unmeasured anchor.
+    zero = Telemetry(model="claude-sonnet-5", cost_usd=0.0)
+    store.record(_alert("D1"), _inv("D1", telemetry=zero, duplicate_of="A1"))
+    store.record(_alert("D2"), _inv("D2", telemetry=zero, duplicate_of="A1"))
+    store.record(_alert("A2"), _inv("A2"))  # unmeasured real investigation
+    store.record(_alert("D3"), _inv("D3", telemetry=zero, duplicate_of="A2"))
+
+    spend = build_digest_data(store, since_hours=24)["spend"]
+    assert spend["measured_investigations"] == 1
+    assert spend["mean_cost_usd"] == 0.10        # not dragged toward zero
+    assert spend["suppressed_duplicates"] == 3
+    assert spend["estimated_savings_usd"] == 0.20
+    assert spend["suppressed_with_unknown_saving"] == 1

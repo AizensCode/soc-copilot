@@ -77,6 +77,7 @@ def build_digest_data(
             "investigated_at": rec.get("investigated_at"),
             "cost_usd": rec.get("cost_usd"),
             "duration_seconds": rec.get("duration_seconds"),
+            "duplicate_of": rec.get("duplicate_of"),
         }
         if ruling:
             entry["analyst_ruled"] = ruling["human_verdict"]
@@ -108,10 +109,24 @@ def build_digest_data(
     # set the rest of the digest reports on, so "12 investigated, $0.41"
     # is internally consistent. Records without telemetry contribute
     # nothing and are counted as unmeasured rather than as zero.
-    measured = [e for e in investigated if e.get("cost_usd") is not None]
+    # Suppressed duplicates are their own bucket: their genuine $0.00 would
+    # otherwise drag the mean cost of a REAL investigation — the number a
+    # tiering decision is made from. Savings are estimated honestly: each
+    # suppression avoided re-running its specific anchor, so the estimate
+    # is the sum of those anchors' recorded costs, and duplicates whose
+    # anchor cost is unrecorded are counted rather than guessed at.
+    suppressed = [e for e in investigated if e.get("duplicate_of")]
+    real = [e for e in investigated if not e.get("duplicate_of")]
+    measured = [e for e in real if e.get("cost_usd") is not None]
+    anchor_costs = [
+        latest[e["duplicate_of"]].get("cost_usd")
+        for e in suppressed
+        if e["duplicate_of"] in latest
+    ]
+    known_savings = [c for c in anchor_costs if c is not None]
     spend = {
         "measured_investigations": len(measured),
-        "unmeasured_investigations": len(investigated) - len(measured),
+        "unmeasured_investigations": len(real) - len(measured),
         "total_cost_usd": round(sum(e["cost_usd"] for e in measured), 4),
         "mean_cost_usd": round(
             sum(e["cost_usd"] for e in measured) / len(measured), 4
@@ -119,6 +134,9 @@ def build_digest_data(
         "mean_duration_seconds": round(
             sum(e.get("duration_seconds") or 0 for e in measured) / len(measured), 1
         ) if measured else None,
+        "suppressed_duplicates": len(suppressed),
+        "estimated_savings_usd": round(sum(known_savings), 4),
+        "suppressed_with_unknown_saving": len(suppressed) - len(known_savings),
     }
 
     card = build_scorecard(store)
