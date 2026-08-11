@@ -19,3 +19,7 @@ data/history/
 # Default filename for the opt-in `--debug` dump (nothing is written
 # without the flag; the agentic final-turn file is no longer produced)
 last_run_debug.json
+
+# Calibration reports are point-in-time measurement output (live model),
+# not committed test input like the cassette. Snapshot deliberately via --out.
+data/evals/calibration/

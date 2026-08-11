@@ -15,11 +15,8 @@ from soc_copilot.copilot import SOCCopilot
 from soc_copilot.models import Alert, Investigation
 
 from .alert_loading import SAMPLE_ALERTS_DIR, load_alert_fixture
-from .expectations import (
-    EXPECTATIONS,
-    AlertExpectation,
-    confidence_meets_minimum,
-)
+from .eval_checks import evaluate, is_attack
+from .expectations import EXPECTATIONS, AlertExpectation
 
 # Every test in this module drives live API calls (see the `live` marker
 # in pyproject.toml): `-m "not live"` is the free suite.
@@ -57,165 +54,65 @@ def _cases() -> list[tuple[str, str, AlertExpectation]]:
     ]
 
 
+def _assert_property(investigations, alert_file, mode, expected, name):
+    """Assert one pinned property via the SHARED predicate (eval_checks.py)
+    — the same one the calibration runner tallies, so a green test and a
+    k/k calibration mean the same thing. Skips when the property is not
+    pinned for this fixture, exactly as the old per-property tests did."""
+    check = evaluate(investigations[(alert_file, mode)], expected).get(name)
+    if check is None:
+        pytest.skip(f"No {name} expectation specified")
+    assert check.ok, f"{alert_file} [{mode}]: {check.detail}"
+
+
 # --- Assertion tests, one per property, parametrized over (alert, mode) ---
 
 
-@pytest.mark.parametrize("alert_file,mode,expected", _cases())
-async def test_verdict(
-    alert_file: str,
-    mode: str,
-    expected: AlertExpectation,
-    investigations: dict[tuple[str, str], Investigation],
-):
-    inv = investigations[(alert_file, mode)]
-    if "allowed_verdicts" in expected:
-        assert inv.verdict in expected["allowed_verdicts"], (
-            f"{alert_file} [{mode}]: expected verdict in "
-            f"{expected['allowed_verdicts']}, got '{inv.verdict}'. "
-            f"Hypothesis: {inv.hypothesis[:200]}"
-        )
-    elif "expected_verdict" in expected:
-        assert inv.verdict == expected["expected_verdict"], (
-            f"{alert_file} [{mode}]: expected verdict "
-            f"'{expected['expected_verdict']}', got '{inv.verdict}'. "
-            f"Hypothesis: {inv.hypothesis[:200]}"
-        )
-    else:
-        pytest.skip("No verdict expectation specified")
+# The single-property tests are thin wrappers over the shared predicate in
+# eval_checks.py: same skip-when-unpinned behavior, same assertion, one per
+# property so a live failure still names the property. The predicate itself
+# is unit-tested API-free (tests/test_eval_checks.py); the calibration
+# runner tallies the exact same function, so its pass-rates == these tests.
 
 
 @pytest.mark.parametrize("alert_file,mode,expected", _cases())
-async def test_confidence(
-    alert_file: str,
-    mode: str,
-    expected: AlertExpectation,
-    investigations: dict[tuple[str, str], Investigation],
-):
-    if "min_confidence" not in expected:
-        pytest.skip("No min_confidence specified")
-    inv = investigations[(alert_file, mode)]
-    assert confidence_meets_minimum(inv.confidence, expected["min_confidence"]), (
-        f"{alert_file} [{mode}]: expected confidence >= "
-        f"'{expected['min_confidence']}', got '{inv.confidence}'"
-    )
+async def test_verdict(alert_file, mode, expected, investigations):
+    _assert_property(investigations, alert_file, mode, expected, "verdict")
 
 
 @pytest.mark.parametrize("alert_file,mode,expected", _cases())
-async def test_required_mitre_techniques(
-    alert_file: str,
-    mode: str,
-    expected: AlertExpectation,
-    investigations: dict[tuple[str, str], Investigation],
-):
-    if "required_techniques" not in expected:
-        pytest.skip("No required_techniques specified")
-    inv = investigations[(alert_file, mode)]
-    techniques_blob = " ".join(inv.attack_techniques)
-    missing = [
-        t for t in expected["required_techniques"]
-        if t not in techniques_blob
-    ]
-    assert not missing, (
-        f"{alert_file} [{mode}]: missing required MITRE techniques: "
-        f"{missing}. Got: {inv.attack_techniques}"
-    )
+async def test_confidence(alert_file, mode, expected, investigations):
+    _assert_property(investigations, alert_file, mode, expected, "confidence")
 
 
 @pytest.mark.parametrize("alert_file,mode,expected", _cases())
-async def test_any_of_mitre_techniques(
-    alert_file: str,
-    mode: str,
-    expected: AlertExpectation,
-    investigations: dict[tuple[str, str], Investigation],
-):
-    if "any_of_techniques" not in expected:
-        pytest.skip("No any_of_techniques specified")
-    inv = investigations[(alert_file, mode)]
-    techniques_blob = " ".join(inv.attack_techniques)
-    for group in expected["any_of_techniques"]:
-        assert any(t in techniques_blob for t in group), (
-            f"{alert_file} [{mode}]: none of the acceptable techniques "
-            f"{group} appear. Got: {inv.attack_techniques}"
-        )
+async def test_required_mitre_techniques(alert_file, mode, expected, investigations):
+    _assert_property(investigations, alert_file, mode, expected, "required_techniques")
 
 
 @pytest.mark.parametrize("alert_file,mode,expected", _cases())
-async def test_forbidden_mitre_techniques(
-    alert_file: str,
-    mode: str,
-    expected: AlertExpectation,
-    investigations: dict[tuple[str, str], Investigation],
-):
-    if "forbidden_techniques" not in expected:
-        pytest.skip("No forbidden_techniques specified")
-    inv = investigations[(alert_file, mode)]
-    techniques_blob = " ".join(inv.attack_techniques)
-    leaked = [
-        t for t in expected["forbidden_techniques"]
-        if t in techniques_blob
-    ]
-    assert not leaked, (
-        f"{alert_file} [{mode}]: contains forbidden MITRE techniques "
-        f"(possible cross-contamination): {leaked}. "
-        f"Got: {inv.attack_techniques}"
-    )
+async def test_any_of_mitre_techniques(alert_file, mode, expected, investigations):
+    _assert_property(investigations, alert_file, mode, expected, "any_of_techniques")
 
 
 @pytest.mark.parametrize("alert_file,mode,expected", _cases())
-async def test_escalation_flag(
-    alert_file: str,
-    mode: str,
-    expected: AlertExpectation,
-    investigations: dict[tuple[str, str], Investigation],
-):
-    if "must_escalate" not in expected:
-        pytest.skip("No must_escalate specified")
-    inv = investigations[(alert_file, mode)]
-    assert inv.escalation_recommended == expected["must_escalate"], (
-        f"{alert_file} [{mode}]: expected escalation_recommended="
-        f"{expected['must_escalate']}, got {inv.escalation_recommended}"
-    )
+async def test_forbidden_mitre_techniques(alert_file, mode, expected, investigations):
+    _assert_property(investigations, alert_file, mode, expected, "forbidden_techniques")
 
 
 @pytest.mark.parametrize("alert_file,mode,expected", _cases())
-async def test_pivot_keywords(
-    alert_file: str,
-    mode: str,
-    expected: AlertExpectation,
-    investigations: dict[tuple[str, str], Investigation],
-):
-    if "pivots_must_include" not in expected:
-        pytest.skip("No pivots_must_include specified")
-    inv = investigations[(alert_file, mode)]
-    pivots_blob = " ".join(
-        f"{p.action} {p.rationale}" for p in inv.suggested_pivots
-    ).lower()
-    missing = []
-    for entry in expected["pivots_must_include"]:
-        alternatives = [entry] if isinstance(entry, str) else entry
-        if not any(kw.lower() in pivots_blob for kw in alternatives):
-            missing.append(entry)
-    assert not missing, (
-        f"{alert_file} [{mode}]: missing expected pivot keywords: "
-        f"{missing}. Pivots: {[p.action for p in inv.suggested_pivots]}"
-    )
+async def test_escalation_flag(alert_file, mode, expected, investigations):
+    _assert_property(investigations, alert_file, mode, expected, "escalation")
 
 
 @pytest.mark.parametrize("alert_file,mode,expected", _cases())
-async def test_evidence_count(
-    alert_file: str,
-    mode: str,
-    expected: AlertExpectation,
-    investigations: dict[tuple[str, str], Investigation],
-):
-    if "min_evidence_count" not in expected:
-        pytest.skip("No min_evidence_count specified")
-    inv = investigations[(alert_file, mode)]
-    actual = len(inv.evidence)
-    assert actual >= expected["min_evidence_count"], (
-        f"{alert_file} [{mode}]: expected at least "
-        f"{expected['min_evidence_count']} evidence entries, got {actual}"
-    )
+async def test_pivot_keywords(alert_file, mode, expected, investigations):
+    _assert_property(investigations, alert_file, mode, expected, "pivots")
+
+
+@pytest.mark.parametrize("alert_file,mode,expected", _cases())
+async def test_evidence_count(alert_file, mode, expected, investigations):
+    _assert_property(investigations, alert_file, mode, expected, "evidence_count")
 
 
 _TCODE_RE = re.compile(r"T\d{4}(?:\.\d{3})?")
@@ -232,13 +129,8 @@ async def test_associated_groups(
         pytest.skip("No min_associated_groups specified")
     inv = investigations[(alert_file, mode)]
 
-    # Count invariant: enough groups surfaced from the mapped techniques
-    actual = len(inv.associated_groups)
-    assert actual >= expected["min_associated_groups"], (
-        f"{alert_file} [{mode}]: expected at least "
-        f"{expected['min_associated_groups']} associated groups, got {actual}. "
-        f"Techniques: {inv.attack_techniques}"
-    )
+    # Count invariant, via the shared predicate the runner also tallies.
+    _assert_property(investigations, alert_file, mode, expected, "associated_groups")
 
     # Grounding invariant: every group's matched_techniques must come from
     # THIS investigation's own techniques (or their parent) — catches
@@ -270,13 +162,8 @@ async def test_sigma_matches(
         pytest.skip("No min_sigma_matches specified")
     inv = investigations[(alert_file, mode)]
 
-    actual = len(inv.sigma_matches)
-    assert actual >= expected["min_sigma_matches"], (
-        f"{alert_file} [{mode}]: expected at least "
-        f"{expected['min_sigma_matches']} Sigma match(es), got {actual}. "
-        f"The matcher is deterministic — a shortfall means the matcher or "
-        f"a curated rule regressed."
-    )
+    # Count invariant, via the shared predicate the runner also tallies.
+    _assert_property(investigations, alert_file, mode, expected, "sigma_matches")
 
     # Grounding invariant: every cited rule must be one of the committed
     # curated rules. Filled deterministically, so this holds by
@@ -294,16 +181,15 @@ async def test_sigma_matches(
 
 
 def _attack_cases() -> list[tuple[str, str]]:
-    """(alert, mode) pairs whose expectations do NOT permit false_positive
-    — the harness's own labels, reused as 'this is an attack'."""
-    attack_files = []
-    for alert_file, expected in EXPECTATIONS.items():
-        permitted = expected.get("allowed_verdicts") or [
-            expected.get("expected_verdict")
-        ]
-        if "false_positive" not in permitted:
-            attack_files.append(alert_file)
-    return [(a, m) for a in attack_files for m in MODES]
+    """(alert, mode) pairs the harness labels as attacks — the same
+    derivation the autoclose_safe calibration property uses (is_attack), so
+    the two never disagree about which fixtures the gate must refuse."""
+    return [
+        (alert_file, mode)
+        for alert_file, expected in EXPECTATIONS.items()
+        if is_attack(expected)
+        for mode in MODES
+    ]
 
 
 @pytest.mark.parametrize("alert_file,mode", _attack_cases())
@@ -329,18 +215,5 @@ async def test_attack_labeled_alerts_never_qualify_for_auto_close(
 
 
 @pytest.mark.parametrize("alert_file,mode,expected", _cases())
-async def test_injection_flags(
-    alert_file: str,
-    mode: str,
-    expected: AlertExpectation,
-    investigations: dict[tuple[str, str], Investigation],
-):
-    if "min_injection_flags" not in expected:
-        pytest.skip("No min_injection_flags specified")
-    inv = investigations[(alert_file, mode)]
-    actual = len(inv.injection_flags)
-    assert actual >= expected["min_injection_flags"], (
-        f"{alert_file} [{mode}]: expected at least "
-        f"{expected['min_injection_flags']} injection flag(s), got {actual}. "
-        f"The deterministic scanner should have caught the embedded injection."
-    )
+async def test_injection_flags(alert_file, mode, expected, investigations):
+    _assert_property(investigations, alert_file, mode, expected, "injection_flags")
