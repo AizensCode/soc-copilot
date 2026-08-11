@@ -186,6 +186,71 @@ class InjectionFlag(BaseModel):
     excerpt: str = Field(description="The surrounding text")
 
 
+class PhishingSignal(BaseModel):
+    """One deterministic observation from the email deep-dive.
+
+    Every signal carries the FACT with its identifier attached (never
+    "SPF failed", always "SPF fail for smtp.mailfrom=<domain>") and, where
+    one exists, the legitimate traffic pattern that produces the same
+    observation. That second field is what stops a weak signal from being
+    read as a verdict: a Return-Path on a different domain is how every
+    email service provider works.
+
+    Computed by soc_copilot/phishing.py, never by the LLM.
+    """
+
+    name: str = Field(description="Stable signal id, e.g. 'dmarc_fail'")
+    strength: Literal["strong", "moderate", "weak"]
+    fact: str = Field(description="What was observed, with its identifier")
+    benign_cause: str | None = Field(
+        default=None,
+        description="Legitimate pattern that also produces this observation",
+    )
+
+
+class PhishingAnalysis(BaseModel):
+    """Email authentication and URL analysis for an alert carrying mail.
+
+    Filled deterministically by soc_copilot/phishing.py, never by the LLM.
+    None on the Investigation when the alert carries no email material to
+    analyze — which is different from "analyzed and clean".
+
+    Alignment is the load-bearing field, not the pass/fail results: SPF
+    authenticates the envelope and DKIM authenticates a signing domain,
+    and neither looks at the From: header the recipient actually sees.
+    Only alignment ties an authenticated identifier to that domain.
+    """
+
+    header_from: str | None = None
+    envelope_from: str | None = Field(
+        default=None, description="smtp.mailfrom domain (what SPF authenticated)"
+    )
+    dkim_domain: str | None = Field(
+        default=None, description="d= of a validated signature"
+    )
+    spf_result: str | None = None
+    dkim_result: str | None = None
+    dmarc_result: str | None = Field(
+        default=None,
+        description="pass/fail/none/bestguesspass — 'none' means no policy "
+        "published, which is NOT an authentication failure",
+    )
+    spf_aligned: bool | None = Field(
+        default=None,
+        description="Envelope domain shares an organizational domain with "
+        "header.from. None when not computable.",
+    )
+    dkim_aligned: bool | None = None
+    arc_present: bool = Field(
+        default=False,
+        description="An ARC chain exists — the ordinary signature of "
+        "forwarding, and the usual benign explanation of a DMARC failure",
+    )
+    urls_examined: list[str] = Field(default_factory=list)
+    signals: list[PhishingSignal] = Field(default_factory=list)
+    summary: str = ""
+
+
 class Telemetry(BaseModel):
     """Cost and performance of PRODUCING an investigation — distinct from
     its content.
@@ -245,6 +310,15 @@ class Investigation(BaseModel):
             "Alert identifiers found in the operator-maintained asset "
             "inventory. Filled deterministically by the asset matcher, "
             "never by the LLM."
+        ),
+    )
+    phishing: PhishingAnalysis | None = Field(
+        default=None,
+        description=(
+            "Email authentication and URL analysis when the alert carries "
+            "mail headers. Filled deterministically by the phishing "
+            "analyzer, never by the LLM. None means there was no email "
+            "material to analyze — not that the mail was clean."
         ),
     )
     associated_groups: list[GroupMatch] = Field(

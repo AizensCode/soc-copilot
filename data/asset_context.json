@@ -2,14 +2,14 @@
   "_comment": [
     "Operator-maintained asset inventory: the environment knowledge a SOC",
     "analyst brings to triage. Entries describe the SANCTIONED role of",
-    "hosts, IPs, and service accounts — what they are FOR, where they act",
+    "hosts, IPs, and service accounts \u2014 what they are FOR, where they act",
     "from, and on what schedule. The matcher (soc_copilot/assets.py) surfaces the",
     "entries relevant to an alert deterministically; the model may cite",
     "them but can never add to them. Describe sanctioned use positively;",
-    "do not editorialize about what would be suspicious — judging observed",
+    "do not editorialize about what would be suspicious \u2014 judging observed",
     "activity against these entries is the analyst's (and the model's) job.",
     "This file is trusted by provenance: the operator writes it, unlike",
-    "alert content. Keep it accurate — a stale entry that blesses a",
+    "alert content. Keep it accurate \u2014 a stale entry that blesses a",
     "decommissioned scanner is an attacker's best friend."
   ],
   "hosts": {
@@ -47,14 +47,18 @@
       "notes": "Runs the sanctioned backup agent (signed, publisher 'Acme Data Protection, Inc.'); manages Volume Shadow Copy storage as part of its retention schedule.",
       "expected_activity": [
         "nightly backup-maintenance window, daily 01:00-02:00 UTC, runs as svc-backup",
-        "prunes the OLDEST shadow copy per volume during that window (vssadmin delete shadows /oldest, or resize shadowstorage) — bounded retention management, never /all",
+        "prunes the OLDEST shadow copy per volume during that window (vssadmin delete shadows /oldest, or resize shadowstorage) \u2014 bounded retention management, never /all",
         "shadow-copy operations originate on backup-01 only, from the signed backup agent"
       ]
     }
   },
   "ips": {
-    "10.20.8.15": { "host": "qualys-scanner-02.corp.internal" },
-    "10.44.7.9": { "host": "nessus-scanner-01.corp.internal" }
+    "10.20.8.15": {
+      "host": "qualys-scanner-02.corp.internal"
+    },
+    "10.44.7.9": {
+      "host": "nessus-scanner-01.corp.internal"
+    }
   },
   "service_accounts": {
     "svc-qualys": {
@@ -91,6 +95,17 @@
         "manages Volume Shadow Copy storage during the nightly backup-maintenance window (01:00-02:00 UTC): creates snapshots and prunes the OLDEST copy per volume",
         "never deletes all shadow copies and never runs shadow operations off backup-01"
       ]
+    }
+  },
+  "mail_senders": {
+    "corp-payroll.example": {
+      "provider": "the sanctioned payroll notification service",
+      "owner": "hr-systems",
+      "authorized_domains": [
+        "mail.sg-relay.example",
+        "corp-payroll.example"
+      ],
+      "notes": "Sends the monthly payslip notice on the first business day; signs with DKIM d=corp-payroll.example (aligned) while bouncing through the provider's own envelope domain, which is why SPF alignment is not expected for this sender."
     }
   }
 }

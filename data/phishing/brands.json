@@ -1,0 +1,135 @@
+{
+  "_comment": [
+    "Operator-owned reference data for the deterministic phishing analyzer",
+    "(soc_copilot/phishing.py). Three lists, each deliberately curated rather",
+    "than inferred:",
+    "",
+    "- brands: the brand tokens worth impersonating, mapped to the",
+    "  organizational domains ACTUALLY authorized to send as them. A brand",
+    "  token appearing in a display name or a subdomain is only a signal when",
+    "  the sending organizational domain is not on this list. Inferring brand",
+    "  ownership from the name alone is how a tool starts flagging",
+    "  'Alice via DocuSign' <dse@docusign.net> as a phish.",
+    "- url_shorteners: hosts whose whole purpose is to hide the destination.",
+    "  A WEAK signal on its own (marketing and internal comms use them too);",
+    "  it means 'the destination was not inspectable', not 'malicious'.",
+    "- free_mail: consumer mail providers. A Reply-To here on a message whose",
+    "  From is a corporate or brand domain is the canonical BEC/invoice-fraud",
+    "  tell.",
+    "",
+    "Add to brands only domains the brand genuinely sends from, including its",
+    "outsourced senders \u2014 a missing entry produces a false positive on",
+    "legitimate mail, which is the failure mode that gets a detection muted."
+  ],
+  "brands": {
+    "microsoft": [
+      "microsoft.com",
+      "microsoftonline.com",
+      "office.com",
+      "office365.com",
+      "outlook.com",
+      "sharepoint.com",
+      "live.com",
+      "azure.com",
+      "microsoft365.com"
+    ],
+    "office365": [
+      "microsoft.com",
+      "microsoftonline.com",
+      "office.com",
+      "office365.com",
+      "outlook.com"
+    ],
+    "docusign": [
+      "docusign.com",
+      "docusign.net"
+    ],
+    "paypal": [
+      "paypal.com",
+      "paypal.co.uk"
+    ],
+    "okta": [
+      "okta.com",
+      "oktacdn.com"
+    ],
+    "google": [
+      "google.com",
+      "gmail.com",
+      "googlemail.com",
+      "youtube.com",
+      "googleusercontent.com",
+      "googleapis.com",
+      "googlegroups.com"
+    ],
+    "apple": [
+      "apple.com",
+      "icloud.com"
+    ],
+    "amazon": [
+      "amazon.com",
+      "amazonses.com",
+      "aws.amazon.com",
+      "amazonaws.com"
+    ],
+    "adobe": [
+      "adobe.com",
+      "adobesign.com"
+    ],
+    "dropbox": [
+      "dropbox.com",
+      "dropboxmail.com"
+    ],
+    "linkedin": [
+      "linkedin.com"
+    ],
+    "salesforce": [
+      "salesforce.com"
+    ],
+    "zoom": [
+      "zoom.us",
+      "zoom.com"
+    ],
+    "ups": [
+      "ups.com"
+    ],
+    "fedex": [
+      "fedex.com"
+    ],
+    "netflix": [
+      "netflix.com"
+    ]
+  },
+  "url_shorteners": [
+    "bit.ly",
+    "tinyurl.com",
+    "t.co",
+    "goo.gl",
+    "ow.ly",
+    "is.gd",
+    "buff.ly",
+    "rebrand.ly",
+    "cutt.ly",
+    "shorturl.at",
+    "rb.gy",
+    "tiny.cc",
+    "lnkd.in"
+  ],
+  "free_mail": [
+    "gmail.com",
+    "googlemail.com",
+    "outlook.com",
+    "hotmail.com",
+    "live.com",
+    "yahoo.com",
+    "ymail.com",
+    "aol.com",
+    "proton.me",
+    "protonmail.com",
+    "gmx.com",
+    "gmx.net",
+    "mail.com",
+    "yandex.ru",
+    "zoho.com",
+    "icloud.com"
+  ]
+}

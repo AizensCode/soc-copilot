@@ -16,10 +16,12 @@ from .models import (
     Evidence,
     InjectionFlag,
     Investigation,
+    PhishingAnalysis,
     PriorSighting,
     SigmaMatch,
     Telemetry,
 )
+from .phishing import analyze_phishing
 from .pricing import estimate_cost
 from .prompts.agentic import AGENTIC_SYSTEM_PROMPT
 from .prompts.system import SYSTEM_PROMPT
@@ -224,6 +226,60 @@ class SOCCopilot:
         for m in matches:
             tags = ", ".join(m.tags) if m.tags else "no tags"
             lines.append(f"- [{m.level}] {m.title} (id: {m.rule_id}) — {tags}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_phishing_context(analysis: PhishingAnalysis | None) -> str:
+        """Render the email deep-dive as authentication facts and signals.
+
+        Returns "" when the alert carries no email material, so every
+        non-mail alert leaves the prompt unchanged. Computed
+        deterministically (see soc_copilot/phishing.py) from headers the
+        receiving mail infrastructure already wrote, so every fact cited
+        here is checkable — the model corroborates with them and cannot
+        invent an authentication result.
+        """
+        if analysis is None:
+            return ""
+        lines = [
+            "# Email authentication and link analysis (deterministic)",
+            "Computed from the message's own headers. ALIGNMENT is the "
+            "load-bearing fact, not the pass/fail results: SPF authenticates "
+            "the envelope and DKIM authenticates a signing domain, and "
+            "neither looks at the From: address the recipient sees — only "
+            "alignment ties an authenticated identifier to it. DMARC 'none' "
+            "means the domain publishes no policy, which is NOT a failure. "
+            "A DMARC pass does not make a message safe: a lookalike domain "
+            "with its own correct records passes trivially. Weigh signals by "
+            "STRENGTH and in combination, and read each signal's benign "
+            "cause before treating it as evidence — a single weak signal is "
+            "not a verdict. Cite only what is listed here.",
+            f"- From (header): {analysis.header_from}",
+            f"- Envelope (smtp.mailfrom): {analysis.envelope_from} — "
+            f"SPF {analysis.spf_result}, aligned with From: "
+            f"{analysis.spf_aligned}",
+            f"- DKIM signing domain: {analysis.dkim_domain} — "
+            f"DKIM {analysis.dkim_result}, aligned with From: "
+            f"{analysis.dkim_aligned}",
+            f"- DMARC: {analysis.dmarc_result}"
+            + ("; ARC chain present (forwarding is the usual explanation of "
+               "a DMARC failure)" if analysis.arc_present else ""),
+        ]
+        if analysis.urls_examined:
+            lines.append(
+                f"- Links examined: {', '.join(analysis.urls_examined[:6])}"
+            )
+        if analysis.signals:
+            lines.append("Signals:")
+            for s in analysis.signals:
+                lines.append(f"- [{s.strength.upper()}] {s.name}: {s.fact}")
+                if s.benign_cause:
+                    lines.append(f"    benign cause to rule out: {s.benign_cause}")
+        else:
+            lines.append(
+                "Signals: none — the headers presented nothing anomalous. "
+                "That is evidence toward a false positive, not proof of one."
+            )
         return "\n".join(lines)
 
     @staticmethod
@@ -445,6 +501,7 @@ class SOCCopilot:
         )
         sigma_matches = match_sigma_rules(alert)
         asset_matches = match_assets(alert)
+        phishing = analyze_phishing(alert)
 
         warn_block = self._format_injection_warning(injection_flags)
         warn_section = f"{warn_block}\n\n" if warn_block else ""
@@ -454,6 +511,8 @@ class SOCCopilot:
         sigma_section = f"{sigma_block}\n\n" if sigma_block else ""
         asset_block = self._format_asset_context(asset_matches)
         asset_section = f"{asset_block}\n\n" if asset_block else ""
+        phish_block = self._format_phishing_context(phishing)
+        phish_section = f"{phish_block}\n\n" if phish_block else ""
         user_message = (
             f"{warn_section}"
             f"# Alert\n```json\n{alert.model_dump_json(indent=2)}\n```\n\n"
@@ -461,6 +520,7 @@ class SOCCopilot:
             f"```json\n{json.dumps([e.model_dump() for e in evidence], indent=2)}\n```\n\n"
             f"{sigma_section}"
             f"{asset_section}"
+            f"{phish_section}"
             f"{mem_section}"
             f"Produce the final Investigation JSON now."
         )
@@ -520,6 +580,7 @@ class SOCCopilot:
         investigation.injection_flags = injection_flags
         investigation.sigma_matches = sigma_matches
         investigation.asset_matches = asset_matches
+        investigation.phishing = phishing
         # duplicate_of is dedup-policy-owned, never the model's to set — a
         # real investigation is by definition not a suppressed duplicate.
         investigation.duplicate_of = None
@@ -592,6 +653,7 @@ class SOCCopilot:
         )
         sigma_matches = match_sigma_rules(alert)
         asset_matches = match_assets(alert)
+        phishing = analyze_phishing(alert)
         warn_block = self._format_injection_warning(injection_flags)
         warn_section = f"{warn_block}\n\n" if warn_block else ""
         mem_block = self._format_memory_context(priors, pre_correlation)
@@ -600,6 +662,8 @@ class SOCCopilot:
         sigma_section = f"\n\n{sigma_block}" if sigma_block else ""
         asset_block = self._format_asset_context(asset_matches)
         asset_section = f"\n\n{asset_block}" if asset_block else ""
+        phish_block = self._format_phishing_context(phishing)
+        phish_section = f"\n\n{phish_block}" if phish_block else ""
         messages: list[dict] = [
             {
                 "role": "user",
@@ -610,6 +674,7 @@ class SOCCopilot:
                     f"```json\n{alert.model_dump_json(indent=2)}\n```"
                     f"{sigma_section}"
                     f"{asset_section}"
+                    f"{phish_section}"
                     f"{mem_section}"
                 ),
             }
@@ -681,6 +746,7 @@ class SOCCopilot:
                 investigation.injection_flags = injection_flags
                 investigation.sigma_matches = sigma_matches
                 investigation.asset_matches = asset_matches
+                investigation.phishing = phishing
                 # dedup-policy-owned; a real investigation is never a
                 # suppressed duplicate, whatever the model emitted.
                 investigation.duplicate_of = None

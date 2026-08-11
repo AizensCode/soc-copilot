@@ -1,0 +1,61 @@
+{
+  "_comment": [
+    "The calibrated benign twin of phishing_credential_harvest.json. It trips",
+    "the same surface a naive email detector fires on: the envelope domain is",
+    "not the From domain (SPF is NOT aligned), the link goes to a domain",
+    "unrelated to the sender, one link is a shortener, and the landing path is",
+    "an authentication page. Every one of those is how legitimate bulk mail",
+    "works. What makes it benign is checkable rather than asserted: a DKIM",
+    "signature that DOES align with the author domain (which is all DMARC",
+    "requires), and an operator-recorded sanctioned sending arrangement in the",
+    "asset inventory. The alert itself never claims to be authorized."
+  ],
+  "alert_id": "ALRT-2026-0514-017",
+  "timestamp": "2026-05-14T06:12:03Z",
+  "source": "email_gateway",
+  "severity": "medium",
+  "title": "Bulk mail with unaligned envelope domain delivered to user mailbox",
+  "raw_log": {
+    "event_type": "email_delivered",
+    "host": "hr-ws-41.corp.internal",
+    "recipient": "e.varga@corp.example",
+    "delivery_action": "delivered_to_inbox",
+    "attachment_count": 0,
+    "campaign_send_size": 1840,
+    "prior_identical_campaigns_30d": 4,
+    "cron_window_match": "payroll-monthly-notice, 1st business day 06:00-07:00 UTC",
+    "headers": {
+      "From": "\"Payroll Notifications\" <no-reply@corp-payroll.example>",
+      "Reply-To": "<payroll-support@corp-payroll.example>",
+      "Return-Path": "<bounces+8841-e.varga=corp.example@mail.sg-relay.example>",
+      "Subject": "Your May payslip is available",
+      "Authentication-Results": "corp-mx.example; spf=pass (sender IP is 198.51.100.62) smtp.mailfrom=mail.sg-relay.example; corp-mx.example; dkim=pass (signature was verified) header.d=corp-payroll.example; corp-mx.example; dmarc=pass action=none header.from=corp-payroll.example; compauth=pass reason=100",
+      "Received": [
+        "from corp-mx.example (10.40.2.9) by mbx-11.corp.example with Microsoft SMTP Server id 15.20.7472.19; Thu, 14 May 2026 06:12:01 +0000",
+        "from o3.em.sg-relay.example (o3.em.sg-relay.example [198.51.100.62]) by corp-mx.example with ESMTPS id 4Vk2Ln8h1p; Thu, 14 May 2026 06:11:58 +0000"
+      ]
+    },
+    "links": [
+      {
+        "text": "View your payslip",
+        "href": "https://click.mail.sg-relay.example/ls/click?upn=Xh92Kd&d=payroll-portal"
+      },
+      {
+        "text": "Manage notification preferences",
+        "href": "https://bit.ly/3PayrollPrefs"
+      },
+      {
+        "text": "Sign in to the payroll portal",
+        "href": "https://portal.corp-payroll.example/login"
+      }
+    ],
+    "sender_ip": "198.51.100.62",
+    "sender_asn_description": "email service provider"
+  },
+  "indicators": {
+    "ips": ["198.51.100.62"],
+    "hashes": [],
+    "users": ["e.varga"],
+    "domains": ["corp-payroll.example", "mail.sg-relay.example"]
+  }
+}

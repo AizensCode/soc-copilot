@@ -430,6 +430,66 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
             ["inventory", "backup-01", "svc-backup"],
         ],
     },
+    # --- Phishing family: the email deep-dive's own pair -----------------
+    # The attack is deliberately the SOPHISTICATED case: SPF, DKIM and
+    # DMARC all pass AND align, because the attacker owns the lookalike
+    # domain and configured it properly. A tool that reads "dmarc=pass" as
+    # "benign" clears this message, so the verdict has to come from what
+    # authentication does not cover — a brand-claiming display name on an
+    # unauthorized domain, replies routed to a consumer mailbox, and a link
+    # putting the brand in the subdomain of an attacker-controlled site.
+    # Calibrated 12/12 across both modes: true_positive / HIGH / escalate,
+    # T1566.002 12/12, >=1 associated group 12/12, evidence >=3 12/12.
+    "phishing_credential_harvest.json": {
+        "expected_verdict": "true_positive",
+        "min_confidence": "high",
+        "must_escalate": True,
+        # The T1566 family is the assertion; .002 (link) vs a broader
+        # mapping is an analyst judgment call, so pin the parent.
+        "required_techniques": ["T1566"],
+        "forbidden_techniques": [
+            # attachment_count is 0 and the lure is a link — mapping
+            # Spearphishing ATTACHMENT would be a factual error about the
+            # message. Never observed in 12 runs; pinned so it stays that
+            # way. (T1566.002 satisfies the required "T1566" above.)
+            "T1566.001",
+        ],
+        "min_associated_groups": 1,
+        "min_evidence_count": 3,
+        "pivots_must_include": [
+            # Credential reset for the targeted mailbox — 12/12. The
+            # response to a credential phish that reached the inbox.
+            ["reset", "password", "credential"],
+            # Block/contain the sender or the link — 12/12.
+            ["block", "quarantin", "contain"],
+        ],
+    },
+    # The benign twin trips exactly the surface a naive email detector
+    # fires on: envelope domain != From domain (SPF NOT aligned), links to
+    # an unrelated domain, a shortener, and a /login landing path. All of
+    # that is how legitimate bulk mail works. What makes it benign is
+    # checkable rather than asserted: a DKIM signature that DOES align with
+    # the author domain (all DMARC requires) plus the operator's recorded
+    # sending arrangement. Calibrated 12/12 across both modes:
+    # false_positive / HIGH / no-escalate, zero techniques mapped 12/12.
+    "benign_payroll_bulk_mail.json": {
+        "expected_verdict": "false_positive",
+        "min_confidence": "high",
+        "must_escalate": False,
+        "forbidden_techniques": [
+            # The discrimination that matters: legitimate bulk mail whose
+            # envelope is unaligned must NOT be mapped as phishing. Zero
+            # techniques in all 12 runs.
+            "T1566",
+        ],
+        "min_evidence_count": 3,
+        "pivots_must_include": [
+            # Verify the sending arrangement rather than act on the mail —
+            # 12/12 ("payroll" alone was 12/12; the DKIM-alignment citation
+            # was 5/12, interesting but too variable to pin).
+            ["payroll", "inventory", "sender"],
+        ],
+    },
 }
 
 
