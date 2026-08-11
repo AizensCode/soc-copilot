@@ -256,3 +256,20 @@ def test_correlate_matches_host_across_native_and_ecs_shapes(tmp_path):
     corr = store.correlate(native)
     assert len(corr.related_alerts) == 1
     assert "shared_host:web-01.internal" in corr.related_alerts[0].signals
+
+
+def test_closure_events_roundtrip_latest_wins(tmp_path):
+    """Autonomous closures are desk facts the scorecard reads back; the
+    sidecar mirrors dispositions: append-only, latest per alert wins."""
+    from soc_copilot.history import AlertHistoryStore
+
+    store = AlertHistoryStore(tmp_path / "investigations.jsonl")
+    assert store.closures() == {}
+    store.record_closure("A1", "clean FP")
+    store.record_closure("A1", "re-closed after reopen")
+    store.record_closure("A2", None)
+    closures = store.closures()
+    assert set(closures) == {"A1", "A2"}
+    assert closures["A1"]["reason"] == "re-closed after reopen"
+    assert closures["A2"]["reason"] is None
+    assert "closed_at" in closures["A1"]

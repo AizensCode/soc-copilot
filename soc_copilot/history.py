@@ -101,6 +101,7 @@ class AlertHistoryStore:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.dispositions_path = self.path.with_name("dispositions.jsonl")
+        self.closures_path = self.path.with_name("closures.jsonl")
 
     def _iter_records(self) -> Iterator[dict]:
         if not self.path.exists():
@@ -141,6 +142,35 @@ class AlertHistoryStore:
         if not self.dispositions_path.exists():
             return out
         for line in self.dispositions_path.read_text().splitlines():
+            line = line.strip()
+            if line:
+                rec = json.loads(line)
+                out[rec["alert_id"]] = rec
+        return out
+
+    def record_closure(self, alert_id: str, reason: str | None) -> None:
+        """Append an AUTONOMOUS closure event (watch mode's --auto-close
+        actually firing). Until this existed the decision was pushed to
+        Elastic and then forgotten locally, so the desk's automation rate
+        — the whole point of autonomous closure — could not be computed
+        from the store. Sidecar file, same append-only pattern as
+        dispositions: what the copilot DID is a different kind of fact
+        from what it CONCLUDED, and neither overwrites the other."""
+        rec = {
+            "alert_id": alert_id,
+            "reason": reason,
+            "closed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        self.closures_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.closures_path.open("a") as f:
+            f.write(json.dumps(rec) + "\n")
+
+    def closures(self) -> dict[str, dict]:
+        """Latest autonomous-closure event per alert_id."""
+        out: dict[str, dict] = {}
+        if not self.closures_path.exists():
+            return out
+        for line in self.closures_path.read_text().splitlines():
             line = line.strip()
             if line:
                 rec = json.loads(line)

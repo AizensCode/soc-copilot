@@ -761,6 +761,19 @@ async def _run_watch(args: argparse.Namespace) -> None:
                     await source.set_alert_status(
                         doc_id, "closed" if close else "acknowledged"
                     )
+                    if close:
+                        # Record the autonomous action locally — the
+                        # scorecard's automation rate reads what the desk
+                        # actually did from the store. AFTER both Elastic
+                        # writes, deliberately: the log asserts what
+                        # happened, not what was about to happen (review
+                        # catch — recording first left a phantom closure
+                        # when the push failed; a crash between the status
+                        # write and this line undercounts instead, the
+                        # safe direction).
+                        copilot.history.record_closure(
+                            alert.alert_id, reason
+                        )
                     seen.add(doc_id)
                     # An auto-closed alert needs no human owner by
                     # definition, so it never generates case-management
