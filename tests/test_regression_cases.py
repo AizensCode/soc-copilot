@@ -18,9 +18,10 @@ from pathlib import Path
 
 import pytest
 
-from soc_copilot.copilot import SOCCopilot
 from soc_copilot.history import AlertHistoryStore
 from soc_copilot.models import Alert
+
+from .harness import make_copilot
 
 CASES_DIR = Path("data/evals/cases")
 CASES = sorted(CASES_DIR.glob("*.json")) if CASES_DIR.is_dir() else []
@@ -29,7 +30,9 @@ pytestmark = pytest.mark.live
 
 
 @pytest.mark.parametrize("case_path", CASES, ids=lambda p: p.stem)
-async def test_verdict_matches_the_analyst_ruling(case_path, tmp_path, request):
+async def test_verdict_matches_the_analyst_ruling(
+    case_path, tmp_path, request, reputation_cassette
+):
     case = json.loads(case_path.read_text())
     if not case["agreed_at_export"]:
         request.applymarker(
@@ -43,8 +46,9 @@ async def test_verdict_matches_the_analyst_ruling(case_path, tmp_path, request):
             )
         )
 
-    copilot = SOCCopilot(
-        history_store=AlertHistoryStore(tmp_path / "isolated.jsonl")
+    copilot = make_copilot(
+        store=AlertHistoryStore(tmp_path / "isolated.jsonl"),
+        cassette=reputation_cassette,
     )
     investigation = await copilot.investigate(Alert(**case["alert"]))
     assert investigation.verdict == case["label"]["human_verdict"], (

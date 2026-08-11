@@ -25,10 +25,17 @@ class AbuseIPDBTool(Tool):
         "required": ["ip"],
     }
 
+    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
+        # An injected client is how the eval harness replays recorded
+        # reputation deterministically (tests/cassette.py), the same seam
+        # SearchLogsTool and ElasticAlertSource already expose. None → the
+        # production path builds its own client per call.
+        self._client = client
+
     async def execute(self, ip: str) -> ToolResult:
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.get(
+            async def do(client: httpx.AsyncClient) -> httpx.Response:
+                return await client.get(
                     "https://api.abuseipdb.com/api/v2/check",
                     params={"ipAddress": ip, "maxAgeInDays": 90, "verbose": ""},
                     headers={
@@ -36,12 +43,18 @@ class AbuseIPDBTool(Tool):
                         "Accept": "application/json",
                     },
                 )
-                response.raise_for_status()
-                return ToolResult(
-                    tool_name=self.name,
-                    success=True,
-                    data=response.json().get("data", {}),
-                )
+
+            if self._client is not None:
+                response = await do(self._client)
+            else:
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    response = await do(client)
+            response.raise_for_status()
+            return ToolResult(
+                tool_name=self.name,
+                success=True,
+                data=response.json().get("data", {}),
+            )
         except httpx.HTTPStatusError as e:
             return ToolResult(
                 tool_name=self.name,

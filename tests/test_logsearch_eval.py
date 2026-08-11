@@ -37,14 +37,13 @@ runs sometimes fold it into prose), and any phrasing of the hypothesis.
 """
 import pytest
 
-from soc_copilot.copilot import SOCCopilot
 from soc_copilot.history import AlertHistoryStore
 from soc_copilot.models import Investigation
 from soc_copilot.tools.logsearch import SearchLogsTool
-from soc_copilot.tools.registry import default_registry
 
 from .alert_loading import SAMPLE_ALERTS_DIR, load_alert_fixture
 from .fake_siem import ATTACKER_IP, FakeEventsIndex, compromised_index, contained_index
+from .harness import make_copilot
 
 pytestmark = pytest.mark.live
 
@@ -69,12 +68,17 @@ def _composed_canonical_pivot(queries: list[list[tuple[str, str]]]) -> bool:
 
 
 @pytest.fixture(scope="module")
-async def runs(tmp_path_factory) -> dict[str, tuple[Investigation, FakeEventsIndex]]:
+async def runs(
+    tmp_path_factory, reputation_cassette
+) -> dict[str, tuple[Investigation, FakeEventsIndex]]:
     """One agentic investigation per world, cached for the module.
 
     Each world gets its own copilot: an isolated history store and a tool
     set whose log-search tool is bound to that world's index — so the only
-    thing that varies between the two runs is the telemetry itself.
+    thing that varies between the two runs is the telemetry itself. The
+    reputation lookup on the attacker IP is replayed from the shared
+    cassette (not live), so this eval isolates the SIEM-join behavior from
+    AbuseIPDB drift the same way the base harness does.
     """
     results: dict[str, tuple[Investigation, FakeEventsIndex]] = {}
     alert = load_alert_fixture(SAMPLE_ALERTS_DIR / "brute_force_ssh.json")
@@ -89,11 +93,12 @@ async def runs(tmp_path_factory) -> dict[str, tuple[Investigation, FakeEventsInd
             index="soc-events-demo",
             client=index.client(),
         )
-        copilot = SOCCopilot(
-            history_store=AlertHistoryStore(
+        copilot = make_copilot(
+            store=AlertHistoryStore(
                 tmp_path_factory.mktemp(world) / "investigations.jsonl"
             ),
-            tools=default_registry().replacing(tool),
+            cassette=reputation_cassette,
+            extra_replacing=(tool,),
         )
         results[world] = (await copilot.investigate_agentic(alert), index)
     return results

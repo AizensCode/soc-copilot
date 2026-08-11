@@ -65,17 +65,26 @@ class SOCCopilot:
         tools: ToolRegistry | None = None,
     ) -> None:
         self.client = AsyncAnthropic(api_key=settings.ANTHROPIC_KEY)
-        self.ip_tool = AbuseIPDBTool()
-        self.hash_tool = VirusTotalTool()
-        self.domain_tool = URLScanTool()
-        # Cross-alert memory. Injectable so tests can isolate it.
-        self.history = history_store or AlertHistoryStore(settings.HISTORY_PATH)
         # The agentic tool set. Injectable because which tools exist is an
         # INPUT to the investigation, not a constant: an eval needs the
         # internal-log backend under its own control (otherwise the verdict
         # depends on whoever's SIEM the developer's .env points at), and a
         # deployment may bind a different log backend entirely.
         self.tools = tools or default_registry()
+        # Phase-1 enrichment reads the SAME instances the agentic loop
+        # dispatches, derived from the registry rather than freshly built:
+        # otherwise an injected registry (e.g. a cassette-backed one that
+        # replays recorded reputation) would cover the agentic path but
+        # leave phase-1 hitting the real APIs — two seams for one fact. The
+        # `or <fresh>` fallback keeps production behavior when a registry
+        # omits a reputation tool.
+        self.ip_tool = self.tools.get("check_ip_reputation") or AbuseIPDBTool()
+        self.hash_tool = self.tools.get("check_file_hash") or VirusTotalTool()
+        self.domain_tool = (
+            self.tools.get("check_domain_reputation") or URLScanTool()
+        )
+        # Cross-alert memory. Injectable so tests can isolate it.
+        self.history = history_store or AlertHistoryStore(settings.HISTORY_PATH)
 
     @staticmethod
     def _format_memory_context(

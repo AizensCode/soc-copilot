@@ -26,12 +26,11 @@ from pathlib import Path
 import pytest
 import pytest_asyncio
 
-from soc_copilot.copilot import SOCCopilot
 from soc_copilot.history import CAMPAIGN_MIN_RELATED, AlertHistoryStore
 from soc_copilot.models import Alert, Investigation
-from soc_copilot.tools.registry import default_registry
 
 from .alert_loading import load_alert_fixture
+from .harness import make_copilot
 
 pytestmark = pytest.mark.live
 
@@ -53,7 +52,9 @@ def _stage_files() -> list[Path]:
 
 
 @pytest_asyncio.fixture(scope="module")
-async def campaign(tmp_path_factory) -> dict[str, list[tuple[Alert, Investigation]]]:
+async def campaign(
+    tmp_path_factory, reputation_cassette
+) -> dict[str, list[tuple[Alert, Investigation]]]:
     """Run the scenario once per mode, in order, each in its own store.
 
     A private store per mode is the whole point: these alerts SHARE
@@ -65,14 +66,12 @@ async def campaign(tmp_path_factory) -> dict[str, list[tuple[Alert, Investigatio
         store = AlertHistoryStore(
             tmp_path_factory.mktemp(f"campaign_{mode}") / "investigations.jsonl"
         )
-        # Internal log search removed for the same reason as the base
-        # harness (see conftest): these expectations were calibrated on
-        # external evidence + memory alone, and must not depend on
-        # whatever SIEM a developer's .env points at.
-        copilot = SOCCopilot(
-            history_store=store,
-            tools=default_registry().without("search_internal_logs"),
-        )
+        # Reputation replayed from the cassette, and internal log search
+        # removed — for the same reason as the base harness (see conftest):
+        # these expectations were calibrated on external evidence + memory
+        # alone, and must not depend on AbuseIPDB drift or whatever SIEM a
+        # developer's .env points at.
+        copilot = make_copilot(store=store, cassette=reputation_cassette)
         sequence: list[tuple[Alert, Investigation]] = []
         for path in _stage_files():
             alert = load_alert_fixture(path)

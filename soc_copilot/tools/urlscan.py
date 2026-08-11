@@ -40,13 +40,19 @@ class URLScanTool(Tool):
         "required": ["domain"],
     }
 
+    def __init__(self, client: httpx.AsyncClient | None = None) -> None:
+        # Injected client → the eval harness replays a recorded response
+        # (tests/cassette.py); None → production builds its own per call.
+        # The total==0 "no scans" branch runs on the injected response too.
+        self._client = client
+
     async def execute(self, domain: str) -> ToolResult:
         # Normalize: strip protocol and trailing slashes if present
         domain = domain.replace("http://", "").replace("https://", "").rstrip("/")
 
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                response = await client.get(
+            async def do(client: httpx.AsyncClient) -> httpx.Response:
+                return await client.get(
                     "https://urlscan.io/api/v1/search/",
                     params={
                         "q": f"domain:{domain}",
@@ -57,62 +63,68 @@ class URLScanTool(Tool):
                         "Accept": "application/json",
                     },
                 )
-                response.raise_for_status()
-                data = response.json()
 
-                results = data.get("results", [])
-                total = data.get("total", 0)
+            if self._client is not None:
+                response = await do(self._client)
+            else:
+                async with httpx.AsyncClient(timeout=15.0) as client:
+                    response = await do(client)
+            response.raise_for_status()
+            data = response.json()
 
-                if total == 0:
-                    return ToolResult(
-                        tool_name=self.name,
-                        success=True,
-                        data={
-                            "found": False,
-                            "domain": domain,
-                            "summary": (
-                                f"Domain '{domain}' has no historical scans "
-                                f"in URLScan. Either very new, very obscure, "
-                                f"or never publicly browsed."
-                            ),
-                        },
-                    )
+            results = data.get("results", [])
+            total = data.get("total", 0)
 
-                # Aggregate verdicts across all returned scans
-                malicious_count = sum(
-                    1 for r in results
-                    if r.get("verdicts", {}).get("overall", {}).get("malicious")
-                )
-
-                # Pull useful metadata from the most recent scan
-                most_recent = results[0] if results else {}
-                page_info = most_recent.get("page", {})
-                task_info = most_recent.get("task", {})
-
-                # Surface a few related URLs that have been seen on this domain
-                seen_urls = list({
-                    r.get("page", {}).get("url")
-                    for r in results[:10]
-                    if r.get("page", {}).get("url")
-                })[:5]
-
+            if total == 0:
                 return ToolResult(
                     tool_name=self.name,
                     success=True,
                     data={
-                        "found": True,
+                        "found": False,
                         "domain": domain,
-                        "total_scans": total,
-                        "scans_returned": len(results),
-                        "malicious_scan_count": malicious_count,
-                        "most_recent_scan_date": task_info.get("time"),
-                        "most_recent_url": task_info.get("url"),
-                        "most_recent_country": page_info.get("country"),
-                        "most_recent_server": page_info.get("server"),
-                        "most_recent_page_title": page_info.get("title"),
-                        "seen_urls": seen_urls,
+                        "summary": (
+                            f"Domain '{domain}' has no historical scans "
+                            f"in URLScan. Either very new, very obscure, "
+                            f"or never publicly browsed."
+                        ),
                     },
                 )
+
+            # Aggregate verdicts across all returned scans
+            malicious_count = sum(
+                1 for r in results
+                if r.get("verdicts", {}).get("overall", {}).get("malicious")
+            )
+
+            # Pull useful metadata from the most recent scan
+            most_recent = results[0] if results else {}
+            page_info = most_recent.get("page", {})
+            task_info = most_recent.get("task", {})
+
+            # Surface a few related URLs that have been seen on this domain
+            seen_urls = list({
+                r.get("page", {}).get("url")
+                for r in results[:10]
+                if r.get("page", {}).get("url")
+            })[:5]
+
+            return ToolResult(
+                tool_name=self.name,
+                success=True,
+                data={
+                    "found": True,
+                    "domain": domain,
+                    "total_scans": total,
+                    "scans_returned": len(results),
+                    "malicious_scan_count": malicious_count,
+                    "most_recent_scan_date": task_info.get("time"),
+                    "most_recent_url": task_info.get("url"),
+                    "most_recent_country": page_info.get("country"),
+                    "most_recent_server": page_info.get("server"),
+                    "most_recent_page_title": page_info.get("title"),
+                    "seen_urls": seen_urls,
+                },
+            )
         except httpx.HTTPStatusError as e:
             return ToolResult(
                 tool_name=self.name,
