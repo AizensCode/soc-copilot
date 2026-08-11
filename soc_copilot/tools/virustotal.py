@@ -39,7 +39,10 @@ class VirusTotalTool(Tool):
                 return await client.get(
                     f"https://www.virustotal.com/api/v3/files/{file_hash}",
                     headers={
-                        "x-apikey": settings.VIRUSTOTAL_KEY,
+                        # "" not None so a missing key still builds a valid
+                        # request (httpx rejects a None header): replay is
+                        # keyless, a real missing key just 404s/401s.
+                        "x-apikey": settings.VIRUSTOTAL_KEY or "",
                         "Accept": "application/json",
                     },
                 )

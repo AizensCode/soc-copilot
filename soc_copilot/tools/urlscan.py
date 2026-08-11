@@ -59,7 +59,10 @@ class URLScanTool(Tool):
                         "size": 20,  # Get last 20 scans of this domain
                     },
                     headers={
-                        "API-Key": settings.URLSCAN_KEY,
+                        # "" not None so a missing key still builds a valid
+                        # request (httpx rejects a None header): replay is
+                        # keyless, a real missing key just 401s.
+                        "API-Key": settings.URLSCAN_KEY or "",
                         "Accept": "application/json",
                     },
                 )

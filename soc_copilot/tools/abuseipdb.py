@@ -39,7 +39,11 @@ class AbuseIPDBTool(Tool):
                     "https://api.abuseipdb.com/api/v2/check",
                     params={"ipAddress": ip, "maxAgeInDays": 90, "verbose": ""},
                     headers={
-                        "Key": settings.ABUSEIPDB_KEY,
+                        # Coerce to "" so a missing key builds a valid
+                        # request (httpx rejects a None header value): the
+                        # cassette replays keyless, and a real missing key
+                        # just 401s, which is already handled below.
+                        "Key": settings.ABUSEIPDB_KEY or "",
                         "Accept": "application/json",
                     },
                 )
