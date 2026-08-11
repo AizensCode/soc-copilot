@@ -56,19 +56,58 @@ REPORT_PATH = (
 )
 
 
-def make_default_investigate(cassette: ReputationCassette):
+def make_default_investigate(cassette: ReputationCassette, model: str | None = None):
     """The production run function: a fresh copilot per run (isolated
     history so no cross-alert memory accumulates across samples) with
-    reputation replayed from `cassette` and the model live."""
+    reputation replayed from `cassette` and the model live. `model`
+    overrides the model per call — the seam the A/B harness
+    (tests/ab_compare.py) uses to run the same grid under two models;
+    None means the copilot's default (settings.MODEL), exactly as before."""
     async def investigate(alert: Alert, mode: str) -> Investigation:
         with tempfile.TemporaryDirectory() as d:
             copilot = make_copilot(
                 store=AlertHistoryStore(Path(d) / "h.jsonl"), cassette=cassette
             )
             if mode == "agentic":
-                return await copilot.investigate_agentic(alert, record=False)
-            return await copilot.investigate(alert, record=False)
+                return await copilot.investigate_agentic(
+                    alert, model=model, record=False
+                )
+            return await copilot.investigate(alert, model=model, record=False)
     return investigate
+
+
+def add_grid_args(parser: argparse.ArgumentParser) -> None:
+    """The (fixture × mode × n) grid arguments, shared with the A/B
+    harness (tests/ab_compare.py) so the two CLIs can't drift — in
+    particular on the cost gate below."""
+    parser.add_argument("--n", type=int, default=6, help="runs per mode per fixture")
+    parser.add_argument("--modes", nargs="+", choices=MODES, default=list(MODES))
+    parser.add_argument("--fixtures", nargs="+", default=None,
+                        help="fixture filenames to calibrate")
+    parser.add_argument("--all", action="store_true",
+                        help="calibrate the FULL pinned corpus — a costly live sweep")
+    parser.add_argument("--concurrency", type=int, default=4)
+
+
+def resolve_fixtures(
+    args: argparse.Namespace, parser: argparse.ArgumentParser
+) -> list[str]:
+    """Apply the cost gate and validate fixture names.
+
+    The full corpus is many live investigations and real money, so it is
+    never the default: an unqualified invocation must state its intent
+    (review catch — "never a default sweep" was a claim the CLI broke).
+    """
+    if not args.fixtures and not args.all:
+        parser.error(
+            "specify --fixtures F [F ...] for a subset, or --all for the full "
+            "corpus (a costly live sweep). This never runs by default."
+        )
+    fixtures = args.fixtures or sorted(EXPECTATIONS.keys())
+    unknown = [f for f in fixtures if f not in EXPECTATIONS]
+    if unknown:
+        parser.error(f"not pinned fixtures: {unknown}")
+    return fixtures
 
 
 def tally(
@@ -149,6 +188,18 @@ async def run_calibration(
     return successes, failures
 
 
+def write_report(path: Path, report: dict, meta: dict) -> None:
+    """The on-disk calibration report shape ({"meta": ..., **report}) —
+    one writer, used by the CLI and by tests that need a real report file
+    (tests/test_ab_compare.py builds its --from-reports inputs with it, so
+    the offline diff is pinned to what this actually writes rather than a
+    hand-maintained copy that could drift)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"meta": meta, **report}, indent=2, sort_keys=True) + "\n"
+    )
+
+
 def format_report(report: dict, meta: dict) -> str:
     """A compact human view of the recorded report."""
     lines = [
@@ -180,29 +231,10 @@ def format_report(report: dict, meta: dict) -> str:
 
 async def _main() -> int:
     parser = argparse.ArgumentParser(description="Recorded calibration of pinned expectations.")
-    parser.add_argument("--n", type=int, default=6, help="runs per mode per fixture")
-    parser.add_argument("--modes", nargs="+", choices=MODES, default=list(MODES))
-    parser.add_argument("--fixtures", nargs="+", default=None,
-                        help="fixture filenames to calibrate")
-    parser.add_argument("--all", action="store_true",
-                        help="calibrate the FULL pinned corpus — a costly live sweep")
-    parser.add_argument("--concurrency", type=int, default=4)
+    add_grid_args(parser)
     parser.add_argument("--out", type=Path, default=REPORT_PATH)
     args = parser.parse_args()
-
-    # The full corpus is many live investigations and real money, so it is
-    # never the default: an unqualified invocation must state its intent
-    # (review catch — "never a default sweep" was a claim the CLI broke).
-    if not args.fixtures and not args.all:
-        parser.error(
-            "specify --fixtures F [F ...] for a subset, or --all for the full "
-            "corpus (a costly live sweep). This never runs by default."
-        )
-    fixtures = args.fixtures or sorted(EXPECTATIONS.keys())
-    unknown = [f for f in fixtures if f not in EXPECTATIONS]
-    if unknown:
-        print(f"ERROR: not pinned fixtures: {unknown}")
-        return 1
+    fixtures = resolve_fixtures(args, parser)
 
     cassette = ReputationCassette.load()
     investigate = make_default_investigate(cassette)
@@ -232,8 +264,7 @@ async def _main() -> int:
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "fixtures": fixtures,
     }
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps({"meta": meta, **report}, indent=2, sort_keys=True) + "\n")
+    write_report(args.out, report, meta)
     print("\n" + format_report(report, meta))
     if failures:
         print(f"\n{len(failures)} run(s) FAILED (not counted as passes): "

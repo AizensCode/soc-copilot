@@ -23,3 +23,4 @@ last_run_debug.json
 # Calibration reports are point-in-time measurement output (live model),
 # not committed test input like the cassette. Snapshot deliberately via --out.
 data/evals/calibration/
+.coverage

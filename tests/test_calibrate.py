@@ -121,6 +121,34 @@ async def test_cassette_miss_still_aborts_rather_than_being_recorded():
                               investigate=missing)
 
 
+async def test_make_default_investigate_threads_the_model_through(monkeypatch):
+    """The A/B harness's entire premise is that each side runs ITS model.
+    Pin the pass-through hermetically: the investigate fn built with
+    model="m-x" must call the copilot with model="m-x" (and record=False)
+    in both modes — a dropped `model=model` would silently A/B the default
+    model against itself while labeled baseline-vs-candidate."""
+    from .alert_loading import SAMPLE_ALERTS_DIR, load_alert_fixture
+    from .calibrate import make_default_investigate
+
+    seen = []
+
+    class _Stub:
+        async def investigate(self, alert, model=None, record=True):
+            seen.append(("phase_one", model, record))
+            return _inv()
+
+        async def investigate_agentic(self, alert, model=None, record=True):
+            seen.append(("agentic", model, record))
+            return _inv()
+
+    monkeypatch.setattr("tests.calibrate.make_copilot", lambda **kw: _Stub())
+    alert = load_alert_fixture(SAMPLE_ALERTS_DIR / "brute_force_ssh.json")
+    investigate = make_default_investigate(cassette=None, model="m-x")
+    await investigate(alert, "agentic")
+    await investigate(alert, "phase_one")
+    assert seen == [("agentic", "m-x", False), ("phase_one", "m-x", False)]
+
+
 def test_format_report_flags_marginal_pins_visibly():
     results = [("fix.json", "phase_one", _inv())] * 5 + [
         ("fix.json", "phase_one", _inv(confidence="low"))
