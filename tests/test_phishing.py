@@ -678,6 +678,61 @@ def test_quoted_pvalue_cannot_inject_forged_method_clauses():
     assert "no_aligned_authentication" in {s.name for s in result.signals}
 
 
+def test_quoted_pvalue_with_spaces_cannot_forge_spf_alignment():
+    """The ';' guard has a sibling the within-clause tokenizer must share.
+    A quoted smtp.mailfrom containing SPACES (a quoted-string local-part,
+    RFC 5321) split into phantom tokens under str.split(), and a second
+    'smtp.mailfrom=' embedded in the attacker-controlled envelope address
+    then overwrote the real one — reporting SPF aligned to the brand on a
+    message that authenticated the attacker's domain (review catch: the
+    injection just moves from ';' to ' ')."""
+    hostile = (
+        "corp-mx.example; "
+        'spf=pass smtp.mailfrom="x smtp.mailfrom=x@brand.example z"@evil.example; '
+        "dmarc=fail header.from=brand.example"
+    )
+    result = analyze_phishing(_alert({
+        "From": "<security@brand.example>",
+        "Authentication-Results": hostile,
+    }))
+    assert result.envelope_from != "brand.example"
+    assert result.spf_aligned is not True
+    assert "no_aligned_authentication" in {s.name for s in result.signals}
+
+
+def test_dmarc_pass_is_not_reported_as_nothing_aligned():
+    """A summarized Authentication-Results can report dmarc=pass without
+    the spf/dkim mechanism lines it rested on. DMARC pass is definitionally
+    an aligned authenticated identifier (RFC 9989), so the analyzer must
+    not emit a STRONG 'nothing aligned' that contradicts its own reported
+    dmarc=pass (review catch)."""
+    result = analyze_phishing(_alert({
+        "From": "<a@brand.example>",
+        "Authentication-Results": (
+            "mx.corp.example; dmarc=pass header.from=brand.example"
+        ),
+    }))
+    assert result.dmarc_result == "pass"
+    assert "no_aligned_authentication" not in {s.name for s in result.signals}
+
+
+def test_list_valued_header_is_bounded_like_a_string():
+    """MAX_HEADER_CHARS has to bound list items, not just strings. A
+    multi-From spoof (a modeled shape) carrying a long no-match run slipped
+    past a str-only guard and reintroduced the quadratic address-regex hang
+    the bound exists to prevent (review catch)."""
+    import time
+
+    run = "a" * 200_000  # no '@', no angle brackets: the regex's worst case
+    start = time.monotonic()
+    result = analyze_phishing(_alert({
+        "From": [run, "<x@y.example>"],
+        "Authentication-Results": "mx; dmarc=pass header.from=y.example",
+    }))
+    assert time.monotonic() - start < 2.0
+    assert "multiple_from_headers" in {s.name for s in result.signals}
+
+
 def test_sanctioned_sender_requires_the_identifier_to_have_authenticated():
     """The inventory record is operator-owned, but the envelope and d= it
     is matched against are attacker-writable text. Matching them without

@@ -191,14 +191,12 @@ def _aligned(identifier_domain: str | None, from_domain: str | None) -> bool | N
     return org_domain(identifier_domain) == org_domain(from_domain)
 
 
-def _split_outside_quotes(text: str, sep: str = ";") -> list[str]:
-    """Split on `sep`, ignoring separators inside a quoted string.
-
-    Authentication-Results pvalues may be quoted and may legitimately
-    contain a semicolon (Gmail quotes smtp.mailfrom). A naive split lets an
-    attacker close the quote and inject entire method clauses through the
-    envelope address the MTA echoes back — forging `dkim=pass` into a
-    header the receiving gateway wrote (review catch).
+def _split_quote_aware(text: str, is_sep, keep_empty: bool) -> list[str]:
+    """Split `text` on the characters `is_sep` selects, never inside a
+    quoted string. Shared core of the ';' clause split and the whitespace
+    token split: both must honor quotes because the MTA echoes the
+    (attacker-chosen) envelope address into Authentication-Results, and a
+    quoted pvalue may legitimately contain either separator.
     """
     parts: list[str] = []
     buf: list[str] = []
@@ -217,13 +215,41 @@ def _split_outside_quotes(text: str, sep: str = ";") -> list[str]:
             in_quotes = not in_quotes
             buf.append(ch)
             continue
-        if ch == sep and not in_quotes:
-            parts.append("".join(buf))
+        if is_sep(ch) and not in_quotes:
+            if buf or keep_empty:
+                parts.append("".join(buf))
             buf = []
             continue
         buf.append(ch)
-    parts.append("".join(buf))
+    if buf or keep_empty:
+        parts.append("".join(buf))
     return parts
+
+
+def _split_outside_quotes(text: str, sep: str = ";") -> list[str]:
+    """Split on `sep`, ignoring separators inside a quoted string.
+
+    Authentication-Results pvalues may be quoted and may legitimately
+    contain a semicolon (Gmail quotes smtp.mailfrom). A naive split lets an
+    attacker close the quote and inject entire method clauses through the
+    envelope address the MTA echoes back — forging `dkim=pass` into a
+    header the receiving gateway wrote (review catch).
+    """
+    return _split_quote_aware(text, lambda ch: ch == sep, keep_empty=True)
+
+
+def _tokenize_outside_quotes(text: str) -> list[str]:
+    """Whitespace-tokenize one clause, never inside a quoted string.
+
+    The ';' split has a quote-aware sibling here because the SAME echoed
+    envelope address defeats the WITHIN-clause tokenizer too: a quoted
+    smtp.mailfrom that contains spaces (a quoted-string local-part,
+    RFC 5321) breaks into phantom tokens under str.split(), and a second
+    'smtp.mailfrom=' embedded in it then overwrites the real envelope
+    domain — forging SPF alignment to the brand (review catch: the ';'
+    guard alone was not enough, the attack just moves from ';' to ' ').
+    """
+    return _split_quote_aware(text, str.isspace, keep_empty=False)
 
 
 def _address_of(header_value: str | None) -> str | None:
@@ -284,7 +310,9 @@ def parse_authentication_results(raw: str) -> dict[str, list[dict]]:
         seg = segment.strip()
         if not seg or "=" not in seg:
             continue  # the bare authserv-id (or M365's repeats of it)
-        tokens = seg.split()
+        tokens = _tokenize_outside_quotes(seg)
+        if not tokens:
+            continue
         method_token = tokens[0]
         if "=" not in method_token:
             continue
@@ -316,20 +344,35 @@ def _dkim_signatures(auth: dict[str, list[dict]]) -> list[dict]:
     return auth.get("dkim") or []
 
 
+def _bounded(value: object) -> object:
+    """Cap attacker-controlled header text before it reaches a regex.
+
+    A list value (multiple From:, the Received: chain) has to be bounded
+    item by item too: a str-only guard let a list-valued header slip far
+    past MAX_HEADER_CHARS and reintroduce the quadratic address-regex hang
+    the bound exists to prevent — a multi-From spoof is a modeled shape, so
+    this is reachable, not theoretical (review catch).
+    """
+    if isinstance(value, str):
+        return value[:MAX_HEADER_CHARS]
+    if isinstance(value, list):
+        return [v[:MAX_HEADER_CHARS] if isinstance(v, str) else v for v in value]
+    return value
+
+
 def _headers_of(raw_log: dict) -> dict:
     """Header name (lowercased) -> value, from whichever container the
     source system used. Received may be a list; it is kept as one.
 
-    String values are truncated: everything downstream feeds them to
-    regexes that are quadratic on a long no-match run, and a hung
+    Values are truncated (list items included): everything downstream feeds
+    them to regexes that are quadratic on a long no-match run, and a hung
     investigation is a worse failure than a truncated header.
     """
     for key in _HEADER_CONTAINERS:
         container = raw_log.get(key)
         if isinstance(container, dict):
             return {
-                str(k).strip().lower():
-                    (v[:MAX_HEADER_CHARS] if isinstance(v, str) else v)
+                str(k).strip().lower(): _bounded(v)
                 for k, v in container.items()
             }
     return {}
@@ -965,8 +1008,17 @@ def analyze_phishing(
         else _aligned(dkim_domain, from_domain)
     )
     aligned_pass = (
-        spf.get("result") == "pass" and spf_aligned is True
-    ) or aligned_dkim is not None
+        (spf.get("result") == "pass" and spf_aligned is True)
+        or aligned_dkim is not None
+        # DMARC pass is definitionally an aligned authenticated identifier
+        # (RFC 9989): trust it even when the AR summarized the result and
+        # omitted the mechanism line it rested on, rather than emitting a
+        # STRONG "nothing aligned" on a message DMARC itself certifies as
+        # aligned to From — a self-contradictory false positive (review
+        # catch). Lookalike and URL signals still fire independently, which
+        # is how a domain that passes its OWN DMARC is still caught.
+        or dmarc.get("result") == "pass"
+    )
 
     # Trust boundary (RFC 8601 §5): only the topmost Authentication-Results
     # is authoritative; anyone can type the header into a message.
