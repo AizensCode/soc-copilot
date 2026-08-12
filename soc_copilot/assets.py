@@ -125,4 +125,49 @@ def match_assets(
             )
         )
 
+    # Sanctioned SaaS / OAuth applications. An app is identified two ways
+    # in consent alerts — by application (client) id GUID and by display
+    # name — and display names are attacker-choosable (a rogue app can
+    # call itself anything), so the inventory is keyed by the GUID and a
+    # display-name match is honored only when the entry itself lists that
+    # name. Candidates come from indicators.apps plus the audit-log keys
+    # Entra events actually carry.
+    apps = inventory.get("saas_apps", {})
+    if apps:
+        by_name = {
+            entry["name"]: (app_id, entry)
+            for app_id, entry in apps.items()
+            if entry.get("name")
+        }
+        # indicators.apps is attacker-influenced free-form data; an
+        # unhashable element (a nested list/dict) would raise TypeError on
+        # the `in` membership test below, so filter to strings first — the
+        # same guard the raw_log keys already get.
+        candidates = [
+            a for a in alert.indicators.get("apps", []) if isinstance(a, str)
+        ]
+        if isinstance(alert.raw_log, dict):
+            for key in ("app_id", "application_id", "app_display_name"):
+                value = alert.raw_log.get(key)
+                if isinstance(value, str) and value:
+                    candidates.append(value)
+        for candidate in candidates:
+            if candidate in apps:
+                app_id, entry = candidate, apps[candidate]
+            elif candidate in by_name:
+                app_id, entry = by_name[candidate]
+            else:
+                continue
+            add(
+                AssetMatch(
+                    entity=app_id,
+                    entity_type="saas_app",
+                    name=entry.get("name", app_id),
+                    role=entry.get("role", "sanctioned SaaS application"),
+                    owner=entry.get("owner"),
+                    notes=entry.get("notes"),
+                    expected_activity=entry.get("expected_activity", []),
+                )
+            )
+
     return matches

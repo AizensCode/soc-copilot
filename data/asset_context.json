@@ -107,5 +107,18 @@
       ],
       "notes": "Sends the monthly payslip notice on the first business day; signs with DKIM d=corp-payroll.example (aligned) while bouncing through the provider's own envelope domain, which is why SPF alignment is not expected for this sender."
     }
+  },
+  "saas_apps": {
+    "8b5c1e2a-4f6d-4a9b-9c3e-7d2f5a8e1b04": {
+      "name": "Lucidchart",
+      "role": "sanctioned diagramming SaaS (tenant-wide admin consent)",
+      "owner": "it-apps",
+      "notes": "Approved via change CHG-2214 after vendor security review (2026-02). Publisher-verified (Lucid Software Inc.). Admin consent granted tenant-wide by it-apps; users do not consent individually.",
+      "expected_activity": [
+        "delegated scopes: User.Read, offline_access \u2014 nothing broader",
+        "admin 'Consent to application' events initiated by m.keller@corp.example (IT application administrator)",
+        "sign-ins via https://app.lucidchart.com from corp egress ranges"
+      ]
+    }
   }
 }

@@ -1,0 +1,39 @@
+{
+  "alert_id": "ALRT-2026-0810-032",
+  "timestamp": "2026-08-10T09:14:41Z",
+  "source": "entra_audit",
+  "severity": "medium",
+  "title": "OAuth consent granted to multi-tenant application 'Lucidchart'",
+  "raw_log": {
+    "event_type": "cloud_audit",
+    "cloud_provider": "azure_ad",
+    "operation": "Consent to application",
+    "result": "success",
+    "consent_type": "AllPrincipals",
+    "initiated_by": "m.keller@corp.example",
+    "initiated_by_ip": "10.20.4.31",
+    "initiated_by_role": "Application Administrator",
+    "app_display_name": "Lucidchart",
+    "app_id": "8b5c1e2a-4f6d-4a9b-9c3e-7d2f5a8e1b04",
+    "publisher_verified": true,
+    "publisher": "Lucid Software Inc.",
+    "multi_tenant": true,
+    "app_first_seen_in_tenant": "2026-08-03T10:02:55Z",
+    "reply_url": "https://lucidchart.com/oauth/callback",
+    "scopes_granted": "User.Read offline_access",
+    "prior_consents_by_user_90d": 2,
+    "post_consent_graph_activity_2h": {
+      "actor": "service principal 8b5c1e2a-4f6d-4a9b-9c3e-7d2f5a8e1b04",
+      "mail_messages_read": 0,
+      "drive_items_enumerated": 0,
+      "sign_ins": 14
+    }
+  },
+  "indicators": {
+    "ips": ["10.20.4.31"],
+    "hashes": [],
+    "users": ["m.keller"],
+    "apps": ["8b5c1e2a-4f6d-4a9b-9c3e-7d2f5a8e1b04"],
+    "domains": ["lucidchart.com"]
+  }
+}

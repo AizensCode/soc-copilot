@@ -96,8 +96,15 @@ class AssetMatch(BaseModel):
     analyst's call.
     """
 
-    entity: str = Field(description="The identifier as it appeared in the alert")
-    entity_type: Literal["ip", "host", "service_account"]
+    entity: str = Field(
+        description="The identifier as it appeared in the alert. Exception: a "
+        "saas_app matched only by display name carries the inventory's "
+        "canonical application id here (not the observed name), so the "
+        "sanctioned identity is explicit and the reader can compare it "
+        "against the alert's actual app_id — a rogue app spoofing the name "
+        "will not share the GUID."
+    )
+    entity_type: Literal["ip", "host", "service_account", "saas_app"]
     name: str | None = Field(
         default=None,
         description="Canonical inventory name, e.g. the host behind an IP",

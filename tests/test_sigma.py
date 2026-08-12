@@ -228,6 +228,8 @@ def test_system_created_task_is_filtered_out():
     # Cloud audit events: the curated rules are process-oriented, so this
     # family is deliberately outside their coverage.
     "cloud_iam_key_creation.json",
+    "oauth_consent_grant.json",
+    "benign_oauth_consent.json",
     # Email-gateway events: same story. The phishing family is grounded by
     # the deterministic header/URL analyzer (soc_copilot/phishing.py), not
     # by a process-creation detection rule.

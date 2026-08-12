@@ -18,7 +18,7 @@ import pytest
 from soc_copilot.history import AlertHistoryStore
 
 from .alert_loading import SAMPLE_ALERTS_DIR, load_alert_fixture
-from .cassette import CassetteMiss, ReputationCassette
+from .cassette import CASSETTE_PATH, CassetteMiss, ReputationCassette
 from .harness import make_copilot
 from .record_cassette import _gather_indicators
 
@@ -170,7 +170,14 @@ async def test_phase1_and_agentic_dispatch_share_the_cassette_seam(tmp_path):
     direct = await copilot.ip_tool.execute(ip="185.220.101.47")
     dispatched = await copilot.tools.dispatch("check_ip_reputation", {"ip": "185.220.101.47"})
     assert direct.data == dispatched.data
-    assert direct.data["abuseConfidenceScore"] == 81  # the recorded (drifted) value
+    # Both paths replay whatever the cassette holds for this IP — asserted
+    # against the file, not a hardcoded number, so a re-recording (the Tor
+    # exit's score has drifted 100 -> 81 -> 88 across recordings, which is
+    # the whole point of freezing it) doesn't turn a fidelity check into a
+    # brittle magic-number check.
+    recorded = json.loads(CASSETTE_PATH.read_text())["abuseipdb"]["185.220.101.47"]
+    expected_score = recorded["json"]["data"]["abuseConfidenceScore"]
+    assert direct.data["abuseConfidenceScore"] == expected_score
 
 
 # --- the property that justifies the whole thing ---------------------------

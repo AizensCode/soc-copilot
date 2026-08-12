@@ -1,0 +1,47 @@
+{
+  "alert_id": "ALRT-2026-0810-031",
+  "timestamp": "2026-08-10T14:52:17Z",
+  "source": "entra_audit",
+  "severity": "high",
+  "title": "OAuth consent granted to multi-tenant application 'Mailbox Sync Assistant'",
+  "raw_log": {
+    "event_type": "cloud_audit",
+    "cloud_provider": "azure_ad",
+    "operation": "Consent to application",
+    "result": "success",
+    "consent_type": "Principal",
+    "initiated_by": "j.moreau@corp.example",
+    "initiated_by_ip": "10.44.7.23",
+    "app_display_name": "Mailbox Sync Assistant",
+    "app_id": "e3f7a2c9-6b1d-4c8e-a5f2-9d4b7e0c3a16",
+    "publisher_verified": false,
+    "multi_tenant": true,
+    "app_first_seen_in_tenant": "2026-08-10T14:52:17Z",
+    "app_registration_age_days": 3,
+    "redirect_uri": "https://mailsync-assistant.azurewebsites.net/callback",
+    "scopes_granted": "Mail.Read Mail.ReadWrite Mail.Send Files.ReadWrite.All offline_access User.Read",
+    "prior_consents_by_user_90d": 0,
+    "tenant_users_consented_to_app": 1,
+    "post_consent_graph_activity_2h": {
+      "actor": "service principal e3f7a2c9-6b1d-4c8e-a5f2-9d4b7e0c3a16",
+      "source_ip": "185.220.101.34",
+      "user_agent": "python-requests/2.32.0",
+      "mail_messages_read": 1240,
+      "drive_items_enumerated": 3487,
+      "mail_messages_sent": 0
+    }
+  },
+  "indicators": {
+    "ips": [
+      "185.220.101.34",
+      "10.44.7.23"
+    ],
+    "hashes": [],
+    "users": [
+      "j.moreau"
+    ],
+    "apps": [
+      "e3f7a2c9-6b1d-4c8e-a5f2-9d4b7e0c3a16"
+    ]
+  }
+}

@@ -118,3 +118,81 @@ def test_committed_inventory_covers_the_benign_fixtures():
 
     sccm = _alert(raw_log={"host": "sccm-mp-01.corp.internal"})
     assert [m.role for m in match_assets(sccm)] == ["SCCM management point"]
+
+
+# --- SaaS / OAuth application matching --------------------------------------
+
+_APP_ID = "8b5c1e2a-4f6d-4a9b-9c3e-7d2f5a8e1b04"
+
+
+def _inventory_with_app(tmp_path):
+    inv = dict(INVENTORY)
+    inv["saas_apps"] = {
+        _APP_ID: {
+            "name": "Lucidchart",
+            "role": "sanctioned diagramming SaaS",
+            "owner": "it-apps",
+            "notes": "approved via CHG-2214",
+            "expected_activity": ["delegated scopes: User.Read, offline_access"],
+        }
+    }
+    p = tmp_path / "inventory.json"
+    p.write_text(json.dumps(inv))
+    return p
+
+
+def test_matches_saas_app_by_client_id_guid(tmp_path):
+    alert = _alert(raw_log={"app_id": _APP_ID})
+    matches = match_assets(alert, _inventory_with_app(tmp_path))
+    assert [m.entity_type for m in matches] == ["saas_app"]
+    assert matches[0].entity == _APP_ID
+    assert matches[0].name == "Lucidchart"
+    assert matches[0].role == "sanctioned diagramming SaaS"
+
+
+def test_matches_saas_app_by_display_name_and_dedupes_with_guid(tmp_path):
+    # Both the GUID and the display name in one alert: one canonical match.
+    alert = _alert(
+        raw_log={"app_id": _APP_ID, "app_display_name": "Lucidchart"},
+        indicators={"apps": ["Lucidchart"]},
+    )
+    matches = match_assets(alert, _inventory_with_app(tmp_path))
+    assert len(matches) == 1
+
+
+def test_unknown_app_display_name_matches_nothing(tmp_path):
+    """Display names are attacker-choosable: a rogue app calling itself
+    'Lucidchart Pro' (or anything not listed by the entry) must not
+    borrow the sanctioned entry."""
+    alert = _alert(raw_log={"app_display_name": "Lucidchart Pro"})
+    assert match_assets(alert, _inventory_with_app(tmp_path)) == []
+
+
+def test_rogue_guid_with_sanctioned_display_name_still_matches_entry_name_only(
+    tmp_path,
+):
+    """A rogue app spoofing the sanctioned DISPLAY NAME does match the
+    inventory entry (the name is listed) — but the match's entity is the
+    inventory's canonical GUID, so the model can compare it against the
+    alert's actual app_id and see the mismatch. The inventory states the
+    sanctioned identity; judging the observed one is the analyst's job."""
+    alert = _alert(raw_log={"app_id": "0000-rogue", "app_display_name": "Lucidchart"})
+    matches = match_assets(alert, _inventory_with_app(tmp_path))
+    assert len(matches) == 1
+    assert matches[0].entity == _APP_ID          # the sanctioned identity
+
+
+def test_committed_inventory_covers_the_benign_oauth_fixture():
+    alert = _alert(raw_log={"app_id": _APP_ID})
+    matches = match_assets(alert)
+    assert [m.entity_type for m in matches] == ["saas_app"]
+    assert matches[0].name == "Lucidchart"
+
+
+def test_unhashable_apps_indicator_does_not_crash_the_matcher(tmp_path):
+    """indicators.apps is attacker-influenced free-form data; a nested
+    list/dict element must be skipped, not raise TypeError on the `in`
+    membership test (review catch)."""
+    alert = _alert(indicators={"apps": [{"nested": "x"}, ["y"], _APP_ID]})
+    matches = match_assets(alert, _inventory_with_app(tmp_path))
+    assert [m.name for m in matches] == ["Lucidchart"]   # the one valid str matched

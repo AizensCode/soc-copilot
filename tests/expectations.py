@@ -303,6 +303,73 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
         "min_evidence_count": 1,
         "min_associated_groups": 1,
     },
+    "oauth_consent_grant.json": {
+        # Entra "Consent to application": a 3-day-old, publisher-UNverified
+        # multi-tenant app granted Mail.ReadWrite/Files.ReadWrite.All/
+        # offline_access by an individual user (consent_type Principal),
+        # followed within 2h by 1,240 mailbox reads and 3,487 drive items
+        # enumerated from a Tor exit under a python-requests user agent.
+        # The rogue app_id matches nothing in the saas_apps inventory.
+        # Calibrated with tests.calibrate (n=6/mode): every pin below k/k
+        # in both modes.
+        "expected_verdict": "true_positive",
+        "min_confidence": "high",
+        "must_escalate": True,
+        "any_of_techniques": [
+            # Illicit consent grant IS the technique: the app's OAuth token
+            # is the stolen credential. Calibration showed the model names
+            # it two defensible ways — T1528 (steal the application access
+            # token) and T1550.001 (use the application access token) — so
+            # either satisfies this pin (required-T1528 was 5/6; this is
+            # 6/6). Forbidding T1110/T1566 below still forces the
+            # observed-vs-anticipated discipline, so this stays sharp.
+            ["T1528", "T1550.001"],
+        ],
+        "forbidden_techniques": [
+            # Nothing was guessed — consent was granted. And no lure is
+            # observed in the audit trail: how the user reached the consent
+            # URL is anticipated, not evidenced, so phishing must not be
+            # mapped (the observed-vs-anticipated discipline, again).
+            "T1110",
+            "T1566",
+        ],
+        "pivots_must_include": [
+            # Kill the grant / the service principal. This is the sharp,
+            # independently-verifiable containment action. A second group
+            # for "scope what the token already read" was cut in review:
+            # the app is named "Mailbox Sync Assistant" and the scopes are
+            # "Mail.*", so any keyword like mail/mailbox is trivially
+            # present in the revoke pivot's own justification — the substring
+            # matcher can't tell "review the exfiltrated mail" from "revoke
+            # the Mailbox Sync app", so the group verified nothing.
+            ["revoke", "disable", "remove consent", "block the app"],
+        ],
+        "min_evidence_count": 1,
+    },
+    "benign_oauth_consent.json": {
+        # The twin: the SAME operation ("Consent to application"), but admin
+        # consent (AllPrincipals) by the inventoried Application
+        # Administrator to the publisher-verified Lucidchart app with
+        # exactly the scopes the saas_apps inventory entry sanctions
+        # (User.Read, offline_access) — and zero post-consent mail/file
+        # activity. Legitimacy is grounded in the operator's inventory
+        # entry (CHG-2214), never in the alert's prose. Calibrated with
+        # tests.calibrate (n=6/mode).
+        "expected_verdict": "false_positive",
+        "min_confidence": "medium",
+        "must_escalate": False,
+        "pivots_must_include": [
+            # Verification against the operator's record is the correct
+            # residual action for a sanctioned-consent event — and it is
+            # the one gate proving the model used the INVENTORY rather than
+            # parroting the alert. So the keywords are inventory-derived
+            # ONLY ("lucidchart" was cut in review: it appears in the
+            # alert's own display name, which is attacker-choosable prose,
+            # so matching it proved nothing about grounding). These tokens
+            # live only in data/asset_context.json.
+            ["chg-2214", "it-apps", "inventory", "sanctioned", "asset context"],
+        ],
+    },
     # --- Benign alerts: the false_positive verdict class. Without these, a
     # model that never says false_positive passes the whole harness. Both
     # calibrated over 12 live runs (3 per alert per mode): 12/12
