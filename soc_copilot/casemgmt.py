@@ -345,25 +345,40 @@ class TheHiveClient:
         async with httpx.AsyncClient(timeout=20.0) as client:
             return await do(client)
 
-    async def fetch_dispositions(self) -> list[dict]:
+    async def fetch_dispositions(
+        self, created_alerts: dict[str, str], handled_alerts: set[str]
+    ) -> tuple[list[dict], list[dict]]:
         """What did human analysts decide about the copilot's alerts?
 
-        Reads every alert this copilot created (type "soc-copilot") and
-        translates TheHive's workflow states into verdict language via
-        _DISPOSITION_MAP (alert-level statuses, verified against a live
-        TheHive 5.7.5). An Imported alert defers to its case: promotion
-        alone means "an analyst took ownership", which is not yet a
-        ruling — only a case closed with a resolution status is. Open
-        cases and workflow-only statuses (New, InProgress, Pending,
+        Reads TheHive alerts and translates workflow states into verdict
+        language via _DISPOSITION_MAP (alert-level statuses, verified
+        against a live TheHive 5.7.5). An Imported alert defers to its
+        case: promotion alone means "an analyst took ownership", which is
+        not yet a ruling — only a case closed with a resolution status is.
+        Open cases and workflow-only statuses (New, InProgress, Pending,
         Duplicate) yield nothing.
 
-        Returns [{alert_id, human_verdict, source, summary}], where
-        alert_id is the sourceRef — the copilot's own alert id.
+        PROVENANCE (the security boundary): a ruling is trusted only for an
+        alert this copilot HANDLED — investigated (`handled_alerts`) or
+        created in TheHive (`created_alerts`) — with the recorded TheHive
+        object id matched for the alerts we cased. type=='soc-copilot' is a
+        cheap first filter but NOT the gate — it is a self-asserted label
+        anyone posting into the feed could set, so trusting it alone would
+        let a forged alert inject a ruling for any alert_id and poison the
+        accuracy record and precedent-aware closure. See _provenance_reason
+        for why the membership floor is "handled", not "created" alone.
+        Rulings that fail provenance are returned separately so the caller
+        can surface them, not silently dropped.
+
+        Returns (accepted, rejected). Each accepted is
+        {alert_id, human_verdict, source, summary}; each rejected is
+        {alert_id, thehive_id, reason}.
         """
         alerts = await self._query(
             "feedback-alerts", {"query": [{"_name": "listAlert"}]}
         )
-        out: list[dict] = []
+        accepted: list[dict] = []
+        rejected: list[dict] = []
         for a in alerts:
             if a.get("type") != "soc-copilot":
                 continue  # not ours: someone else's alert feed
@@ -372,16 +387,15 @@ class TheHiveClient:
                 continue
             status = a.get("status")
 
+            ruling: dict | None = None
             if status in _DISPOSITION_MAP:
                 verdict, source = _DISPOSITION_MAP[status]
-                out.append(
-                    {
-                        "alert_id": source_ref,
-                        "human_verdict": verdict,
-                        "source": source,
-                        "summary": None,
-                    }
-                )
+                ruling = {
+                    "alert_id": source_ref,
+                    "human_verdict": verdict,
+                    "source": source,
+                    "summary": None,
+                }
             elif a.get("caseId"):
                 case = await self._get_case(a["caseId"])
                 if case.get("stage") != "Closed":
@@ -389,15 +403,60 @@ class TheHiveClient:
                 verdict = _CASE_RESOLUTION_MAP.get(case.get("status"))
                 if verdict is None:
                     continue
-                out.append(
-                    {
-                        "alert_id": source_ref,
-                        "human_verdict": verdict,
-                        "source": f"thehive:case-{case.get('number')}",
-                        "summary": case.get("summary") or None,
-                    }
-                )
-        return out
+                ruling = {
+                    "alert_id": source_ref,
+                    "human_verdict": verdict,
+                    "source": f"thehive:case-{case.get('number')}",
+                    "summary": case.get("summary") or None,
+                }
+            if ruling is None:
+                continue
+
+            # The provenance gate. thehive_id from the listing is matched
+            # against what we recorded at creation, when we have it — a
+            # different object bearing our sourceRef is a spoof, not our
+            # alert. When we recorded no usable id (TheHive returned none),
+            # membership alone still defeats the arbitrary-sourceRef forgery.
+            reason = _provenance_reason(
+                source_ref, a.get("_id"), created_alerts, handled_alerts
+            )
+            if reason is not None:
+                rejected.append({
+                    "alert_id": source_ref,
+                    "thehive_id": a.get("_id"),
+                    "reason": reason,
+                })
+                continue
+            accepted.append(ruling)
+        return accepted, rejected
+
+
+def _provenance_reason(
+    source_ref: str,
+    thehive_id,
+    created_alerts: dict[str, str],
+    handled_alerts: set[str],
+) -> str | None:
+    """None if this ruling's alert is provenance-verified (ours to trust);
+    otherwise a short reason string for the security log.
+
+    The membership floor is "an alert this copilot HANDLED" — investigated
+    locally (`handled_alerts`) or created in TheHive (`created_alerts`).
+    That is the honest set: the attack this gate stops is a ruling about an
+    alert the copilot never worked, injected to poison the record — and
+    both investigating and creating prove we worked it. Requiring a ledger
+    entry ALONE would additionally reject every legitimate ruling on an
+    alert handled before provenance tracking existed (an empty ledger on
+    upgrade), mislabeling the operator's own history as forged. The ledger
+    still earns its keep for the subset we cased: when we recorded the
+    TheHive object id, a DIFFERENT object bearing our sourceRef is a spoof.
+    """
+    if source_ref not in created_alerts and source_ref not in handled_alerts:
+        return "no-local-record"
+    recorded = created_alerts.get(source_ref)
+    if recorded and thehive_id and str(thehive_id) != str(recorded):
+        return "thehive-id-mismatch"
+    return None
 
 
 # Alert-level statuses that ARE a ruling by themselves. Duplicate is
@@ -418,18 +477,27 @@ _CASE_RESOLUTION_MAP = {
 
 async def sync_dispositions(
     client: "TheHiveClient", store
-) -> tuple[list[dict], int]:
+) -> tuple[list[dict], int, list[dict]]:
     """Pull analyst rulings from TheHive into the history store.
 
-    Idempotent: records are appended and latest-per-alert wins on read,
-    so an unchanged ruling is skipped rather than re-recorded. Returns
-    (changed_rulings, total_fetched) — watch mode reports only what is
-    new, the CLI reports both.
+    Only rulings for alerts THIS copilot handled are recorded — the
+    provenance floor (investigated records + the created_alerts ledger) is
+    the gate, passed to fetch_dispositions (see its docstring and
+    _provenance_reason for why type=='soc-copilot' alone is not trusted).
+    Idempotent: records are appended and latest-per-alert wins on read, so
+    an unchanged ruling is skipped rather than re-recorded.
+
+    Returns (changed_rulings, total_accepted, rejected) — watch mode
+    reports what is new and any rejections (a rejection is a security
+    signal, not routine), the CLI reports all three.
     """
-    dispositions = await client.fetch_dispositions()
+    handled = {r["alert_id"] for r in store._iter_records()}
+    accepted, rejected = await client.fetch_dispositions(
+        store.created_alerts(), handled
+    )
     existing = store.dispositions()
     changed: list[dict] = []
-    for d in dispositions:
+    for d in accepted:
         prior = existing.get(d["alert_id"])
         if prior and (prior.get("human_verdict"), prior.get("summary")) == (
             d["human_verdict"],
@@ -440,4 +508,4 @@ async def sync_dispositions(
             d["alert_id"], d["human_verdict"], d["source"], d["summary"]
         )
         changed.append(d)
-    return changed, len(dispositions)
+    return changed, len(accepted), rejected

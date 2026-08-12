@@ -273,3 +273,17 @@ def test_closure_events_roundtrip_latest_wins(tmp_path):
     assert closures["A1"]["reason"] == "re-closed after reopen"
     assert closures["A2"]["reason"] is None
     assert "closed_at" in closures["A1"]
+
+
+def test_created_alerts_ledger_roundtrip_latest_wins(tmp_path):
+    """The provenance ledger for the feedback loop: latest thehive id per
+    alert_id wins (a re-push updates it), and an empty file reads as {}."""
+    from soc_copilot.history import AlertHistoryStore
+
+    store = AlertHistoryStore(tmp_path / "investigations.jsonl")
+    assert store.created_alerts() == {}
+    store.record_created_alert("AL-1", "~obj-1")
+    store.record_created_alert("AL-2", "~obj-2")
+    store.record_created_alert("AL-1", "~obj-1b")   # re-push: latest wins
+    ledger = store.created_alerts()
+    assert ledger == {"AL-1": "~obj-1b", "AL-2": "~obj-2"}

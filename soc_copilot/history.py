@@ -102,6 +102,7 @@ class AlertHistoryStore:
         self.path = Path(path)
         self.dispositions_path = self.path.with_name("dispositions.jsonl")
         self.closures_path = self.path.with_name("closures.jsonl")
+        self.created_alerts_path = self.path.with_name("created_alerts.jsonl")
 
     def _iter_records(self) -> Iterator[dict]:
         if not self.path.exists():
@@ -146,6 +147,40 @@ class AlertHistoryStore:
             if line:
                 rec = json.loads(line)
                 out[rec["alert_id"]] = rec
+        return out
+
+    def record_created_alert(self, alert_id: str, thehive_id: str) -> None:
+        """Record that THIS copilot created a TheHive alert for `alert_id`
+        (sourceRef) as TheHive object `thehive_id`.
+
+        This is the provenance ledger that gates the feedback loop. A synced
+        analyst ruling is only trusted for an alert_id present here — because
+        the alternative, trusting any TheHive alert that merely carries
+        type='soc-copilot', is trusting a self-asserted label: anyone able to
+        POST an alert into the feed could otherwise forge a ruling for any
+        alert_id and poison the copilot's accuracy record and its
+        precedent-aware closure. Written at create-alert time (main's
+        _maybe_open_case), same append-only sidecar pattern as closures."""
+        rec = {
+            "alert_id": alert_id,
+            "thehive_id": thehive_id,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        self.created_alerts_path.parent.mkdir(parents=True, exist_ok=True)
+        with self.created_alerts_path.open("a") as f:
+            f.write(json.dumps(rec) + "\n")
+
+    def created_alerts(self) -> dict[str, str]:
+        """alert_id (sourceRef) -> the latest TheHive object id we created
+        for it. The trusted set for the feedback loop."""
+        out: dict[str, str] = {}
+        if not self.created_alerts_path.exists():
+            return out
+        for line in self.created_alerts_path.read_text().splitlines():
+            line = line.strip()
+            if line:
+                rec = json.loads(line)
+                out[rec["alert_id"]] = rec.get("thehive_id", "")
         return out
 
     def record_closure(self, alert_id: str, reason: str | None) -> None:

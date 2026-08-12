@@ -240,6 +240,44 @@ def _print_rulings(changed: list[dict], known: set[str]) -> None:
         )
 
 
+_REJECT_EXPLAIN = {
+    # A different TheHive object reused an alert id we cased: a probable
+    # spoof, and the one rejection that is genuinely alarming.
+    "thehive-id-mismatch": "a different TheHive object reused an alert id "
+                           "this copilot created — probable spoof",
+    # No local record we ever worked this alert: forged, from another feed,
+    # or (benignly) handled before provenance tracking existed. Reported,
+    # but not asserted to be an attack.
+    "no-local-record": "no record this copilot investigated or created this "
+                       "alert (forged, foreign, or predates provenance "
+                       "tracking)",
+}
+
+
+def _print_rejected_rulings(rejected: list[dict]) -> None:
+    """A rejected ruling did not enter memory: its alert has no provenance
+    tying it to this copilot, so trusting it would let a self-asserted
+    'soc-copilot' TheHive alert poison the accuracy record and the
+    precedent-aware closure signal. A thehive-id-mismatch is the alarming
+    kind (a spoof of an alert we cased); a no-local-record is reported but
+    not accused — on an upgrade with an empty ledger it is simply the
+    operator's own pre-provenance history, and re-casing those alerts (or a
+    fresh deployment) resolves it."""
+    spoof = [r for r in rejected if r["reason"] == "thehive-id-mismatch"]
+    lead = "⚠ " if spoof else ""
+    print(
+        f"{lead}{len(rejected)} ruling(s) not applied (no provenance "
+        f"linking the alert to this copilot):",
+        flush=True,
+    )
+    for r in rejected:
+        why = _REJECT_EXPLAIN.get(r["reason"], r["reason"])
+        print(
+            f"  {r['alert_id']}: {why} (thehive id {r.get('thehive_id')})",
+            flush=True,
+        )
+
+
 async def _run_sync_feedback() -> None:
     """Pull analyst rulings from TheHive into the copilot's memory.
 
@@ -255,12 +293,14 @@ async def _run_sync_feedback() -> None:
     store = AlertHistoryStore(settings.HISTORY_PATH)
     known = {r["alert_id"] for r in store._iter_records()}
     try:
-        changed, total = await sync_dispositions(TheHiveClient(), store)
+        changed, total, rejected = await sync_dispositions(TheHiveClient(), store)
     except RuntimeError as e:
         print(e)
         sys.exit(1)
+    if rejected:
+        _print_rejected_rulings(rejected)
     if total == 0:
-        print("No analyst rulings found in TheHive yet.")
+        print("No analyst rulings found for alerts this copilot created.")
         return
     _print_rulings(changed, known)
     await _annotate_elastic(changed)
@@ -272,13 +312,18 @@ async def _run_sync_feedback() -> None:
 
 
 async def _maybe_open_case(
-    alert: Alert, investigation: Investigation, case: bool
+    alert: Alert, investigation: Investigation, case: bool, store=None
 ) -> str | None:
     """Open a TheHive alert when --case is set and the policy says a human
     should own this. Returns the created TheHive alert id (so a caller can
     link to it), or None. Never fatal: case management is an output
     channel, so a TheHive outage must not lose an investigation that
     already succeeded.
+
+    When `store` is given, the created alert is recorded to the provenance
+    ledger — the gate that lets --sync-feedback later trust a ruling for
+    this alert. Skipping that recording would make the ruling un-trustable,
+    so the ledger write matters as much as the POST.
     """
     if not case:
         return None
@@ -290,11 +335,26 @@ async def _maybe_open_case(
         return None
     try:
         case_id = await TheHiveClient().create_alert(alert, investigation)
-        print(f"Opened TheHive alert {case_id} ({reason})", flush=True)
-        return case_id
     except RuntimeError as e:
         print(f"Case creation failed: {e}", flush=True)
         return None
+    print(f"Opened TheHive alert {case_id} ({reason})", flush=True)
+    if store is not None:
+        # The provenance write is what lets a future ruling on this alert
+        # be trusted, so it matters — but a disk error here must not undo a
+        # case that already succeeded (the "never fatal" contract), so its
+        # own failure is caught. A dropped ledger line degrades to that
+        # alert's later ruling reporting as no-local-record, not a crash.
+        try:
+            store.record_created_alert(alert.alert_id, case_id)
+        except OSError as e:
+            print(
+                f"Warning: opened alert {case_id} but failed to record its "
+                f"provenance ({e}); a later ruling on {alert.alert_id} may "
+                f"not sync.",
+                flush=True,
+            )
+    return case_id
 
 
 async def _maybe_notify(
@@ -552,7 +612,7 @@ async def _run_file(args: argparse.Namespace) -> None:
     if args.report:
         _write_report(alert, investigation, Path(args.report))
 
-    await _maybe_open_case(alert, investigation, args.case)
+    await _maybe_open_case(alert, investigation, args.case, copilot.history)
 
     print(investigation.model_dump_json(indent=2))
 
@@ -602,7 +662,7 @@ async def _run_elastic(args: argparse.Namespace) -> None:
             doc_id = await source.push_investigation(alert, investigation)
             print(f"Pushed investigation to Elastic (doc id: {doc_id})")
 
-        await _maybe_open_case(alert, investigation, args.case)
+        await _maybe_open_case(alert, investigation, args.case, copilot.history)
 
 
 def _prioritize(
@@ -704,9 +764,11 @@ async def _run_watch(args: argparse.Namespace) -> None:
             try:
                 from .casemgmt import TheHiveClient, sync_dispositions
 
-                changed, _ = await sync_dispositions(
+                changed, _, rejected = await sync_dispositions(
                     TheHiveClient(), copilot.history
                 )
+                if rejected:
+                    _print_rejected_rulings(rejected)
                 if changed:
                     print("Analyst feedback synced from TheHive:", flush=True)
                     known = {
@@ -781,7 +843,7 @@ async def _run_watch(args: argparse.Namespace) -> None:
                     # policies. The page links to the case when one opened.
                     if not close:
                         case_id = await _maybe_open_case(
-                            alert, investigation, args.case
+                            alert, investigation, args.case, copilot.history
                         )
                         await _maybe_notify(
                             alert, investigation, notify, case_id

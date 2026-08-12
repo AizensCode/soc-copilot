@@ -98,14 +98,20 @@ def test_dispositions_live_beside_the_history_file(tmp_path):
 # TruePositive/FalsePositive/Indeterminate at stage Closed.
 
 _ALERTS = [
-    {"type": "soc-copilot", "sourceRef": "AL-1", "status": "FalsePositive", "stage": "Closed"},
-    {"type": "soc-copilot", "sourceRef": "AL-2", "status": "Ignored", "stage": "Closed"},
-    {"type": "soc-copilot", "sourceRef": "AL-3", "status": "Imported", "stage": "Imported", "caseId": "~101"},
-    {"type": "soc-copilot", "sourceRef": "AL-4", "status": "Imported", "stage": "Imported", "caseId": "~102"},
-    {"type": "soc-copilot", "sourceRef": "AL-5", "status": "New", "stage": "New"},
-    {"type": "soc-copilot", "sourceRef": "AL-6", "status": "Duplicate", "stage": "Closed"},
-    {"type": "other-feed", "sourceRef": "XX-1", "status": "FalsePositive", "stage": "Closed"},
+    {"_id": "~a1", "type": "soc-copilot", "sourceRef": "AL-1", "status": "FalsePositive", "stage": "Closed"},
+    {"_id": "~a2", "type": "soc-copilot", "sourceRef": "AL-2", "status": "Ignored", "stage": "Closed"},
+    {"_id": "~a3", "type": "soc-copilot", "sourceRef": "AL-3", "status": "Imported", "stage": "Imported", "caseId": "~101"},
+    {"_id": "~a4", "type": "soc-copilot", "sourceRef": "AL-4", "status": "Imported", "stage": "Imported", "caseId": "~102"},
+    {"_id": "~a5", "type": "soc-copilot", "sourceRef": "AL-5", "status": "New", "stage": "New"},
+    {"_id": "~a6", "type": "soc-copilot", "sourceRef": "AL-6", "status": "Duplicate", "stage": "Closed"},
+    {"_id": "~x1", "type": "other-feed", "sourceRef": "XX-1", "status": "FalsePositive", "stage": "Closed"},
 ]
+
+# The provenance ledger the copilot would hold if it had created all seven
+# alerts (sourceRef -> the TheHive object id we recorded). Passed to
+# fetch_dispositions so the mapping test exercises status vocabulary, not
+# the provenance gate (which has its own tests below).
+_LEDGER = {a["sourceRef"]: a["_id"] for a in _ALERTS}
 
 _CASES = {
     "~101": {"number": 7, "status": "TruePositive", "stage": "Closed",
@@ -129,8 +135,16 @@ def _handler(request: httpx.Request) -> httpx.Response:
     return httpx.Response(200, json=_CASES[case_id])
 
 
+def _seed_ledger(store, ledger=_LEDGER) -> None:
+    """Record every alert in `ledger` as one this copilot created, so the
+    provenance gate admits its rulings."""
+    for source_ref, thehive_id in ledger.items():
+        store.record_created_alert(source_ref, thehive_id)
+
+
 async def test_fetch_dispositions_maps_the_live_status_vocabulary():
-    got = {d["alert_id"]: d for d in await _client(_handler).fetch_dispositions()}
+    accepted, rejected = await _client(_handler).fetch_dispositions(_LEDGER, set())
+    got = {d["alert_id"]: d for d in accepted}
 
     assert got["AL-1"]["human_verdict"] == "false_positive"   # ruled at alert level
     assert got["AL-2"]["human_verdict"] == "false_positive"   # dismissed
@@ -140,21 +154,159 @@ async def test_fetch_dispositions_maps_the_live_status_vocabulary():
     assert got["AL-3"]["summary"] == "Confirmed compromise."
     assert got["AL-3"]["source"] == "thehive:case-7"
     # ownership without a ruling, workflow states, duplicates, and other
-    # feeds' alerts all yield nothing
+    # feeds' alerts all yield nothing — and none of these are provenance
+    # rejections (they simply produce no ruling)
     for absent in ("AL-4", "AL-5", "AL-6", "XX-1"):
         assert absent not in got
+    assert rejected == []
 
 
 async def test_sync_is_idempotent_on_unchanged_rulings(tmp_path):
     store = _store(tmp_path)
-    changed, total = await sync_dispositions(_client(_handler), store)
-    assert total == 3 and len(changed) == 3
+    _seed_ledger(store)
+    changed, total, rejected = await sync_dispositions(_client(_handler), store)
+    assert total == 3 and len(changed) == 3 and rejected == []
     size_after_first = store.dispositions_path.read_text().count("\n")
 
-    changed, total = await sync_dispositions(_client(_handler), store)
+    changed, total, rejected = await sync_dispositions(_client(_handler), store)
     assert total == 3 and changed == []   # nothing new -> nothing recorded
     assert store.dispositions_path.read_text().count("\n") == size_after_first
     assert store.dispositions()["AL-3"]["human_verdict"] == "true_positive"
+
+
+# --- provenance: only rulings for alerts THIS copilot created are trusted ---
+
+
+async def test_a_ruling_for_an_unhandled_alert_is_rejected_not_recorded(tmp_path):
+    """The core gap this closes: a TheHive alert typed 'soc-copilot' is a
+    self-asserted label. With NO local record — the copilot neither
+    investigated nor created these alerts — every ruling must be rejected;
+    a forged feed cannot inject a verdict for an alert we never worked."""
+    store = _store(tmp_path)  # empty: no investigations, no ledger
+    changed, total, rejected = await sync_dispositions(_client(_handler), store)
+    assert changed == [] and total == 0
+    assert store.dispositions() == {}                      # nothing recorded
+    rejected_ids = {r["alert_id"] for r in rejected}
+    assert rejected_ids == {"AL-1", "AL-2", "AL-3"}        # the 3 ruling-bearing
+    assert all(r["reason"] == "no-local-record" for r in rejected)
+
+
+async def test_a_ruling_on_an_investigated_but_uncased_alert_is_trusted(tmp_path):
+    """The upgrade/transition floor (review catch): an alert the copilot
+    INVESTIGATED but has no ledger entry for (e.g. cased before provenance
+    tracking existed) is still ours to trust — rejecting it would mislabel
+    the operator's own history as forged. AL-1 is in the investigation
+    history but not the ledger; its ruling is recorded."""
+    store = _store(tmp_path)
+    store.record(_alert("AL-1", ["1.1.1.1"]), _inv("AL-1"))  # investigated, not cased
+    changed, total, rejected = await sync_dispositions(_client(_handler), store)
+    assert [c["alert_id"] for c in changed] == ["AL-1"]
+    assert {r["alert_id"] for r in rejected} == {"AL-2", "AL-3"}  # never worked
+    assert store.dispositions()["AL-1"]["human_verdict"] == "false_positive"
+
+
+async def test_only_the_handled_subset_is_trusted(tmp_path):
+    """A partial ledger: the copilot created AL-1 but not AL-2/AL-3, and
+    never investigated them either. Only AL-1's ruling is recorded."""
+    store = _store(tmp_path)
+    store.record_created_alert("AL-1", "~a1")
+    changed, total, rejected = await sync_dispositions(_client(_handler), store)
+    assert total == 1
+    assert [c["alert_id"] for c in changed] == ["AL-1"]
+    assert {r["alert_id"] for r in rejected} == {"AL-2", "AL-3"}
+
+
+async def test_a_spoofed_object_reusing_our_sourceref_is_rejected(tmp_path):
+    """The subtler forgery: an attacker creates a SECOND soc-copilot alert
+    reusing a real sourceRef we own, but it is a different TheHive object.
+    The recorded id doesn't match, so its ruling is rejected as a spoof."""
+    store = _store(tmp_path)
+    store.record_created_alert("AL-1", "~different-object")  # ours had a diff id
+    _, _, rejected = await sync_dispositions(_client(_handler), store)
+    al1 = [r for r in rejected if r["alert_id"] == "AL-1"]
+    assert al1 and al1[0]["reason"] == "thehive-id-mismatch"
+    assert "AL-1" not in store.dispositions()
+
+
+async def test_membership_alone_admits_when_no_id_was_recorded(tmp_path):
+    """Tolerance: if we recorded the creation but TheHive returned no usable
+    object id (empty), membership alone still admits the ruling — the id
+    match is an extra check, not a hard requirement that would false-reject
+    our own alerts."""
+    store = _store(tmp_path)
+    store.record_created_alert("AL-1", "")     # created, but no id captured
+    changed, _, rejected = await sync_dispositions(_client(_handler), store)
+    assert "AL-1" in {c["alert_id"] for c in changed}
+    assert not any(r["alert_id"] == "AL-1" for r in rejected)
+
+
+# --- the write side: creating an alert records provenance -------------------
+
+
+class _FakeThehive:
+    """A TheHiveClient stand-in whose create_alert returns a fixed id and
+    never touches the network or settings."""
+    _next_id = "~obj-123"
+
+    def __init__(self, *a, **k):
+        pass
+
+    async def create_alert(self, alert, investigation):
+        return self._next_id
+
+
+async def test_maybe_open_case_records_the_provenance_ledger(tmp_path, monkeypatch):
+    """The create->ledger wiring (review catch: it had no test, which is
+    exactly why a removed ledger write could pass the suite). A successful
+    create_alert must record (alert_id -> thehive id), or the alert's future
+    ruling can never be trusted."""
+    import soc_copilot.casemgmt as casemgmt
+    from soc_copilot.main import _maybe_open_case
+
+    monkeypatch.setattr(casemgmt, "TheHiveClient", _FakeThehive)
+    store = _store(tmp_path)
+    # escalated true_positive -> should_open_case fires
+    case_id = await _maybe_open_case(
+        _alert("ALRT-X", ["1.1.1.1"]), _inv("ALRT-X"), case=True, store=store
+    )
+    assert case_id == "~obj-123"
+    assert store.created_alerts() == {"ALRT-X": "~obj-123"}
+
+    # And the round trip: a ruling on that alert now syncs, because it is in
+    # the ledger the create just wrote.
+    def handler(request):
+        if request.url.path.startswith("/api/v1/query"):
+            return httpx.Response(200, json=[{
+                "_id": "~obj-123", "type": "soc-copilot",
+                "sourceRef": "ALRT-X", "status": "FalsePositive", "stage": "Closed",
+            }])
+        return httpx.Response(404)
+    changed, total, rejected = await sync_dispositions(_client(handler), store)
+    assert [c["alert_id"] for c in changed] == ["ALRT-X"] and rejected == []
+
+
+async def test_maybe_open_case_survives_a_ledger_write_failure(
+    tmp_path, monkeypatch, capsys
+):
+    """The never-fatal contract (review catch): a disk error writing the
+    provenance ledger must not undo a case that already succeeded — the
+    RuntimeError-only guard would have let an OSError escape and crash the
+    caller, losing an investigation that was already pushed."""
+    import soc_copilot.casemgmt as casemgmt
+    from soc_copilot.main import _maybe_open_case
+
+    monkeypatch.setattr(casemgmt, "TheHiveClient", _FakeThehive)
+    store = _store(tmp_path)
+
+    def boom(*a, **k):
+        raise OSError("disk full")
+    monkeypatch.setattr(store, "record_created_alert", boom)
+
+    case_id = await _maybe_open_case(
+        _alert("ALRT-Y", ["2.2.2.2"]), _inv("ALRT-Y"), case=True, store=store
+    )
+    assert case_id == "~obj-123"                    # the case was NOT lost
+    assert "failed to record its provenance" in capsys.readouterr().out
 
 
 # --- Elastic annotation ------------------------------------------------------
