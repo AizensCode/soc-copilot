@@ -1,0 +1,60 @@
+{
+  "alert_id": "ALRT-2026-0811-041",
+  "timestamp": "2026-08-11T02:14:52Z",
+  "source": "waf",
+  "severity": "high",
+  "title": "WAF: SQL injection signature matched against /api/products (rule 942100)",
+  "raw_log": {
+    "event_type": "waf_alert",
+    "waf_engine": "modsecurity",
+    "client_ip": "91.240.118.172",
+    "client_asn": "AS49505 (hosting/VPS)",
+    "authenticated_user": null,
+    "host_header": "shop.corp-store.example",
+    "user_agent": "sqlmap/1.8.3#stable (https://sqlmap.org)",
+    "requests_in_window": 214,
+    "window_seconds": 300,
+    "distinct_uris_targeted": 9,
+    "distinct_payload_families": ["union-based", "boolean-blind", "time-based"],
+    "waf_action_summary": {"blocked": 214, "allowed": 0},
+    "note": "Every sampled request matched a CRS SQLi signature and was blocked (403). The attack is being contained by the WAF at the moment of alerting; coverage across all 9 targeted endpoints is not yet confirmed.",
+    "sample_matches": [
+      {
+        "time": "2026-08-11T02:12:03Z",
+        "method": "GET",
+        "uri": "/api/products",
+        "query": "category=8' UNION SELECT username,password_hash,email FROM users-- -",
+        "matched_rule_id": "942100",
+        "matched_rule_msg": "SQL Injection Attack Detected via libinjection",
+        "waf_action": "blocked",
+        "response_code": 403
+      },
+      {
+        "time": "2026-08-11T02:13:29Z",
+        "method": "GET",
+        "uri": "/api/products",
+        "query": "category=8 AND (SELECT 1 FROM users WHERE username='admin' AND SUBSTRING(password_hash,1,1)='$')",
+        "matched_rule_id": "942100",
+        "matched_rule_msg": "SQL Injection Attack Detected via libinjection",
+        "waf_action": "blocked",
+        "response_code": 403
+      },
+      {
+        "time": "2026-08-11T02:14:47Z",
+        "method": "GET",
+        "uri": "/api/orders",
+        "query": "id=1 AND (SELECT 1 FROM (SELECT SLEEP(5))x)",
+        "matched_rule_id": "942160",
+        "matched_rule_msg": "Detects blind sqli tests using sleep() and benchmark()",
+        "waf_action": "blocked",
+        "response_code": 403
+      }
+    ]
+  },
+  "indicators": {
+    "ips": ["91.240.118.172"],
+    "hashes": [],
+    "users": [],
+    "domains": ["shop.corp-store.example"]
+  }
+}

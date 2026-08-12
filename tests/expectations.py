@@ -370,6 +370,91 @@ EXPECTATIONS: dict[str, AlertExpectation] = {
             ["chg-2214", "it-apps", "inventory", "sanctioned", "asset context"],
         ],
     },
+    "waf_sqli_attack.json": {
+        # ModSecurity WAF: a sqlmap-flagged external host runs 214 requests
+        # across 9 URIs with union/boolean/error payloads in structured
+        # query params targeting the users table — and ONE encoded variant
+        # bypassed the WAF (200, 68KB, a response snippet leaking password
+        # hashes). The bypass + leaked creds make this an exploited, not
+        # merely attempted, injection. Calibrated with tests.calibrate
+        # (n=6/mode).
+        "expected_verdict": "true_positive",
+        "min_confidence": "high",
+        "must_escalate": True,
+        "required_techniques": [
+            # SQL injection against a public-facing app IS T1190. Observed:
+            # the WAF logged the payloads and one succeeded.
+            "T1190",
+        ],
+        "forbidden_techniques": [
+            # A 214-request sweep can pattern-match to brute force, but no
+            # credentials were guessed — this is injection, not T1110. And
+            # no lure/phishing is in evidence.
+            "T1110",
+            "T1566",
+        ],
+        "pivots_must_include": [
+            # Containment: cut the SOURCE. These are phrases/compounds, not
+            # the bare word "block" — the alert body carries waf_action
+            # "blocked", so a bare "block" would match the model merely
+            # NARRATING that the WAF blocked requests, not RECOMMENDING
+            # source containment (review catch). The observed phrasing is
+            # "temporary rate-limiting or IP-based blocking of
+            # 91.240.118.172"; these tokens capture that intent while
+            # excluding "blocked". Calibration-derived (the model's real
+            # words), and none appear in the alert body.
+            ["rate-limit", "rate limiting", "ip-based block", "blocklist",
+             "temporarily block", "blocking of", "block the ip",
+             "block the source", "deny the source", "null-route"],
+        ],
+        "min_evidence_count": 1,
+    },
+    "benign_waf_sqli_fp.json": {
+        # The twin: the SAME WAF rule (942100 libinjection) fires, but on an
+        # internal AUTHENTICATED user's single GET to /wiki/search whose
+        # query is a natural-language question ("how to prevent UNION SELECT
+        # injection...") — a keyword-only match on a search box, 200 HTML of
+        # normal size, no structured injection, no data returned. Benignity
+        # is grounded in the request's OWN structure and outcome (not the
+        # alert calling itself safe): a textbook WAF false positive.
+        # Calibrated with tests.calibrate (n=6/mode).
+        "expected_verdict": "false_positive",
+        "min_confidence": "medium",
+        "must_escalate": False,
+        "forbidden_techniques": [
+            # No exploitation occurred — a keyword in a search box is not
+            # T1190. Mapping it would be the exact over-read the twin tests.
+            "T1190",
+        ],
+        # Grounding gate (review catch): without a positive requirement,
+        # the verdict was separable by cheap tells (severity, internal vs
+        # external, authenticated vs null) that co-vary with the label — a
+        # model could shortcut to false_positive without ever engaging the
+        # discriminator. Every OTHER benign twin carries such a gate; this
+        # one now does too. The pivot must recommend an FP-appropriate
+        # residual action (confirm the search was legitimate, tune the
+        # noisy rule, close as false positive) — which requires having
+        # reasoned to that conclusion from the request structure, and the
+        # tokens do not appear in the alert body.
+        "pivots_must_include": [
+            # An FP-appropriate residual action that requires having reasoned
+            # to the benign conclusion from the request structure: confirm
+            # the user's ROLE makes the search normal, that the query is
+            # natural-language, that it's a false positive, or tune the noisy
+            # rule. Calibration-derived (the model reliably recommends
+            # confirming n.petrov's role and reviewing the NL query); none of
+            # these tokens appear in the alert body — in particular NOT
+            # "parameterized" (which is in the alert's own search string).
+            ["role", "false positive", "false-positive", "tuning",
+             "whitelist", "legitimate", "natural-language",
+             "natural language", "benign"],
+        ],
+        # No min_evidence_count here: the pivot gate above is the grounding
+        # requirement, and a benign FP legitimately sometimes carries its
+        # reasoning in the hypothesis rather than as structured evidence
+        # items (calibration showed evidence_count 5/6 in agentic — a flaky
+        # gate, not a real signal). The pivot pin is the honest grounding.
+    },
     # --- Benign alerts: the false_positive verdict class. Without these, a
     # model that never says false_positive passes the whole harness. Both
     # calibrated over 12 live runs (3 per alert per mode): 12/12

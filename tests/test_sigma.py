@@ -230,6 +230,10 @@ def test_system_created_task_is_filtered_out():
     "cloud_iam_key_creation.json",
     "oauth_consent_grant.json",
     "benign_oauth_consent.json",
+    # WAF alerts: HTTP-layer events, not process creation — outside the
+    # process-oriented curated rules' coverage.
+    "waf_sqli_attack.json",
+    "benign_waf_sqli_fp.json",
     # Email-gateway events: same story. The phishing family is grounded by
     # the deterministic header/URL analyzer (soc_copilot/phishing.py), not
     # by a process-creation detection rule.

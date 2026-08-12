@@ -1,0 +1,40 @@
+{
+  "alert_id": "ALRT-2026-0811-042",
+  "timestamp": "2026-08-11T10:47:33Z",
+  "source": "waf",
+  "severity": "medium",
+  "title": "WAF: SQL injection signature matched against /wiki/search (rule 942100)",
+  "raw_log": {
+    "event_type": "waf_alert",
+    "waf_engine": "modsecurity",
+    "client_ip": "10.30.5.44",
+    "client_asn": null,
+    "authenticated_user": "n.petrov",
+    "host_header": "wiki.corp.internal",
+    "user_agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+    "requests_in_window": 1,
+    "window_seconds": 300,
+    "distinct_uris_targeted": 1,
+    "distinct_payload_families": ["keyword-only"],
+    "sample_matches": [
+      {
+        "time": "2026-08-11T10:47:31Z",
+        "method": "GET",
+        "uri": "/wiki/search",
+        "query": "q=how+to+prevent+UNION+SELECT+injection+with+parameterized+queries",
+        "matched_rule_id": "942100",
+        "matched_rule_msg": "SQL Injection Attack Detected via libinjection",
+        "waf_action": "allowed",
+        "response_code": 200,
+        "response_bytes": 18244,
+        "response_content_type": "text/html; charset=utf-8"
+      }
+    ]
+  },
+  "indicators": {
+    "ips": ["10.30.5.44"],
+    "hashes": [],
+    "users": ["n.petrov"],
+    "domains": ["wiki.corp.internal"]
+  }
+}
