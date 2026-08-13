@@ -276,6 +276,24 @@ def should_suppress(anchor: dict, ruling: dict | None) -> tuple[bool, str]:
         return False, "anchor recommended escalation"
     if inv.get("injection_flags"):
         return False, "anchor carried injection flags"
+    # The anchor's blind spots are inherited by anything that borrows its
+    # conclusion. Without this the closure gate is VACUOUS on the whole
+    # dedup path: the suppressed copy carries no evidence of its own (it
+    # looked nothing up, and says so), so an anchor the policy REFUSED to
+    # close for failed lookups would be closed by its own duplicate half an
+    # hour later — under a reason string asserting the clean investigation
+    # that never happened (review catch, two lenses).
+    blind = sorted({
+        e.get("source_tool", "?")
+        for e in inv.get("evidence") or []
+        if e.get("success") is False   # absent on pre-field records: answered
+    })
+    if blind:
+        return False, (
+            f"anchor's investigation had {len(blind)} failed enrichment "
+            f"lookup(s) ({', '.join(blind)}); a conclusion reached without "
+            f"the evidence it asked for is not one to reuse unexamined"
+        )
 
     ruled = " (analyst-confirmed)" if ruling else ""
     return True, (

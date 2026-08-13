@@ -37,6 +37,64 @@ async def test_unexpected_keyword_returns_failed_result():
     assert "Invalid arguments" in result.error
 
 
+async def test_a_malformed_call_is_flagged_as_the_models_mistake():
+    """Dispatch failures come in two kinds and the autonomy gates care
+    which. A name that does not exist or arguments that do not fit the
+    schema mean the MODEL framed the call wrong — it gets the error back
+    and routinely re-issues correctly, so this is not a blind spot in the
+    evidence base. A tool that ran and failed IS one."""
+    for name, payload in [
+        ("no_such_tool", {"ip": "192.0.2.1"}),
+        ("check_ip_reputation", {}),
+        ("check_ip_reputation", {"address": "192.0.2.1"}),
+    ]:
+        result = await dispatch(name, payload)
+        assert result.success is False
+        assert result.model_error is True, f"{name} not flagged model_error"
+
+
+async def test_a_tool_that_ran_and_failed_is_not_the_models_mistake():
+    """The distinction has to cut both ways: a genuine tool failure must
+    NOT be excused as a model error, or the gate it feeds goes quiet."""
+    class _Boom(Tool):
+        name = "boom"
+        description = "d"
+        input_schema = {"type": "object", "properties": {}}
+
+        async def execute(self, **kwargs) -> ToolResult:
+            raise RuntimeError("upstream exploded")
+
+    from soc_copilot.tools.registry import ToolRegistry
+
+    result = await ToolRegistry([_Boom()]).dispatch("boom", {})
+    assert result.success is False
+    assert result.model_error is False
+    assert "upstream exploded" in result.error
+
+
+async def test_a_malformed_call_contributes_no_evidence(tmp_path):
+    """The consequence that matters: one hallucinated tool name must not
+    mark an investigation blind for good. Nothing was looked up, so
+    nothing enters the evidence base."""
+    from soc_copilot.copilot import SOCCopilot
+    from soc_copilot.history import AlertHistoryStore
+    from soc_copilot.tools.registry import ToolRegistry
+
+    c = SOCCopilot(
+        history_store=AlertHistoryStore(tmp_path / "h.jsonl"),
+        tools=ToolRegistry([]),
+    )
+    bad = await dispatch("no_such_tool", {})
+    real = await dispatch("check_ip_reputation", {})   # also a model error
+    assert bad.model_error and real.model_error
+    # ...whereas a genuine failure still becomes blind-spot evidence.
+    ran = ToolResult(
+        tool_name="check_ip_reputation", success=False, data={},
+        error="HTTP 429",
+    )
+    assert c._tool_result_to_evidence(ran).success is False
+
+
 def test_every_registered_tool_has_a_schema():
     schemas = anthropic_tool_schemas()
     assert len(schemas) == len(all_tools())

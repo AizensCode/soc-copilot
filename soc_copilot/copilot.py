@@ -360,6 +360,7 @@ class SOCCopilot:
                 claim=f"Failed to retrieve reputation for {ip}: {result.error}",
                 raw_data={"error": result.error},
                 confidence="low",
+                success=False,
             )
 
         score = result.data.get("abuseConfidenceScore", 0)
@@ -394,6 +395,7 @@ class SOCCopilot:
                 claim=f"Failed to look up hash {file_hash}: {result.error}",
                 raw_data={"error": result.error},
                 confidence="low",
+                success=False,
             )
 
         if not result.data.get("found"):
@@ -435,6 +437,7 @@ class SOCCopilot:
                 claim=f"Failed to check domain reputation for {domain}: {result.error}",
                 raw_data={"error": result.error},
                 confidence="low",
+                success=False,
             )
 
         # No historical scans is ambiguous, not exculpatory: it fits a
@@ -568,6 +571,11 @@ class SOCCopilot:
             # ValidationError (a ValueError subclass) — resample on either.
             try:
                 report_json = self._extract_json(report_text)
+                # Evidence is the deterministic layer's to set, never the
+                # model's. Dropping any key it emitted also stops a
+                # TypeError ("multiple values for keyword argument") that
+                # the ValueError retry below would not catch (review catch).
+                report_json.pop("evidence", None)
                 investigation = Investigation(**report_json, evidence=evidence)
                 break
             except ValueError as err:
@@ -786,9 +794,15 @@ class SOCCopilot:
 
                     result = await self.tools.dispatch(block.name, block.input)
                     tool_calls += 1
-                    evidence_collected.append(
-                        self._tool_result_to_evidence(result)
-                    )
+                    if not result.model_error:
+                        # A malformed call looked nothing up, so it is not
+                        # evidence — recording it would let one hallucinated
+                        # tool name mark the investigation blind for good,
+                        # even though the model re-issues the call correctly
+                        # on the very next turn (review catch).
+                        evidence_collected.append(
+                            self._tool_result_to_evidence(result)
+                        )
 
                     # A tool output is an untrusted span like any other:
                     # scan it, record the flags (they feed the closure
@@ -798,7 +812,15 @@ class SOCCopilot:
                         result.data, f"tool_output:{result.tool_name}"
                     )
                     injection_flags.extend(tool_flags)
-                    content = json.dumps(result.data)[:6000]
+                    # A failed result carries its reason in `error`, not in
+                    # `data` — sending the empty data dict handed the model
+                    # "{}" and asked it to correct a mistake it could not
+                    # see (review catch).
+                    content = (
+                        json.dumps(result.data)[:6000]
+                        if result.success
+                        else f"ERROR: {result.error}"
+                    )
                     if tool_flags:
                         content = (
                             "⚠ SECURITY WARNING — instruction-injection "
@@ -907,6 +929,7 @@ class SOCCopilot:
 
         try:
             report_json = self._extract_json(final_text)
+            report_json.pop("evidence", None)   # code's to set, not the model's
             investigation = Investigation(
                 **report_json, evidence=evidence_collected
             )
@@ -937,6 +960,7 @@ class SOCCopilot:
                 claim=f"Tool {result.tool_name} failed: {result.error}",
                 raw_data={"error": result.error},
                 confidence="low",
+                success=False,
             )
 
         return Evidence(

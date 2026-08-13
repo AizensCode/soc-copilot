@@ -9,6 +9,13 @@ class ToolResult(BaseModel):
     success: bool
     data: dict
     error: str | None = None
+    # True when the call never reached a tool because the MODEL framed it
+    # wrong (a name that does not exist, arguments that do not fit the
+    # schema). The agentic loop hands these back so the model can correct
+    # itself, and it routinely does — so they are not blind spots in the
+    # evidence base the way a tool that ran and failed is, and the
+    # autonomy gates must not treat them as such.
+    model_error: bool = False
 
 
 class Tool(ABC):

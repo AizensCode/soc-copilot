@@ -37,6 +37,17 @@ class Evidence(BaseModel):
     claim: str
     raw_data: dict
     confidence: Literal["low", "medium", "high"]
+    # Did the lookup behind this claim actually answer? A tool that timed
+    # out or returned HTTP 429 still produces an Evidence entry, but one
+    # that records a MISSING answer rather than a fact about the alert.
+    # Without this the distinction survived only as English inside `claim`,
+    # so the autonomous gates could not see it and an investigation whose
+    # every lookup failed could still close itself (review catch). Note
+    # `success=True` with an empty/negative answer is a real result — "no
+    # VirusTotal submissions" is something the desk learned, not something
+    # it failed to ask. Defaults True so records written before this field
+    # existed read as answered rather than retroactively suspect.
+    success: bool = True
 
 
 class Pivot(BaseModel):

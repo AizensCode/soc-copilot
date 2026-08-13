@@ -76,6 +76,7 @@ class ToolRegistry:
                 success=False,
                 data={},
                 error=f"Unknown tool: {tool_name}",
+                model_error=True,
             )
         try:
             return await tool.execute(**tool_input)
@@ -89,6 +90,7 @@ class ToolRegistry:
                     f"Got input keys: {sorted(tool_input)}. Re-issue the call "
                     f"with the arguments the tool schema requires."
                 ),
+                model_error=True,
             )
         except Exception as e:
             return ToolResult(

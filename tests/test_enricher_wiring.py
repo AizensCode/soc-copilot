@@ -133,3 +133,54 @@ async def test_a_non_mail_alert_carries_no_phishing_analysis(tmp_path):
     for mode in ("investigate", "investigate_agentic"):
         inv = await getattr(_copilot(tmp_path), mode)(alert)
         assert inv.phishing is None, mode
+
+
+# --- a failed lookup must stay legible as a failure ---------------------------
+
+
+def _fail(tool: str):
+    from soc_copilot.tools.base import ToolResult
+
+    return ToolResult(tool_name=tool, success=False, data={}, error="HTTP 429")
+
+
+def test_every_converter_carries_a_failed_lookup_through_as_failed(tmp_path):
+    """The gate that refuses to close an alert unseen can only fire if the
+    failure actually reaches Evidence. Each converter reads ToolResult's
+    `success` flag and used to DISCARD it, flattening the failure into an
+    English claim nothing downstream could read — so the signal existed
+    and was thrown away at exactly this boundary (review catch)."""
+    c = _copilot(tmp_path)
+    cases = [
+        c._ip_result_to_evidence(_fail("abuseipdb_check"), "1.2.3.4"),
+        c._hash_result_to_evidence(_fail("virustotal_lookup"), "abc123"),
+        c._domain_result_to_evidence(_fail("urlscan_check"), "evil.test"),
+        c._tool_result_to_evidence(_fail("search_internal_logs")),
+    ]
+    for ev in cases:
+        assert ev.success is False, f"{ev.source_tool} lost its failure"
+
+
+def test_a_successful_lookup_is_never_marked_failed(tmp_path):
+    """Including the negative-but-real answers: 'not known to VirusTotal'
+    and 'no scans on record' are findings, not blind spots, and marking
+    them failed would block the ordinary clean false positive."""
+    from soc_copilot.tools.base import ToolResult
+
+    c = _copilot(tmp_path)
+    ok = [
+        c._ip_result_to_evidence(
+            ToolResult(tool_name="abuseipdb_check", success=True,
+                       data={"abuseConfidenceScore": 0}), "8.8.8.8"),
+        c._hash_result_to_evidence(
+            ToolResult(tool_name="virustotal_lookup", success=True,
+                       data={"found": False}), "abc123"),
+        c._domain_result_to_evidence(
+            ToolResult(tool_name="urlscan_check", success=True,
+                       data={"found": False}), "example.test"),
+        c._tool_result_to_evidence(
+            ToolResult(tool_name="search_internal_logs", success=True,
+                       data={"hits": 0})),
+    ]
+    for ev in ok:
+        assert ev.success is True, f"{ev.source_tool} wrongly marked failed"

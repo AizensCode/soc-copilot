@@ -276,6 +276,62 @@ def test_escalating_anchor_never_reused(tmp_path):
     assert not ok
 
 
+def test_anchor_with_failed_lookups_is_never_reused(tmp_path):
+    """The gate that stops a blind investigation closing itself has to
+    stop its DUPLICATE closing too, or dedup launders it: the suppressed
+    copy carries no evidence of its own, so the closure gate reads clean
+    on it and the alert the policy just refused to close gets closed by
+    its own repeat half an hour later — under a reason string asserting
+    the clean investigation that never happened (review catch)."""
+    from soc_copilot.models import Evidence
+
+    store = _store(tmp_path)
+    _seed(store, _alert(), _investigation(evidence=[
+        Evidence(
+            source_tool="check_ip_reputation",
+            claim="Failed to retrieve reputation for 1.2.3.4: HTTP 429",
+            raw_data={"error": "HTTP 429"}, confidence="low", success=False,
+        ),
+    ]))
+    ok, reason = should_suppress(_rec(store), ruling=None)
+    assert not ok
+    assert "failed enrichment lookup(s)" in reason
+    assert "check_ip_reputation" in reason
+
+
+def test_anchor_whose_lookups_answered_is_still_reusable(tmp_path):
+    """The gate must key on the failure flag, not merely on evidence
+    existing — otherwise every well-enriched anchor stops being reusable
+    and dedup's savings quietly go to zero."""
+    from soc_copilot.models import Evidence
+
+    store = _store(tmp_path)
+    _seed(store, _alert(), _investigation(evidence=[
+        Evidence(
+            source_tool="check_ip_reputation",
+            claim="IP 1.2.3.4 has an abuse score of 0/100",
+            raw_data={"abuseConfidenceScore": 0}, confidence="low",
+        ),
+    ]))
+    ok, reason = should_suppress(_rec(store), ruling=None)
+    assert ok and "near-duplicate of A-1" in reason
+
+
+def test_anchor_recorded_before_the_success_field_is_still_reusable(tmp_path):
+    """Back-compat: anchors written before Evidence carried the flag must
+    not all become un-reusable, which would silently disable dedup for
+    every history recorded to date."""
+    store = _store(tmp_path)
+    _seed(store, _alert(), _investigation())
+    rec = _rec(store)
+    rec["investigation"]["evidence"] = [
+        {"source_tool": "check_ip_reputation", "claim": "score 0/100",
+         "raw_data": {}, "confidence": "low"},          # no "success" key
+    ]
+    ok, _ = should_suppress(rec, ruling=None)
+    assert ok
+
+
 def test_anchor_with_injection_flags_never_reused(tmp_path):
     """An anchor whose own investigation carried injection flags must not
     become the template later repeats borrow — the one gate the earlier

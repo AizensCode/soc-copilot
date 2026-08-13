@@ -83,6 +83,61 @@ def test_injection_flags_force_the_strong_model():
     assert promote and "injection" in reason
 
 
+def test_failed_enrichment_forces_the_strong_model():
+    """The finalize bar is documented as a true SUPERSET of the auto-close
+    bar, so the blind spot that stops autonomous closure has to stop a
+    cheap verdict becoming the last word too — otherwise the superset
+    claim quietly stops being true."""
+    from soc_copilot.models import Evidence
+
+    inv = _inv()
+    inv.evidence = [Evidence(
+        source_tool="abuseipdb_check",
+        claim="Failed to retrieve reputation for 1.2.3.4: HTTP 429",
+        raw_data={"error": "HTTP 429"}, confidence="low", success=False,
+    )]
+    promote, reason = should_promote(inv, _alert())
+    assert promote and "enrichment lookup(s) failed" in reason
+
+
+def test_nothing_finalizes_cheap_that_closure_would_refuse():
+    """The superset property as routing.py actually states it: the cheap
+    tier may finalize EXACTLY the class the copilot would auto-close, and
+    nothing else — i.e. finalizes => closes.
+
+    The safety-relevant direction is this one. The converse (closes =>
+    finalizes) is not just weaker, it is FALSE by design: a critical-
+    severity alert always gets the strong model while closure has no
+    severity gate, so a clean high-confidence FP closes but does not
+    finalize. Asserting the converse looked like a guard and was
+    vacuously true whenever closure refused — which is every case a new
+    closure-side gate would introduce (review catch: it passed with the
+    blind-lookup gate deleted from routing).
+    """
+    from soc_copilot.closure import should_auto_close
+    from soc_copilot.models import Evidence
+
+    blind = _inv()
+    blind.evidence = [Evidence(
+        source_tool="t", claim="failed", raw_data={}, confidence="low",
+        success=False,
+    )]
+    cases = [
+        _inv(), _inv(verdict="true_positive"), _inv(verdict="inconclusive"),
+        _inv(confidence="medium"), _inv(escalate=True),
+        _inv(injection=True), _inv(campaign=True), blind,
+    ]
+    for severity in ("medium", "critical"):
+        for inv in cases:
+            closes = should_auto_close(inv)[0]
+            finalizes = not should_promote(inv, _alert(severity))[0]
+            assert not (finalizes and not closes), (
+                f"{severity} {inv.verdict}/{inv.confidence} finalizes at the "
+                f"cheap tier but closure would refuse it — the cheap model "
+                f"is the last word on something the desk would not close"
+            )
+
+
 def test_campaign_correlation_is_promoted():
     promote, reason = should_promote(_inv(campaign=True), _alert())
     assert promote and "campaign" in reason

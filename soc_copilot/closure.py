@@ -54,6 +54,18 @@ def _overturned_precedent(investigation: Investigation) -> PriorSighting | None:
     return None
 
 
+def _failed_lookups(investigation: Investigation) -> list[str]:
+    """Names of the tools whose lookup did not answer, de-duplicated.
+
+    A failed enrichment is not a quiet non-event: the alert still gets a
+    verdict, and until this was checked the autonomous gates could not
+    tell "I looked and found nothing suspicious" from "I could not look".
+    The first is a finding; the second is an absence of one, and only the
+    first is grounds for the desk to close an alert by itself.
+    """
+    return sorted({e.source_tool for e in investigation.evidence if not e.success})
+
+
 def should_auto_close(investigation: Investigation) -> tuple[bool, str]:
     """Decide whether an investigation qualifies for autonomous closure.
 
@@ -74,6 +86,13 @@ def should_auto_close(investigation: Investigation) -> tuple[bool, str]:
         return False, (
             f"confidence is {investigation.confidence}; autonomous closure "
             f"requires high"
+        )
+    blind = _failed_lookups(investigation)
+    if blind:
+        return False, (
+            f"{len(blind)} enrichment lookup(s) failed ({', '.join(blind)}); "
+            f"closing on a verdict reached without the evidence the "
+            f"investigation asked for would be closing the alert unseen"
         )
     if investigation.escalation_recommended:
         return False, "investigation recommends escalation"

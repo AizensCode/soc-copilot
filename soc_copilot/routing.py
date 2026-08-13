@@ -30,7 +30,7 @@ model always weighs in — the same protective precedent check the
 auto-close policy carries, so the finalize bar is a true superset of the
 closure bar rather than merely resembling it.
 """
-from .closure import _overturned_precedent
+from .closure import _failed_lookups, _overturned_precedent
 from .models import Alert, Investigation
 
 
@@ -65,6 +65,15 @@ def should_promote(
         return True, (
             f"cheap confidence is {investigation.confidence}; only a "
             f"high-confidence disposal finalizes at the cheap tier"
+        )
+    # Keeps the superset property above literally true: the same blind-spot
+    # that blocks autonomous closure must also block finalizing cheap, or a
+    # cheap verdict reached on failed lookups would become the last word.
+    blind = _failed_lookups(investigation)
+    if blind:
+        return True, (
+            f"{len(blind)} enrichment lookup(s) failed ({', '.join(blind)}); "
+            f"a cheap verdict reached without them is not the last word"
         )
     if investigation.escalation_recommended:
         return True, "cheap pass recommended escalation"
