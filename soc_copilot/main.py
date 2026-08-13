@@ -694,6 +694,125 @@ def _prioritize(
     return [(doc_id, alert, why) for _, doc_id, alert, why in scored]
 
 
+async def _work_alert(
+    copilot: SOCCopilot,
+    source,
+    doc_id: str,
+    alert: Alert,
+    seen: set[str],
+    *,
+    agentic: bool,
+    tiered: bool,
+    auto_close: bool,
+    notify: bool,
+    case: bool,
+    dedup_window: int | None,
+) -> None:
+    """Work ONE alert from the watch queue: investigate (or borrow a
+    dedup-suppressed conclusion), push the result, set the alert's
+    status, and offer the outcome to the case/notify policies. Raises on
+    failure — the cycle catches and retries the alert next poll.
+
+    The ORDER of effects is the contract this seam exists to pin, and the
+    tests in tests/test_watch.py hold it:
+
+    1. push_investigation  — the result lands in Elastic first
+    2. set_alert_status    — closed (auto-close) or acknowledged
+    3. record_closure      — LAST, only after both Elastic writes, so the
+       local log asserts what HAPPENED, not what was about to happen. A
+       push failure leaves no phantom closure (review catch from the
+       scorecard increment); a crash between the status write and the
+       record undercounts automation instead — the safe direction.
+    4. seen.add            — only a fully-recorded alert is marked done
+    5. case/notify         — never for an auto-closed alert (it needs no
+       human owner, so it must generate no case noise and no page)
+    """
+    from .closure import should_auto_close
+
+    suppressed_reason = None
+    if dedup_window:
+        from .dedup import try_suppress
+
+        result = try_suppress(copilot.history, alert, dedup_window)
+        if result:
+            investigation, suppressed_reason = result
+            print(
+                f"[dedup: {suppressed_reason} — no model call spent]",
+                flush=True,
+            )
+    if suppressed_reason is None:
+        investigation = await _investigate(copilot, alert, agentic, tiered)
+    close, reason = (
+        should_auto_close(investigation) if auto_close else (False, None)
+    )
+    result_id = await source.push_investigation(
+        alert,
+        investigation,
+        auto_closed=close,
+        closure_reason=reason,
+    )
+    await source.set_alert_status(
+        doc_id, "closed" if close else "acknowledged"
+    )
+    if close:
+        copilot.history.record_closure(alert.alert_id, reason)
+    seen.add(doc_id)
+    if not close:
+        case_id = await _maybe_open_case(
+            alert, investigation, case, copilot.history
+        )
+        await _maybe_notify(alert, investigation, notify, case_id)
+    disposition = (
+        f"alert CLOSED autonomously ({reason})"
+        if close
+        else "alert acknowledged"
+    )
+    print(
+        f"verdict={investigation.verdict} "
+        f"confidence={investigation.confidence} "
+        f"escalate={investigation.escalation_recommended} "
+        f"-> pushed {result_id}, {disposition}",
+        flush=True,
+    )
+
+
+async def _watch_once(
+    copilot: SOCCopilot,
+    source,
+    seen: set[str],
+    *,
+    agentic: bool,
+    tiered: bool,
+    auto_close: bool,
+    notify: bool,
+    case: bool,
+    dedup_window: int | None,
+) -> None:
+    """One poll cycle: fetch open alerts, work the fresh ones in priority
+    order. A single alert's failure is contained to that alert — logged,
+    left un-acknowledged (and out of `seen`), and so retried next cycle
+    — never allowed to kill the cycle or the alerts queued behind it.
+    Raises only when the FETCH itself fails; the loop shell logs that as
+    a failed cycle and retries after the interval.
+    """
+    hits = await source.fetch_alert_hits(limit=10, status="open")
+    fresh = [(d, a) for d, a in hits if d not in seen]
+    for doc_id, alert, why in _prioritize(copilot, fresh):
+        print(
+            f"\n=== {alert.alert_id} — {alert.title} "
+            f"[priority: {why}] ===",
+            flush=True,
+        )
+        try:
+            await _work_alert(
+                copilot, source, doc_id, alert, seen,
+                agentic=agentic, tiered=tiered, auto_close=auto_close,
+                notify=notify, case=case, dedup_window=dedup_window,
+            )
+        except Exception as e:
+            print(f"FAILED (will retry next cycle): {e}", flush=True)
+
+
 async def _run_watch(args: argparse.Namespace) -> None:
     """Continuous mode: the copilot works the open-alert queue by itself.
 
@@ -701,10 +820,10 @@ async def _run_watch(args: argparse.Namespace) -> None:
     (soc_copilot/triage.py — campaign and recurring-true-positive signals ahead
     of raw severity, so a backlog is worked the way a human lead would),
     investigate each, push the result, acknowledge the alert in Elastic
-    (which removes it from the next poll — acknowledgement IS the dedupe).
-    A per-session seen-set guards against re-investigating if an
-    acknowledgement fails; a failed alert is logged and retried on a
-    later cycle rather than killing the loop.
+    (which removes it from the next poll — acknowledgement IS the dedupe;
+    the per-session seen-set is a second guard for the window where a
+    status write hasn't taken effect). A failed alert is logged and
+    retried on a later cycle rather than killing the loop.
 
     With --auto-close, investigations that pass the deterministic closure
     policy (soc_copilot/closure.py: high-confidence false positive, no
@@ -717,43 +836,43 @@ async def _run_watch(args: argparse.Namespace) -> None:
     humans working its cases without an operator remembering to run
     --sync-feedback. A sync failure is logged and retried next time,
     never fatal.
+
+    This shell owns only what cannot run under a test: real construction,
+    the infinite loop, the sleep, and the feedback-sync timer. Everything
+    the loop DOES is _watch_once/_work_alert — the seam
+    tests/test_watch.py pins, so the ordering contract above is held by
+    tests rather than by careful reading.
     """
     import time
 
-    from .closure import should_auto_close
     from .config import settings
     from .elastic import ElasticAlertSource
 
     _require_investigation_keys()
     interval = args.interval
-    agentic = args.agentic
-    tiered = args.tiered
-    auto_close = args.auto_close
-    notify = args.notify
-    dedup_window = args.dedup
     try:
         source = ElasticAlertSource()
     except RuntimeError as e:
         print(e)
         sys.exit(1)
 
-    if notify and not settings.WEBHOOK_URL:
+    if args.notify and not settings.WEBHOOK_URL:
         # Fail loudly at startup rather than silently never paging.
         print("--notify requires WEBHOOK_URL in your .env")
         sys.exit(1)
     copilot = SOCCopilot()
     seen: set[str] = set()
-    mode = "agentic" if agentic else "phase one"
+    mode = "agentic" if args.agentic else "phase one"
     feedback = bool(settings.THEHIVE_URL and settings.THEHIVE_API_KEY)
     last_feedback_sync = float("-inf")
     # flush every line: when watch runs under nohup/systemd its output is
     # the operator's only heartbeat, and block-buffering would hide it
     print(
         f"Watching {source.alerts_index} every {interval}s ({mode} mode"
-        f"{', tiered on' if tiered else ''}"
-        f"{', auto-close on' if auto_close else ''}"
-        f"{', notifications on' if notify else ''}"
-        f"{f', dedup on ({dedup_window}h window)' if dedup_window else ''}"
+        f"{', tiered on' if args.tiered else ''}"
+        f"{', auto-close on' if args.auto_close else ''}"
+        f"{', notifications on' if args.notify else ''}"
+        f"{f', dedup on ({args.dedup}h window)' if args.dedup else ''}"
         f"{', analyst-feedback sync on' if feedback else ''}). "
         f"Ctrl+C to stop.",
         flush=True,
@@ -782,86 +901,12 @@ async def _run_watch(args: argparse.Namespace) -> None:
                     f"Feedback sync failed (will retry): {e}", flush=True
                 )
         try:
-            hits = await source.fetch_alert_hits(limit=10, status="open")
-            fresh = [(d, a) for d, a in hits if d not in seen]
-            for doc_id, alert, why in _prioritize(copilot, fresh):
-                print(
-                    f"\n=== {alert.alert_id} — {alert.title} "
-                    f"[priority: {why}] ===",
-                    flush=True,
-                )
-                try:
-                    suppressed_reason = None
-                    if dedup_window:
-                        from .dedup import try_suppress
-
-                        result = try_suppress(
-                            copilot.history, alert, dedup_window,
-                        )
-                        if result:
-                            investigation, suppressed_reason = result
-                            print(
-                                f"[dedup: {suppressed_reason} — no model "
-                                f"call spent]",
-                                flush=True,
-                            )
-                    if suppressed_reason is None:
-                        investigation = await _investigate(
-                            copilot, alert, agentic, tiered
-                        )
-                    close, reason = (
-                        should_auto_close(investigation)
-                        if auto_close
-                        else (False, None)
-                    )
-                    result_id = await source.push_investigation(
-                        alert,
-                        investigation,
-                        auto_closed=close,
-                        closure_reason=reason,
-                    )
-                    await source.set_alert_status(
-                        doc_id, "closed" if close else "acknowledged"
-                    )
-                    if close:
-                        # Record the autonomous action locally — the
-                        # scorecard's automation rate reads what the desk
-                        # actually did from the store. AFTER both Elastic
-                        # writes, deliberately: the log asserts what
-                        # happened, not what was about to happen (review
-                        # catch — recording first left a phantom closure
-                        # when the push failed; a crash between the status
-                        # write and this line undercounts instead, the
-                        # safe direction).
-                        copilot.history.record_closure(
-                            alert.alert_id, reason
-                        )
-                    seen.add(doc_id)
-                    # An auto-closed alert needs no human owner by
-                    # definition, so it never generates case-management
-                    # noise or a page; everything else is offered to the
-                    # policies. The page links to the case when one opened.
-                    if not close:
-                        case_id = await _maybe_open_case(
-                            alert, investigation, args.case, copilot.history
-                        )
-                        await _maybe_notify(
-                            alert, investigation, notify, case_id
-                        )
-                    disposition = (
-                        f"alert CLOSED autonomously ({reason})"
-                        if close
-                        else "alert acknowledged"
-                    )
-                    print(
-                        f"verdict={investigation.verdict} "
-                        f"confidence={investigation.confidence} "
-                        f"escalate={investigation.escalation_recommended} "
-                        f"-> pushed {result_id}, {disposition}",
-                        flush=True,
-                    )
-                except Exception as e:
-                    print(f"FAILED (will retry next cycle): {e}", flush=True)
+            await _watch_once(
+                copilot, source, seen,
+                agentic=args.agentic, tiered=args.tiered,
+                auto_close=args.auto_close, notify=args.notify,
+                case=args.case, dedup_window=args.dedup,
+            )
         except Exception as e:
             print(
                 f"Poll cycle failed (retrying in {interval}s): {e}", flush=True

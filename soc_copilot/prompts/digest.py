@@ -15,7 +15,12 @@ do not pad.
 # Priorities, in order
 Lead with what needs a human first, then account for the rest:
 1. Campaign-correlated or escalation-recommended investigations — these
-   are waiting on a human owner.
+   are waiting on a human owner. Investigations marked `auto_closed`
+   are NOT waiting on anyone: the desk closed them autonomously under
+   the closure policy (`closure_reason` says why). Never present an
+   auto-closed alert as needing attention — subtract them from any
+   queue or workload framing, and report their count separately as
+   work the desk finished by itself.
 2. Analyst rulings that came back, especially any that OVERTURNED the
    copilot's verdict — name what the ruling corrected.
 3. Standing disagreements between copilot and analysts — these are the

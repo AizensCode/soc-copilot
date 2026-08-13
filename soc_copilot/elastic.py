@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 
 import httpx
 
+from . import httpio
 from .config import settings
 from .models import Alert, Investigation
 
@@ -154,19 +155,24 @@ class ElasticAlertSource:
     def _headers(self) -> dict:
         return {"Authorization": f"ApiKey {self.api_key}"}
 
-    async def _post(self, path: str, body: dict) -> dict:
-        async def do(client: httpx.AsyncClient) -> dict:
-            resp = await client.post(
-                f"{self.url}{path}", json=body, headers=self._headers
-            )
-            resp.raise_for_status()
-            return resp.json()
+    async def _post(self, path: str, body: dict, replayable: bool = False) -> dict:
+        """POST under the shared outbound policy (soc_copilot/httpio.py).
 
+        `replayable` is a per-call-site fact: searches and fixed-value
+        updates can be applied twice, indexing a fresh results _doc
+        cannot (a replay would duplicate the row a dashboard counts).
+        """
         try:
-            if self._client is not None:
-                return await do(self._client)
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                return await do(client)
+            resp = await httpio.request(
+                "POST",
+                f"{self.url}{path}",
+                client=self._client,
+                timeout=20.0,
+                replayable=replayable,
+                json=body,
+                headers=self._headers,
+            )
+            return resp.json()
         except httpx.HTTPStatusError as e:
             raise RuntimeError(
                 f"Elastic returned HTTP {e.response.status_code} for {path}: "
@@ -193,7 +199,9 @@ class ElasticAlertSource:
                 }
             },
         }
-        data = await self._post(f"/{self.alerts_index}/_search", body)
+        data = await self._post(
+            f"/{self.alerts_index}/_search", body, replayable=True
+        )
         hits = data.get("hits", {}).get("hits", [])
         return [(h.get("_id", ""), normalize_hit(h)) for h in hits]
 
@@ -213,9 +221,12 @@ class ElasticAlertSource:
         API, which keeps the alert's audit trail; direct index updates are
         the dev-stack shortcut.
         """
+        # replayable: a fixed-value merge — applying it twice sets the
+        # same status twice.
         await self._post(
             f"/{self.alerts_index}/_update/{doc_id}?refresh=true",
             {"doc": {"kibana": {"alert": {"workflow_status": status}}}},
+            replayable=True,
         )
 
     async def acknowledge_alert(self, doc_id: str) -> None:
@@ -251,9 +262,11 @@ class ElasticAlertSource:
                 "query": {"term": {"alert_id.keyword": alert_id}},
                 "_source": ["verdict"],
             },
+            replayable=True,
         )
         hits = data.get("hits", {}).get("hits", [])
         for hit in hits:
+            # replayable: stamps the same computed values either time.
             await self._post(
                 f"/{self.results_index}/_update/{hit['_id']}?refresh=true",
                 {
@@ -264,6 +277,7 @@ class ElasticAlertSource:
                         == human_verdict,
                     }
                 },
+                replayable=True,
             )
         return len(hits)
 
@@ -321,5 +335,8 @@ class ElasticAlertSource:
                     "model": tel.model,
                 }
             )
+        # NOT replayable: /_doc auto-generates an id, so a replay after an
+        # ambiguous failure would index a duplicate results row (which the
+        # dashboard counts). Connect failures still retry inside httpio.
         data = await self._post(f"/{self.results_index}/_doc", doc)
         return data.get("_id", "")

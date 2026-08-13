@@ -282,6 +282,69 @@ def test_a_closure_superseded_by_later_human_work_is_not_automation(
     assert card2.auto_closed == 0 and card2.closures_superseded == 1
 
 
+def test_overturning_an_anchor_supersedes_its_suppressed_copies(
+    tmp_path, monkeypatch
+):
+    """A suppressed duplicate is closed on its ANCHOR's conclusion, never
+    its own, so the anchor is where that justification can be revoked.
+    Overturn the anchor and the copy's closure is stale even though
+    nothing about the copy changed — before this, supersession keyed on
+    alert_id alone and the copy kept counting as automation, so a digest
+    could narrate a copy of a just-confirmed intrusion as work the desk
+    finished by itself (review catch)."""
+    from datetime import timedelta
+
+    store = _store(tmp_path)
+    clock = _Clock(_T)
+    _freeze_history_clock(monkeypatch, clock)
+
+    _record2(store, "ANCHOR", "false_positive", ip="1.1.1.1")
+    _record2(store, "DUP", "false_positive", duplicate_of="ANCHOR",
+             ip="1.1.1.1")
+    store.record_closure("DUP", "borrowed high-confidence FP")
+    clock.now_value = _T + timedelta(hours=3)
+    store.record_disposition("ANCHOR", "true_positive", "thehive:case-7")
+
+    card = build_scorecard(store)
+    assert card.auto_closed_ids == set()             # the copy no longer stands
+    assert card.closures_superseded == 1
+
+    # ...and the digest, which reads that judgment, stops calling it done.
+    from soc_copilot.digest import build_digest_data
+
+    data = build_digest_data(
+        store, since_hours=24, now=_T + timedelta(hours=4)
+    )
+    dup = [e for e in data["investigated"] if e["alert_id"] == "DUP"][0]
+    assert dup["auto_closed"] is False
+    assert "closure_reason" not in dup
+    assert data["counts"]["auto_closed"] == 0
+
+
+def test_an_unrelated_ruling_does_not_supersede_a_duplicates_closure(
+    tmp_path, monkeypatch
+):
+    """The anchor lookup must follow `duplicate_of`, not any ruling in the
+    store: a copy whose own anchor was never overturned keeps counting."""
+    from datetime import timedelta
+
+    store = _store(tmp_path)
+    clock = _Clock(_T)
+    _freeze_history_clock(monkeypatch, clock)
+
+    _record2(store, "ANCHOR", "false_positive", ip="1.1.1.1")
+    _record2(store, "DUP", "false_positive", duplicate_of="ANCHOR",
+             ip="1.1.1.1")
+    store.record_closure("DUP", "borrowed high-confidence FP")
+    _record2(store, "OTHER", "true_positive", ip="5.5.5.5")
+    clock.now_value = _T + timedelta(hours=3)
+    store.record_disposition("OTHER", "true_positive", "thehive:case-8")
+
+    card = build_scorecard(store)
+    assert card.auto_closed_ids == {"DUP"}
+    assert card.closures_superseded == 0
+
+
 def test_a_standing_closure_is_not_superseded_by_its_own_investigation(
     tmp_path, monkeypatch
 ):

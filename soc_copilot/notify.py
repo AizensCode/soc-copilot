@@ -24,6 +24,7 @@ beside it, for a consumer that wants the data rather than the prose.
 """
 import httpx
 
+from . import httpio
 from .config import settings
 from .models import Alert, Investigation
 
@@ -122,18 +123,22 @@ class WebhookClient:
 
     async def post(self, payload: dict) -> None:
         """POST the payload; raises RuntimeError on HTTP failure. The
-        caller treats notification as never-fatal and catches."""
+        caller treats notification as never-fatal and catches.
 
-        async def do(client: httpx.AsyncClient) -> None:
-            resp = await client.post(self.url, json=payload)
-            resp.raise_for_status()
-
+        Marked replayable although a page is not idempotent: this
+        channel only ever fires for escalations and campaigns, so the
+        failure cost is asymmetric — a duplicate page is an apology, a
+        lost 03:00 page is the reason the channel exists.
+        """
         try:
-            if self._client is not None:
-                await do(self._client)
-            else:
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    await do(client)
+            await httpio.request(
+                "POST",
+                self.url,
+                client=self._client,
+                timeout=10.0,
+                replayable=True,
+                json=payload,
+            )
         except httpx.HTTPStatusError as e:
             raise RuntimeError(
                 f"Webhook returned HTTP {e.response.status_code}: "

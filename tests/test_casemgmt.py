@@ -287,6 +287,28 @@ async def test_http_error_surfaces_with_context():
         await _client(handler).create_alert(ALERT, _inv())
 
 
+def _unreachable(request: httpx.Request) -> httpx.Response:
+    raise httpx.ConnectError("connection refused")
+
+
+async def test_outage_surfaces_as_runtimeerror_not_a_raw_transport_error():
+    """An outage is a REFUSED CONNECTION, not a status code — and that is
+    the case `--case` promises to survive. A raw httpx error here slipped
+    past the caller's `except RuntimeError` and broke the never-fatal
+    contract, so the type is the contract (review catch)."""
+    with pytest.raises(RuntimeError, match="unreachable"):
+        await _client(_unreachable).create_alert(ALERT, _inv())
+
+
+async def test_read_paths_translate_outages_too():
+    """The same guarantee on the feedback channel's reads, so
+    --sync-feedback reports an outage instead of a traceback."""
+    with pytest.raises(RuntimeError, match="unreachable"):
+        await _client(_unreachable)._query("cases", {})
+    with pytest.raises(RuntimeError, match="unreachable"):
+        await _client(_unreachable)._get_case("~1")
+
+
 def test_unconfigured_client_raises_helpfully(monkeypatch):
     from types import SimpleNamespace
 

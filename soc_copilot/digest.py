@@ -54,11 +54,18 @@ def build_digest_data(
         latest[rec["alert_id"]] = rec  # file order: last line wins
 
     rulings = store.dispositions()
+    # The scorecard already decides which autonomous closures still STAND
+    # (a closure superseded by a later re-investigation or analyst ruling
+    # is human work, not automation) — reuse that judgment rather than
+    # re-deriving it. Built before the entry loop so each in-window entry
+    # can say whether it is waiting on a human at all.
+    card = build_scorecard(store)
+    closures = store.closures()
 
     investigated: list[dict] = []
     counts = {
         "true_positive": 0, "false_positive": 0, "inconclusive": 0,
-        "escalations": 0, "campaigns": 0,
+        "escalations": 0, "campaigns": 0, "auto_closed": 0,
     }
     for rec in latest.values():
         if not _in_window(rec.get("investigated_at"), cutoff):
@@ -66,6 +73,7 @@ def build_digest_data(
         inv = rec.get("investigation", {})
         correlation = inv.get("correlation") or {}
         ruling = rulings.get(rec["alert_id"])
+        auto_closed = rec["alert_id"] in card.auto_closed_ids
         entry = {
             "alert_id": rec["alert_id"],
             "title": rec.get("title", ""),
@@ -78,13 +86,21 @@ def build_digest_data(
             "cost_usd": rec.get("cost_usd"),
             "duration_seconds": rec.get("duration_seconds"),
             "duplicate_of": rec.get("duplicate_of"),
+            # An alert the desk closed by policy is NOT in the human
+            # queue — until this flag the digest could not tell one from
+            # an acknowledged alert waiting for review (roadmap item,
+            # named by the scorecard review).
+            "auto_closed": auto_closed,
         }
+        if auto_closed:
+            entry["closure_reason"] = closures[rec["alert_id"]].get("reason")
         if ruling:
             entry["analyst_ruled"] = ruling["human_verdict"]
         investigated.append(entry)
         counts[rec["verdict"]] = counts.get(rec["verdict"], 0) + 1
         counts["escalations"] += entry["escalation_recommended"]
         counts["campaigns"] += entry["is_campaign"]
+        counts["auto_closed"] += auto_closed
     investigated.sort(key=lambda e: e["investigated_at"], reverse=True)
 
     new_rulings: list[dict] = []
@@ -139,7 +155,6 @@ def build_digest_data(
         "suppressed_with_unknown_saving": len(suppressed) - len(known_savings),
     }
 
-    card = build_scorecard(store)
     return {
         "generated_at": now.isoformat(),
         "window_hours": since_hours,

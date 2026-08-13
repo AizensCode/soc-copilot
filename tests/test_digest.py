@@ -171,3 +171,38 @@ async def test_briefing_narrates_only_the_assembled_data(tmp_path):
     [request] = client.requests
     sent = request["messages"][0]["content"]
     assert json.dumps(data, indent=2) in sent  # the data, verbatim
+
+
+def test_auto_closed_alert_is_flagged_and_counted(tmp_path):
+    """The queue must be able to tell 'the desk finished this by itself'
+    from 'waiting on a human' — a standing closure flags its entry and
+    carries the policy reason for the narration."""
+    store = _store(tmp_path)
+    store.record(_alert("AC"), _inv("AC", verdict="false_positive"))
+    store.record_closure("AC", "high-confidence false positive")
+    store.record(_alert("WAITING", ip="8.8.8.8"), _inv("WAITING"))
+
+    data = build_digest_data(store, since_hours=24)
+    by_id = {e["alert_id"]: e for e in data["investigated"]}
+    assert by_id["AC"]["auto_closed"] is True
+    assert by_id["AC"]["closure_reason"] == "high-confidence false positive"
+    assert by_id["WAITING"]["auto_closed"] is False
+    assert "closure_reason" not in by_id["WAITING"]
+    assert data["counts"]["auto_closed"] == 1
+
+
+def test_superseded_closure_is_not_presented_as_closed(tmp_path):
+    """A closure a human later overrode is human work, not automation —
+    the digest reuses the scorecard's standing-closure judgment, so the
+    entry must NOT read as closed."""
+    store = _store(tmp_path)
+    store.record(_alert("SUP"), _inv("SUP", verdict="false_positive"))
+    store.record_closure("SUP", "high-confidence false positive")
+    # analyst overturns it AFTER the closure: the closure no longer stands
+    store.record_disposition("SUP", "true_positive", "thehive:case-9")
+
+    data = build_digest_data(store, since_hours=24)
+    [entry] = data["investigated"]
+    assert entry["auto_closed"] is False
+    assert data["counts"]["auto_closed"] == 0
+    assert entry["analyst_ruled"] == "true_positive"

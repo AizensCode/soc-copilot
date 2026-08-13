@@ -67,11 +67,19 @@ class Scorecard:
     rulings: list[Ruling] = field(default_factory=list)
     # --- the desk (v2) ---
     worked: int = 0                # distinct alerts incl. suppressed dupes
-    auto_closed: int = 0           # closures still standing (not superseded)
+    # Closures still STANDING (not superseded by later human work), by
+    # alert id. The set, not just a count, because the digest needs to
+    # know WHICH in-window alerts closed themselves — deriving the count
+    # from the set keeps the two from ever drifting.
+    auto_closed_ids: set[str] = field(default_factory=set)
     suppressed: int = 0            # alerts whose latest record is a dedup
     automated: int = 0             # |auto-closed ∪ suppressed| (no double count)
     closures_superseded: int = 0   # closures later overtaken by human work
     time_to_verdict_s: list[float] = field(default_factory=list)
+
+    @property
+    def auto_closed(self) -> int:
+        return len(self.auto_closed_ids)
 
     @property
     def disagreements(self) -> list[Ruling]:
@@ -151,6 +159,13 @@ def _aware(ts: datetime) -> datetime:
     return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
 
 
+def _is_after(raw: str | None, when: datetime) -> bool:
+    """Did `raw` (an ISO timestamp, or nothing recorded) happen after
+    `when`? Missing is False: no evidence of a later event is not
+    evidence of one."""
+    return bool(raw) and _aware(datetime.fromisoformat(raw)) > when
+
+
 def build_scorecard(store: AlertHistoryStore) -> Scorecard:
     """Join the copilot's LATEST verdict per alert with the analyst's
     latest ruling, and fold in what the desk did (closures, suppressions,
@@ -203,15 +218,24 @@ def build_scorecard(store: AlertHistoryStore) -> Scorecard:
         closed_raw = event.get("closed_at")
         if closed_raw:
             closed = _aware(datetime.fromisoformat(closed_raw))
-            inv_raw = last_real_at.get(aid)
-            inv_after = inv_raw and _aware(
-                datetime.fromisoformat(inv_raw)
-            ) > closed
-            ruled_raw = dispositions.get(aid, {}).get("recorded_at")
-            ruled_after = ruled_raw and _aware(
-                datetime.fromisoformat(ruled_raw)
-            ) > closed
-            if inv_after or ruled_after:
+            # A suppressed duplicate was closed on its ANCHOR's conclusion,
+            # never its own, so the anchor is where its justification can be
+            # revoked: overturn the anchor and the copy's closure reason is
+            # stale even though nothing about the copy changed. Check both
+            # ids (review catch) — dedup already refuses to suppress against
+            # an overturned fingerprint going forward, and this is the same
+            # rule applied to closures already on the books.
+            sources = [aid]
+            anchor = latest_any[aid].get("duplicate_of")
+            if anchor:
+                sources.append(anchor)
+            if any(
+                _is_after(last_real_at.get(src), closed)
+                or _is_after(
+                    dispositions.get(src, {}).get("recorded_at"), closed
+                )
+                for src in sources
+            ):
                 superseded += 1
                 continue
         closure_ids.add(aid)
@@ -255,7 +279,7 @@ def build_scorecard(store: AlertHistoryStore) -> Scorecard:
         agreements=agreements,
         rulings=rulings,
         worked=len(latest_any),
-        auto_closed=len(closure_ids),
+        auto_closed_ids=closure_ids,
         suppressed=len(suppressed_ids),
         automated=len(closure_ids | suppressed_ids),
         closures_superseded=superseded,

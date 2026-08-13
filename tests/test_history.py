@@ -287,3 +287,74 @@ def test_created_alerts_ledger_roundtrip_latest_wins(tmp_path):
     store.record_created_alert("AL-1", "~obj-1b")   # re-push: latest wins
     ledger = store.created_alerts()
     assert ledger == {"AL-1": "~obj-1b", "AL-2": "~obj-2"}
+
+
+def test_cache_serves_parsed_records_without_reparsing_unchanged_file(tmp_path):
+    """The summary index: an unchanged file is parsed once, not per read.
+
+    Identity of the returned list is the proof — a re-parse would build a
+    new list. This is what keeps a long-running watch from re-reading its
+    whole history O(alerts x records) times per poll cycle.
+    """
+    store = AlertHistoryStore(tmp_path / "investigations.jsonl")
+    when = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    store.record(_alert("A1", {"ips": ["1.1.1.1"]}, when), _inv("A1"))
+
+    first = store._records_cache.records()
+    second = store._records_cache.records()
+    assert first is second                       # cached, not re-parsed
+    assert [r["alert_id"] for r in first] == ["A1"]
+
+
+def test_cache_invalidates_on_append_from_same_store(tmp_path):
+    store = AlertHistoryStore(tmp_path / "investigations.jsonl")
+    when = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    store.record(_alert("A1", {"ips": ["1.1.1.1"]}, when), _inv("A1"))
+    assert len(list(store._iter_records())) == 1
+
+    store.record(_alert("A2", {"ips": ["2.2.2.2"]}, when), _inv("A2"))
+    assert [r["alert_id"] for r in store._iter_records()] == ["A1", "A2"]
+
+
+def test_cache_sees_writes_from_another_store_instance(tmp_path):
+    """The cache key is file state (mtime_ns, size), not this process's
+    write history — a cron --sync-feedback appending beside a running
+    watch must be visible on the watch's next read."""
+    path = tmp_path / "investigations.jsonl"
+    reader = AlertHistoryStore(path)
+    writer = AlertHistoryStore(path)
+    assert list(reader._iter_records()) == []    # caches emptiness
+
+    when = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    writer.record(_alert("A1", {"ips": ["1.1.1.1"]}, when), _inv("A1"))
+    assert [r["alert_id"] for r in reader._iter_records()] == ["A1"]
+
+    writer.record_disposition("A1", "false_positive", "thehive:case-1")
+    assert reader.dispositions()["A1"]["human_verdict"] == "false_positive"
+
+
+def test_cache_reparse_rebinds_so_inflight_iterators_keep_their_snapshot(tmp_path):
+    """An iterator handed out before a write walks its own snapshot —
+    a re-parse rebinds the cached list, never mutates it in place."""
+    store = AlertHistoryStore(tmp_path / "investigations.jsonl")
+    when = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    store.record(_alert("A1", {"ips": ["1.1.1.1"]}, when), _inv("A1"))
+
+    it = store._iter_records()
+    assert next(it)["alert_id"] == "A1"
+    store.record(_alert("A2", {"ips": ["2.2.2.2"]}, when), _inv("A2"))
+    store._records_cache.records()               # force the re-parse
+    assert list(it) == []                        # old snapshot: exhausted
+
+
+def test_cache_handles_file_deletion_as_empty_store(tmp_path):
+    store = AlertHistoryStore(tmp_path / "investigations.jsonl")
+    when = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    store.record(_alert("A1", {"ips": ["1.1.1.1"]}, when), _inv("A1"))
+    assert len(list(store._iter_records())) == 1
+
+    store.path.unlink()
+    assert list(store._iter_records()) == []
+    # and a recreated file is picked up again (key was reset, not stuck)
+    store.record(_alert("A3", {"ips": ["3.3.3.3"]}, when), _inv("A3"))
+    assert [r["alert_id"] for r in store._iter_records()] == ["A3"]

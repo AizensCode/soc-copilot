@@ -34,6 +34,7 @@ updates/dedupes rather than piling up duplicates.
 """
 import httpx
 
+from . import httpio
 from .config import settings
 from .models import Alert, Investigation
 
@@ -253,7 +254,14 @@ def investigation_to_alert(
 
 
 class TheHiveClient:
-    """Create TheHive alerts from investigations."""
+    """Create TheHive alerts from investigations.
+
+    Every HTTP failure leaves this class as a RuntimeError — a status the
+    server returned and a connection it never answered alike. That single
+    exception type IS the contract the never-fatal callers catch on, so a
+    channel that leaks a raw transport error silently breaks their promise
+    (`notify.py` translates the same way, for the same reason).
+    """
 
     def __init__(
         self,
@@ -286,64 +294,85 @@ class TheHiveClient:
     async def create_alert(
         self, alert: Alert, investigation: Investigation
     ) -> str:
-        """POST the investigation as a TheHive alert; returns its id."""
-        payload = investigation_to_alert(alert, investigation)
+        """POST the investigation as a TheHive alert; returns its id.
 
-        async def do(client: httpx.AsyncClient) -> dict:
-            resp = await client.post(
+        NOT replayable: an ambiguous failure (the request may have been
+        processed) must not risk a second alert object — a duplicate
+        would also confuse the provenance ledger, which records ONE
+        TheHive id per sourceRef. Connect failures still retry.
+        """
+        payload = investigation_to_alert(alert, investigation)
+        try:
+            resp = await httpio.request(
+                "POST",
                 f"{self.url}/api/v1/alert",
+                client=self._client,
+                timeout=20.0,
                 json=payload,
                 headers=self._headers,
             )
-            resp.raise_for_status()
-            return resp.json()
-
-        try:
-            if self._client is not None:
-                data = await do(self._client)
-            else:
-                async with httpx.AsyncClient(timeout=20.0) as client:
-                    data = await do(client)
+            data = resp.json()
         except httpx.HTTPStatusError as e:
             raise RuntimeError(
                 f"TheHive returned HTTP {e.response.status_code} creating an "
                 f"alert for {alert.alert_id}: {e.response.text[:200]}"
             ) from e
+        except httpx.HTTPError as e:
+            # A refused/timed-out connection is the shape a real TheHive
+            # outage takes, and it is exactly the case `--case` promises to
+            # survive. Untranslated it escaped the caller's `except
+            # RuntimeError`, aborting the alert AFTER its Elastic
+            # acknowledgement — so the case AND the page that follows it
+            # were lost under a log line promising a retry that could never
+            # come (review catch).
+            raise RuntimeError(
+                f"TheHive was unreachable creating an alert for "
+                f"{alert.alert_id}: {e}"
+            ) from e
         return str(data.get("_id") or data.get("id") or "")
 
     async def _query(self, name: str, body: dict) -> list | dict:
-        async def do(client: httpx.AsyncClient) -> list | dict:
-            resp = await client.post(
+        try:
+            resp = await httpio.request(
+                "POST",
                 f"{self.url}/api/v1/query?name={name}",
+                client=self._client,
+                timeout=20.0,
+                replayable=True,  # a read, POST shape notwithstanding
                 json=body,
                 headers=self._headers,
             )
-            resp.raise_for_status()
             return resp.json()
-
-        try:
-            if self._client is not None:
-                return await do(self._client)
-            async with httpx.AsyncClient(timeout=20.0) as client:
-                return await do(client)
         except httpx.HTTPStatusError as e:
             raise RuntimeError(
                 f"TheHive returned HTTP {e.response.status_code} for query "
                 f"'{name}': {e.response.text[:200]}"
             ) from e
+        except httpx.HTTPError as e:
+            raise RuntimeError(
+                f"TheHive was unreachable for query '{name}': {e}"
+            ) from e
 
     async def _get_case(self, case_id: str) -> dict:
-        async def do(client: httpx.AsyncClient) -> dict:
-            resp = await client.get(
-                f"{self.url}/api/v1/case/{case_id}", headers=self._headers
+        try:
+            resp = await httpio.request(
+                "GET",
+                f"{self.url}/api/v1/case/{case_id}",
+                client=self._client,
+                timeout=20.0,
+                replayable=True,
+                headers=self._headers,
             )
-            resp.raise_for_status()
-            return resp.json()
-
-        if self._client is not None:
-            return await do(self._client)
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            return await do(client)
+        except httpx.HTTPStatusError as e:
+            raise RuntimeError(
+                f"TheHive returned HTTP {e.response.status_code} fetching "
+                f"case {case_id}: {e.response.text[:200]}"
+            ) from e
+        except httpx.HTTPError as e:
+            raise RuntimeError(
+                f"TheHive was unreachable fetching case {case_id}: {e}"
+            ) from e
+        return resp.json()
 
     async def fetch_dispositions(
         self, created_alerts: dict[str, str], handled_alerts: set[str]

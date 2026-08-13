@@ -88,6 +88,53 @@ def _parent_tcodes(techniques: list[str]) -> set[str]:
     return codes
 
 
+class _CachedJsonl:
+    """Parsed-record cache for one append-only JSONL file.
+
+    Every read of the store used to re-read and re-parse the whole file
+    from disk. In watch mode the same file is walked many times per poll
+    cycle — queue prioritization, memory lookups inside each
+    investigation, dedup's anchor scan — so the cost was
+    O(alerts x records) json.loads per cycle, growing with every day the
+    desk runs. The cache keys on (st_mtime_ns, st_size): every writer
+    appends, appends grow the file, so any write — by this process or
+    another — changes the key and forces exactly one re-parse.
+
+    Two contracts callers rely on:
+    - Records are the SAME dict objects across calls. Callers treat them
+      as read-only (every store reader builds new structures; the one
+      annotator, latest_record, copies first). Mutating one in place
+      would poison every later read until the file next changes.
+    - A re-parse REBINDS the list, never mutates it, so an iterator
+      handed out before a write keeps walking its own snapshot.
+    """
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self._key: tuple[int, int] | None = None
+        self._records: list[dict] = []
+
+    def records(self) -> list[dict]:
+        try:
+            st = self.path.stat()
+        except OSError:  # missing file: an empty store, not an error
+            self._key = None
+            self._records = []
+            return self._records
+        key = (st.st_mtime_ns, st.st_size)
+        if key != self._key:
+            # stat-then-read is deliberate: a write landing between the
+            # two leaves NEWER content cached under the OLDER key, so the
+            # next read re-parses (one wasted parse) — never stale data.
+            self._records = [
+                json.loads(line)
+                for line in self.path.read_text().splitlines()
+                if line.strip()
+            ]
+            self._key = key
+        return self._records
+
+
 class AlertHistoryStore:
     """Persist investigations and look them up by shared indicator.
 
@@ -96,6 +143,11 @@ class AlertHistoryStore:
     management. The copilot's own verdicts are opinions; a human ruling
     on one of them is ground truth, and prior sightings carry both so
     the model can never cite an overturned opinion as unchallenged.
+
+    Reads go through per-file parsed-record caches (_CachedJsonl) — the
+    summary index that keeps a long-running watch from re-parsing its
+    whole history on every lookup. Writes are unchanged: plain appends,
+    which are exactly what invalidates the cache.
     """
 
     def __init__(self, path: str | Path) -> None:
@@ -103,14 +155,13 @@ class AlertHistoryStore:
         self.dispositions_path = self.path.with_name("dispositions.jsonl")
         self.closures_path = self.path.with_name("closures.jsonl")
         self.created_alerts_path = self.path.with_name("created_alerts.jsonl")
+        self._records_cache = _CachedJsonl(self.path)
+        self._dispositions_cache = _CachedJsonl(self.dispositions_path)
+        self._closures_cache = _CachedJsonl(self.closures_path)
+        self._created_alerts_cache = _CachedJsonl(self.created_alerts_path)
 
     def _iter_records(self) -> Iterator[dict]:
-        if not self.path.exists():
-            return
-        for line in self.path.read_text().splitlines():
-            line = line.strip()
-            if line:
-                yield json.loads(line)
+        yield from self._records_cache.records()
 
     def record_disposition(
         self,
@@ -138,15 +189,14 @@ class AlertHistoryStore:
             f.write(json.dumps(rec) + "\n")
 
     def dispositions(self) -> dict[str, dict]:
-        """Latest analyst ruling per alert_id."""
+        """Latest analyst ruling per alert_id.
+
+        The mapping is built fresh per call (callers may .pop() it);
+        the record dicts inside are the cache's — read-only by contract.
+        """
         out: dict[str, dict] = {}
-        if not self.dispositions_path.exists():
-            return out
-        for line in self.dispositions_path.read_text().splitlines():
-            line = line.strip()
-            if line:
-                rec = json.loads(line)
-                out[rec["alert_id"]] = rec
+        for rec in self._dispositions_cache.records():
+            out[rec["alert_id"]] = rec
         return out
 
     def record_created_alert(self, alert_id: str, thehive_id: str) -> None:
@@ -174,13 +224,8 @@ class AlertHistoryStore:
         """alert_id (sourceRef) -> the latest TheHive object id we created
         for it. The trusted set for the feedback loop."""
         out: dict[str, str] = {}
-        if not self.created_alerts_path.exists():
-            return out
-        for line in self.created_alerts_path.read_text().splitlines():
-            line = line.strip()
-            if line:
-                rec = json.loads(line)
-                out[rec["alert_id"]] = rec.get("thehive_id", "")
+        for rec in self._created_alerts_cache.records():
+            out[rec["alert_id"]] = rec.get("thehive_id", "")
         return out
 
     def record_closure(self, alert_id: str, reason: str | None) -> None:
@@ -203,13 +248,8 @@ class AlertHistoryStore:
     def closures(self) -> dict[str, dict]:
         """Latest autonomous-closure event per alert_id."""
         out: dict[str, dict] = {}
-        if not self.closures_path.exists():
-            return out
-        for line in self.closures_path.read_text().splitlines():
-            line = line.strip()
-            if line:
-                rec = json.loads(line)
-                out[rec["alert_id"]] = rec
+        for rec in self._closures_cache.records():
+            out[rec["alert_id"]] = rec
         return out
 
     def record(self, alert: Alert, investigation: Investigation) -> None:
