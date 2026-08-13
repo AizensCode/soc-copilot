@@ -5,7 +5,10 @@ its logic is validated without touching Anthropic. Run:
 
     uv run pytest tests/test_history.py -v
 """
+import json
 from datetime import datetime, timedelta, timezone
+
+import pytest
 
 from soc_copilot.history import AlertHistoryStore, alert_iocs
 from soc_copilot.models import Alert, Investigation
@@ -344,6 +347,179 @@ def test_cache_reparse_rebinds_so_inflight_iterators_keep_their_snapshot(tmp_pat
     assert next(it)["alert_id"] == "A1"
     store.record(_alert("A2", {"ips": ["2.2.2.2"]}, when), _inv("A2"))
     store._records_cache.records()               # force the re-parse
+    assert list(it) == []                        # old snapshot: exhausted
+
+
+def test_appending_reparses_only_the_new_lines(tmp_path):
+    """The whole point of the offset: the watch loop's last act on every
+    alert is an append, so a cache that re-parsed on any write re-parsed
+    the ENTIRE history once per alert — O(history) per alert, forever.
+    Counting json.loads calls is the only honest proof it is incremental;
+    an assertion on the returned records would pass either way."""
+    import json as _json
+
+    store = AlertHistoryStore(tmp_path / "investigations.jsonl")
+    when = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    for i in range(50):
+        store.record(_alert(f"A{i}", {"ips": [f"10.0.0.{i}"]}, when), _inv(f"A{i}"))
+    assert len(list(store._iter_records())) == 50   # warm: full parse done
+
+    calls = 0
+    real_loads = _json.loads
+
+    def counting_loads(s, *a, **k):
+        nonlocal calls
+        calls += 1
+        return real_loads(s, *a, **k)
+
+    import soc_copilot.history as hist
+
+    hist.json.loads = counting_loads
+    try:
+        store.record(_alert("NEW", {"ips": ["9.9.9.9"]}, when), _inv("NEW"))
+        records = list(store._iter_records())
+    finally:
+        hist.json.loads = real_loads
+
+    assert len(records) == 51
+    assert records[-1]["alert_id"] == "NEW"
+    assert calls == 1                    # the appended line ONLY, not 51
+
+
+def _write_lines(path, ids):
+    path.write_text("".join(f'{{"alert_id": "{i}"}}\n' for i in ids))
+
+
+def test_a_truncated_or_rewritten_file_is_never_served_from_a_stale_prefix(
+    tmp_path,
+):
+    """Incremental parsing trusts that the prefix it already read is still
+    there. Every writer here appends, but if a file is truncated or
+    rewritten the cache must start over rather than splice new bytes onto
+    a prefix that no longer exists."""
+    from soc_copilot.history import _CachedJsonl
+
+    path = tmp_path / "records.jsonl"
+    _write_lines(path, ["A1", "A2", "A3"])
+    cache = _CachedJsonl(path)
+    assert [r["alert_id"] for r in cache.records()] == ["A1", "A2", "A3"]
+
+    # Rewritten shorter: the old prefix is gone.
+    _write_lines(path, ["A1"])
+    assert [r["alert_id"] for r in cache.records()] == ["A1"]
+
+    # Rewritten AND grown: size alone reads as a plain append, so only
+    # re-checking the prefix stops the new tail being grafted onto records
+    # that no longer exist.
+    _write_lines(path, ["ZZ", "B1"])
+    assert [r["alert_id"] for r in cache.records()] == ["ZZ", "B1"]
+
+    # A genuine append after all that still parses incrementally.
+    with path.open("a") as f:
+        f.write('{"alert_id": "B2"}\n')
+    assert [r["alert_id"] for r in cache.records()] == ["ZZ", "B1", "B2"]
+
+
+def test_a_replaced_file_is_not_spliced_onto_the_old_one(tmp_path):
+    """A file swapped in by rename keeps a plausible size but is a
+    different inode — splicing onto the old prefix would invent history."""
+    path = tmp_path / "investigations.jsonl"
+    store = AlertHistoryStore(path)
+    when = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    store.record(_alert("OLD1", {"ips": ["1.1.1.1"]}, when), _inv("OLD1"))
+    store.record(_alert("OLD2", {"ips": ["2.2.2.2"]}, when), _inv("OLD2"))
+    assert len(list(store._iter_records())) == 2
+
+    replacement = tmp_path / "other.jsonl"
+    other = AlertHistoryStore(replacement)
+    other.record(_alert("NEW1", {"ips": ["3.3.3.3"]}, when), _inv("NEW1"))
+    other.record(_alert("NEW2", {"ips": ["4.4.4.4"]}, when), _inv("NEW2"))
+    other.record(_alert("NEW3", {"ips": ["5.5.5.5"]}, when), _inv("NEW3"))
+    replacement.replace(path)
+
+    assert [r["alert_id"] for r in store._iter_records()] == [
+        "NEW1", "NEW2", "NEW3",
+    ]
+
+
+def test_a_corrupt_line_fails_the_same_way_on_every_call(tmp_path):
+    """A bad line must never degrade into SILENT truncation.
+
+    Incremental parsing made this a live hazard: commit the new file state
+    before the parse and the failed read advances the cache anyway, so the
+    next call takes the fast path and returns a short list with no error at
+    all. That is far worse than a loud error — `dispositions()` quietly
+    losing an analyst ruling makes an overturned verdict read as
+    unchallenged, which is exactly what this store promises can't happen.
+    """
+    from soc_copilot.history import _CachedJsonl
+
+    path = tmp_path / "records.jsonl"
+    _write_lines(path, ["A1", "A2"])
+    cache = _CachedJsonl(path)
+    assert [r["alert_id"] for r in cache.records()] == ["A1", "A2"]
+
+    with path.open("a") as f:                    # a torn write, then a clean one
+        f.write('{"alert_id": "A3"\n')
+        f.write('{"alert_id": "A4"}\n')
+
+    for _ in range(3):                           # loud, and loud EVERY time
+        with pytest.raises(json.JSONDecodeError):
+            cache.records()
+
+    # ...and it recovers once the file is repaired, rather than staying stuck.
+    _write_lines(path, ["A1", "A2", "A3", "A4"])
+    assert [r["alert_id"] for r in cache.records()] == ["A1", "A2", "A3", "A4"]
+
+
+def test_a_corrupt_line_never_reports_an_empty_history(tmp_path):
+    """The reset branch is the nastier half: it clears the cache before
+    parsing, so a failed whole-file re-parse could leave the store
+    reporting NO history at all — with no error on the second call."""
+    from soc_copilot.history import _CachedJsonl
+
+    path = tmp_path / "records.jsonl"
+    _write_lines(path, ["A1", "A2", "A3"])
+    cache = _CachedJsonl(path)
+    assert len(cache.records()) == 3
+
+    path.write_text('{"alert_id": "B1"}\n{"alert_id": OOPS}\n')   # rewritten badly
+    for _ in range(3):
+        with pytest.raises(json.JSONDecodeError):
+            cache.records()
+
+
+def test_a_half_written_line_is_never_parsed(tmp_path):
+    """Reading while a writer is mid-append must not raise: only bytes up
+    to the last newline are consumed, and the record appears once the
+    writer finishes its line."""
+    store = AlertHistoryStore(tmp_path / "investigations.jsonl")
+    when = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    store.record(_alert("A1", {"ips": ["1.1.1.1"]}, when), _inv("A1"))
+    assert len(list(store._iter_records())) == 1
+
+    torn = '{"alert_id": "A2", "verdict": "false_p'
+    with store.path.open("a") as f:
+        f.write(torn)
+    assert [r["alert_id"] for r in store._iter_records()] == ["A1"]  # no crash
+
+    with store.path.open("a") as f:                # writer completes it
+        f.write('ositive", "timestamp": "x", "iocs": [], "duplicate_of": null}\n')
+    assert [r["alert_id"] for r in store._iter_records()] == ["A1", "A2"]
+
+
+def test_appending_rebinds_so_inflight_iterators_keep_their_snapshot(tmp_path):
+    """The snapshot contract has to survive the incremental path too: an
+    append extends the cache by REBINDING, never mutating in place, so an
+    iterator handed out earlier cannot see records appended after it."""
+    store = AlertHistoryStore(tmp_path / "investigations.jsonl")
+    when = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    store.record(_alert("A1", {"ips": ["1.1.1.1"]}, when), _inv("A1"))
+
+    it = store._iter_records()
+    assert next(it)["alert_id"] == "A1"
+    store.record(_alert("A2", {"ips": ["2.2.2.2"]}, when), _inv("A2"))
+    store._records_cache.records()               # force the incremental parse
     assert list(it) == []                        # old snapshot: exhausted
 
 

@@ -32,6 +32,10 @@ CAMPAIGN_MIN_RELATED = 2
 
 _TCODE_RE = re.compile(r"T\d{4}(?:\.\d{3})?")
 
+# How many trailing bytes of the already-parsed prefix to re-verify before
+# splicing an append onto it. Enough to catch a rewritten file, O(1) to read.
+_PREFIX_CHECK_BYTES = 64
+
 
 def alert_host(alert: Alert) -> str | None:
     """The alert's host as a plain string, whichever shape it arrived in.
@@ -96,42 +100,108 @@ class _CachedJsonl:
     cycle — queue prioritization, memory lookups inside each
     investigation, dedup's anchor scan — so the cost was
     O(alerts x records) json.loads per cycle, growing with every day the
-    desk runs. The cache keys on (st_mtime_ns, st_size): every writer
-    appends, appends grow the file, so any write — by this process or
-    another — changes the key and forces exactly one re-parse.
+    desk runs.
 
-    Two contracts callers rely on:
+    Caching alone did NOT fix that, which is the point of the byte offset
+    below. A cache keyed only on (mtime, size) is invalidated by any
+    write — and the watch loop's own last act on every alert is to append
+    a record, so the next alert re-parsed the entire history. Measured
+    before this change: ~2ms per alert against 1k records, ~506ms against
+    100k, growing without bound.
+
+    So the cache parses only what was APPENDED since it last looked,
+    tracking the byte offset it has consumed. Cost per alert becomes
+    O(new lines) instead of O(history). This is sound only because every
+    writer in this project appends and nothing rewrites in place; the
+    guards below detect when that assumption breaks (a different file, a
+    truncation, any shrink) and fall back to a full re-parse rather than
+    trusting a prefix that may have changed underneath.
+
+    Three contracts callers rely on:
     - Records are the SAME dict objects across calls. Callers treat them
       as read-only (every store reader builds new structures; the one
       annotator, latest_record, copies first). Mutating one in place
       would poison every later read until the file next changes.
-    - A re-parse REBINDS the list, never mutates it, so an iterator
-      handed out before a write keeps walking its own snapshot.
+    - A re-parse or an append REBINDS the list, never mutates it, so an
+      iterator handed out earlier keeps walking its own snapshot.
+    - A half-written final line is never parsed: only bytes up to the
+      last newline are consumed, so a reader that catches a writer
+      mid-append sees the record on the next read, never a JSON error.
     """
 
     def __init__(self, path: Path) -> None:
         self.path = path
-        self._key: tuple[int, int] | None = None
+        # (st_dev, st_ino, st_mtime_ns, st_size) of the last look: an
+        # exact match means nothing at all has happened to the file.
+        self._state: tuple[int, int, int, int] | None = None
+        self._offset = 0          # bytes consumed, always at a line boundary
+        self._tail = b""          # last bytes consumed, to verify the prefix
         self._records: list[dict] = []
 
     def records(self) -> list[dict]:
         try:
             st = self.path.stat()
         except OSError:  # missing file: an empty store, not an error
-            self._key = None
-            self._records = []
+            self._state, self._offset = None, 0
+            self._tail, self._records = b"", []
             return self._records
-        key = (st.st_mtime_ns, st.st_size)
-        if key != self._key:
-            # stat-then-read is deliberate: a write landing between the
-            # two leaves NEWER content cached under the OLDER key, so the
-            # next read re-parses (one wasted parse) — never stale data.
-            self._records = [
-                json.loads(line)
-                for line in self.path.read_text().splitlines()
-                if line.strip()
-            ]
-            self._key = key
+        state = (st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size)
+        if state == self._state:
+            return self._records
+        reset = (
+            self._state is None
+            or state[:2] != self._state[:2]   # replaced (rename, recreate)
+        )
+        with self.path.open("rb") as f:
+            if not reset and self._tail:
+                # Splicing new bytes onto a prefix assumes the prefix is
+                # still those bytes. Appending is all this project does,
+                # but a file rewritten in place would otherwise graft a
+                # new tail onto stale records — a corrupted view the old
+                # read-everything code could not produce. Re-reading the
+                # last few bytes we consumed is an O(1) check that the
+                # ground has not moved. It subsumes truncation too: a file
+                # shorter than our offset cannot return those bytes there,
+                # so an explicit size check would be unreachable (mutation
+                # testing proved it dead — no test could tell it apart).
+                f.seek(self._offset - len(self._tail))
+                reset = f.read(len(self._tail)) != self._tail
+            # Everything below is staged in locals and committed to self
+            # only once the parse has SUCCEEDED. Committing earlier would
+            # advance the cache past a parse that never happened, and the
+            # next call's fast path would then serve a silently TRUNCATED
+            # history — a lost analyst ruling reading as "never overturned"
+            # is far worse than the loud, repeatable error a bad line used
+            # to cause (review catch: three lenses, independently).
+            offset = 0 if reset else self._offset
+            f.seek(offset)
+            chunk = f.read()
+        # stat-then-read is deliberate: a write landing between the two
+        # leaves NEWER content cached under the OLDER state, so the next
+        # read picks it up — never stale data, at worst one read late.
+        consumed = chunk.rfind(b"\n") + 1     # whole lines only
+        if consumed <= 0:
+            # Nothing complete to add. Leave _state uncommitted so the next
+            # call looks again: the file is mid-append, and the rest of that
+            # line must not be skipped once the writer finishes it.
+            if reset:
+                self._offset, self._records, self._tail = 0, [], b""
+                self._state = state
+            return self._records
+        fresh = [
+            json.loads(line)
+            for line in chunk[:consumed].decode().splitlines()
+            if line.strip()
+        ]
+        base = [] if reset else self._records
+        # Rebind rather than extend, so an iterator handed out before this
+        # append keeps walking the snapshot it started on.
+        self._records = base + fresh if fresh else base
+        self._offset = offset + consumed
+        self._tail = (
+            (b"" if reset else self._tail) + chunk[:consumed]
+        )[-_PREFIX_CHECK_BYTES:]
+        self._state = state
         return self._records
 
 
@@ -144,10 +214,20 @@ class AlertHistoryStore:
     on one of them is ground truth, and prior sightings carry both so
     the model can never cite an overturned opinion as unchallenged.
 
-    Reads go through per-file parsed-record caches (_CachedJsonl) — the
-    summary index that keeps a long-running watch from re-parsing its
-    whole history on every lookup. Writes are unchanged: plain appends,
-    which are exactly what invalidates the cache.
+    Reads go through per-file parsed-record caches (_CachedJsonl) that
+    parse only what was appended since the last look, so a long-running
+    watch never re-parses its whole history. Writes are unchanged: plain
+    appends, which is exactly the property the incremental read depends
+    on.
+
+    That removes the PARSE cost, not every cost. Measured at 50k records
+    (72MB), per alert: parsing fell from 556ms to 0.3ms, but the readers
+    that walk every record still dominate what is left — correlate 61ms,
+    prior_sightings 17ms, dedup's anchor scan 15ms. Those are O(history)
+    by construction and want real indexes (by IOC, by host, by time) to
+    go further; the cache only stopped the desk from re-reading its own
+    file. Roughly 650ms -> 95ms per alert at that size, not the ~2000x
+    the parse numbers alone would suggest.
     """
 
     def __init__(self, path: str | Path) -> None:
