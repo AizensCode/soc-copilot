@@ -59,6 +59,7 @@ from pathlib import Path
 from .copilot import SOCCopilot
 from .dedup import DEFAULT_WINDOW_HOURS as DEDUP_WINDOW_HOURS
 from .models import Alert, Investigation
+from .watchdog import CycleReport, Watchdog
 
 # How often watch mode pulls analyst rulings back from TheHive. Rulings
 # change on a human cadence, so minutes — not poll cycles — is the unit.
@@ -707,7 +708,7 @@ async def _work_alert(
     notify: bool,
     case: bool,
     dedup_window: int | None,
-) -> None:
+) -> bool:
     """Work ONE alert from the watch queue: investigate (or borrow a
     dedup-suppressed conclusion), push the result, set the alert's
     status, and offer the outcome to the case/notify policies. Raises on
@@ -774,6 +775,10 @@ async def _work_alert(
         f"-> pushed {result_id}, {disposition}",
         flush=True,
     )
+    # Whether this completion was a dedup-borrowed conclusion (no model
+    # call) — the watchdog must not count those as proof the
+    # investigation pipeline is alive.
+    return suppressed_reason is not None
 
 
 async def _watch_once(
@@ -787,14 +792,21 @@ async def _watch_once(
     notify: bool,
     case: bool,
     dedup_window: int | None,
-) -> None:
+) -> CycleReport:
     """One poll cycle: fetch open alerts, work the fresh ones in priority
     order. A single alert's failure is contained to that alert — logged,
     left un-acknowledged (and out of `seen`), and so retried next cycle
     — never allowed to kill the cycle or the alerts queued behind it.
     Raises only when the FETCH itself fails; the loop shell logs that as
     a failed cycle and retries after the interval.
+
+    Returns a CycleReport of what was accomplished — the watchdog's
+    input. Counting here rather than in the shell keeps the judgment
+    testable: the per-alert catch below is exactly the spot that
+    swallows an every-alert failure (expired API key) so quietly that
+    only these counts can surface it.
     """
+    report = CycleReport()
     hits = await source.fetch_alert_hits(limit=10, status="open")
     fresh = [(d, a) for d, a in hits if d not in seen]
     for doc_id, alert, why in _prioritize(copilot, fresh):
@@ -804,13 +816,114 @@ async def _watch_once(
             flush=True,
         )
         try:
-            await _work_alert(
+            borrowed = await _work_alert(
                 copilot, source, doc_id, alert, seen,
                 agentic=agentic, tiered=tiered, auto_close=auto_close,
                 notify=notify, case=case, dedup_window=dedup_window,
             )
+            if borrowed:
+                report.borrowed += 1
+            else:
+                report.worked += 1
         except Exception as e:
+            report.failed += 1
+            report.failed_ids.add(alert.alert_id)
             print(f"FAILED (will retry next cycle): {e}", flush=True)
+    return report
+
+
+async def _page_watch_health(text: str) -> None:
+    """Best-effort page about the copilot's OWN health.
+
+    Uses the webhook channel whenever WEBHOOK_URL is configured — even
+    without --notify. That flag gates per-alert noise; this is the desk
+    reporting itself down, which is the one message the channel exists
+    for. No URL, or a failed POST (the webhook may share the outage),
+    degrades to a loud line: never fatal, and never silent.
+    """
+    from .config import settings
+    from .notify import WebhookClient
+
+    if not settings.WEBHOOK_URL:
+        print(f"HEALTH: {text} (no WEBHOOK_URL configured; cannot page)",
+              flush=True)
+        return
+    try:
+        # Top-level `text` is the channel's contract (see notify.py): it is
+        # what Slack/Mattermost/generic hooks render, and they 400-reject a
+        # payload without it — which would have turned this page into the
+        # exact silent failure it exists to announce (review catch). The
+        # structured fields ride beside it for programmatic consumers.
+        await WebhookClient().post({
+            "text": f"🤒 {text}",
+            "kind": "copilot-health",
+            "summary": text,
+        })
+        print(f"HEALTH: paged webhook — {text}", flush=True)
+    except Exception as e:
+        # Broad on purpose: this is the best-effort path of last resort,
+        # and anything escaping here would kill the loop at the exact
+        # moment it first tried to report sickness — httpx.InvalidURL from
+        # a typo'd WEBHOOK_URL is not an httpx.HTTPError, so the narrower
+        # RuntimeError-only catch did exactly that (review catch).
+        print(f"HEALTH: could not page webhook ({e}) — {text}", flush=True)
+
+
+async def _act_on_watch_health(action: str | None, sick_cycles: int) -> None:
+    """Carry out the watchdog's verdict. Split from the loop shell so the
+    page-once and exit-nonzero behaviors are pinned by tests rather than
+    read off an infinite loop."""
+    if action == "page":
+        await _page_watch_health(
+            f"soc-copilot watch loop is unhealthy: {sick_cycles} "
+            f"consecutive cycles completed no work. Still retrying; "
+            f"will exit for a supervisor restart if this persists."
+        )
+    elif action == "exit":
+        await _page_watch_health(
+            f"soc-copilot watch loop is exiting after {sick_cycles} "
+            f"consecutive failed cycles so a supervisor can restart it."
+        )
+        print(
+            f"Watch loop exiting: {sick_cycles} consecutive cycles "
+            f"completed no work. A supervisor (systemd/docker) should "
+            f"restart the process; without one, restart it manually.",
+            flush=True,
+        )
+        raise SystemExit(2)
+
+
+async def _run_watch_cycle(
+    copilot: SOCCopilot,
+    source,
+    seen: set[str],
+    watchdog: Watchdog,
+    args: argparse.Namespace,
+) -> None:
+    """One SUPERVISED cycle: work the queue, report to the watchdog, act.
+
+    This is the seam that keeps the health wiring testable — the crash
+    path (a failed fetch becomes a crashed CycleReport, never a healthy
+    one) and the observe→act handoff both live here, not in the infinite
+    loop (review catch: as shell code, a mutant discarding the action
+    survived every test).
+    """
+    try:
+        report = await _watch_once(
+            copilot, source, seen,
+            agentic=args.agentic, tiered=args.tiered,
+            auto_close=args.auto_close, notify=args.notify,
+            case=args.case, dedup_window=args.dedup,
+        )
+    except Exception as e:
+        report = CycleReport(crashed=True)
+        print(
+            f"Poll cycle failed (retrying in {args.interval}s): {e}",
+            flush=True,
+        )
+    await _act_on_watch_health(
+        watchdog.observe(report), watchdog.consecutive_sick
+    )
 
 
 async def _run_watch(args: argparse.Namespace) -> None:
@@ -837,11 +950,21 @@ async def _run_watch(args: argparse.Namespace) -> None:
     --sync-feedback. A sync failure is logged and retried next time,
     never fatal.
 
+    The loop also watches ITSELF: every cycle reports what it
+    accomplished to a Watchdog (soc_copilot/watchdog.py), and a desk
+    that stops completing work — the fetch failing outright, or every
+    attempted alert failing the way an expired API key makes them —
+    pages the webhook once per outage and, if the outage persists, exits
+    non-zero so a supervisor can restart it. Before this, that state was
+    an endless per-cycle FAILED line printed to nobody.
+
     This shell owns only what cannot run under a test: real construction,
     the infinite loop, the sleep, and the feedback-sync timer. Everything
     the loop DOES is _watch_once/_work_alert — the seam
     tests/test_watch.py pins, so the ordering contract above is held by
-    tests rather than by careful reading.
+    tests rather than by careful reading — and everything the watchdog
+    DECIDES and the health actions DO is pinned the same way
+    (tests/test_watchdog.py).
     """
     import time
 
@@ -860,8 +983,22 @@ async def _run_watch(args: argparse.Namespace) -> None:
         # Fail loudly at startup rather than silently never paging.
         print("--notify requires WEBHOOK_URL in your .env")
         sys.exit(1)
+    if settings.WEBHOOK_URL:
+        # The health watchdog pages this URL even without --notify, so a
+        # malformed value must fail HERE, not at 03:00 when the first page
+        # fires and httpx.InvalidURL is all the operator gets (review
+        # catch: startup previously checked truthiness only).
+        import httpx
+
+        try:
+            httpx.URL(settings.WEBHOOK_URL)
+        except httpx.InvalidURL as e:
+            print(f"WEBHOOK_URL is not a usable URL ({e}): "
+                  f"{settings.WEBHOOK_URL!r}")
+            sys.exit(1)
     copilot = SOCCopilot()
     seen: set[str] = set()
+    watchdog = Watchdog()
     mode = "agentic" if args.agentic else "phase one"
     feedback = bool(settings.THEHIVE_URL and settings.THEHIVE_API_KEY)
     last_feedback_sync = float("-inf")
@@ -900,17 +1037,7 @@ async def _run_watch(args: argparse.Namespace) -> None:
                 print(
                     f"Feedback sync failed (will retry): {e}", flush=True
                 )
-        try:
-            await _watch_once(
-                copilot, source, seen,
-                agentic=args.agentic, tiered=args.tiered,
-                auto_close=args.auto_close, notify=args.notify,
-                case=args.case, dedup_window=args.dedup,
-            )
-        except Exception as e:
-            print(
-                f"Poll cycle failed (retrying in {interval}s): {e}", flush=True
-            )
+        await _run_watch_cycle(copilot, source, seen, watchdog, args)
         await asyncio.sleep(interval)
 
 
@@ -928,10 +1055,7 @@ async def _dispatch(command: str, args: argparse.Namespace) -> None:
     elif command == "from-elastic":
         await _run_elastic(args)
     elif command == "watch":
-        try:
-            await _run_watch(args)
-        except KeyboardInterrupt:
-            print("\nWatch stopped.")
+        await _run_watch(args)
     else:
         await _run_file(args)
 
@@ -943,6 +1067,13 @@ def cli() -> None:
     command, args = _parse_args(sys.argv[1:])
     try:
         asyncio.run(_dispatch(command, args))
+    except KeyboardInterrupt:
+        # Must live OUTSIDE asyncio.run: on Python 3.12 a SIGINT reaches
+        # the coroutine as CancelledError and KeyboardInterrupt is raised
+        # only at the run() boundary, so a handler inside _dispatch was
+        # dead code and Ctrl+C died with a traceback (review catch).
+        print("\nStopped.")
+        sys.exit(130)
     except RuntimeError as e:
         # A missing-key (or other configuration) error should read as one
         # clear line, not a stack trace — the message already names the
