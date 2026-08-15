@@ -1,0 +1,22 @@
+# Secrets never enter the build context: an image layer is forever.
+.env
+.env.*
+
+# A dev machine's real investigation history must not ship in the image
+# (the container recreates an empty data/history/ and a deployment
+# bind-mounts its own).
+data/history/
+data/evals/calibration/
+
+# Build/runtime noise.
+.git/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Not needed to run the copilot.
+tests/
+scripts/
+.github/

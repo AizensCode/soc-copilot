@@ -1,0 +1,53 @@
+# SOC Copilot watch loop — the bare-metal supervisor.
+#
+# The watchdog inside the loop (soc_copilot/watchdog.py) pages the
+# webhook after ~3 minutes of completing no work and EXITS 2 after ~30
+# minutes of systemic failure, on the assumption that something catches
+# the exit and restarts the process with freshly-read config. This unit
+# is that something. Install:
+#
+#   sudo cp deploy/soc-copilot-watch.service /etc/systemd/system/
+#   # edit WorkingDirectory/User below to match your install
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now soc-copilot-watch
+#
+# The app reads .env from its working directory itself (python-dotenv),
+# so secrets stay in one place with one owner — no EnvironmentFile.
+
+[Unit]
+Description=SOC Copilot watch loop (alert triage)
+Documentation=https://github.com/AizensCode/soc-copilot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+# Adjust to your checkout; `uv sync` there first so .venv exists.
+WorkingDirectory=/opt/soc-copilot
+ExecStart=/opt/soc-copilot/.venv/bin/soc-copilot --watch 60
+User=soc-copilot
+Group=soc-copilot
+
+# The watchdog's exit 2 (and any crash) lands here: wait a minute, then
+# restart with freshly-read config. The start limit turns a tight crash
+# loop (bad config that fails instantly) into a stopped unit systemd
+# alerting can see, instead of an infinite flap.
+Restart=on-failure
+RestartSec=60
+StartLimitIntervalSec=3600
+StartLimitBurst=10
+
+# The process may write exactly one thing: its data/ directory (the
+# append-only history store). Everything else is read-only to it.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/opt/soc-copilot/data
+PrivateTmp=true
+
+# No graceful shutdown yet (roadmap): stop kills mid-cycle work. The
+# store's write ordering makes that safe — see deploy/RUNBOOK.md.
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

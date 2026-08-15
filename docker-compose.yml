@@ -1,0 +1,44 @@
+# The supervised deployment the watchdog was designed against: the watch
+# loop pages after ~3 minutes of completing no work and exits 2 after
+# ~30 minutes of SYSTEMIC failure — the restart policy below catches
+# that exit and starts a fresh process. Note the honest limits: a
+# policy restart reuses the container's env as read at CREATION, so
+# after editing .env you must `docker compose up -d` (compose sees the
+# changed env_file and recreates); only the systemd deployment re-reads
+# .env on every restart. See deploy/RUNBOOK.md for operations.
+services:
+  watch:
+    build: .
+    env_file: .env            # secrets live here, never in the image
+    # Flags are the operator's policy decisions — add --agentic,
+    # --auto-close, --notify, --case, --dedup, --tiered here once each
+    # has earned trust in this environment (see README).
+    command: ["--watch", "60"]
+    volumes:
+      # The whole data/ tree: history persists across restarts, and
+      # operator edits to asset_context.json (the false-positive
+      # discriminator for scanner/backup families) take effect on
+      # restart without a rebuild.
+      - ./data:/app/data
+    # Match the host user so the bind-mounted data/ stays writable both
+    # sides. Set once in .env (compose interpolates from it):
+    #   echo "HOST_UID=$(id -u)" >> .env && echo "HOST_GID=$(id -g)" >> .env
+    # Deliberately NOT ${UID}: bash keeps UID as a readonly, unexported
+    # shell variable, so a `UID=$(id -u) docker compose up` prefix
+    # silently does nothing and the fallback would win on every host
+    # (review catch — verified empirically).
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    # unless-stopped, not on-failure: only it survives a daemon restart
+    # or host reboot — and this host's snap Docker bounces the daemon on
+    # auto-refresh. The watch service never exits 0, so the two behave
+    # identically otherwise; on-failure would just add a way for the
+    # desk to be silently down after a reboot with no process left to
+    # page about it (review catch).
+    restart: unless-stopped
+    # No graceful shutdown yet (roadmap): SIGTERM kills mid-cycle work.
+    # The store's write ordering makes that SAFE (a closure is recorded
+    # only after both Elastic writes, so a kill can undercount
+    # automation, never invent it) — the alert stays open and is worked
+    # next start.
+    stop_grace_period: 10s
+    init: true
