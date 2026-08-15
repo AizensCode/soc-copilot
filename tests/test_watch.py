@@ -235,7 +235,7 @@ async def test_suppressed_duplicate_spends_no_model_call(
 
 # --- the cycle -------------------------------------------------------------
 
-async def test_one_failing_alert_does_not_kill_the_cycle(tmp_path, capsys):
+async def test_one_failing_alert_does_not_kill_the_cycle(tmp_path, caplog):
     """Alert one's push fails; alert two must still be worked, and only
     alert two is marked seen."""
     copilot = _FakeCopilot(
@@ -255,14 +255,20 @@ async def test_one_failing_alert_does_not_kill_the_cycle(tmp_path, capsys):
     )
 
     assert seen == {"d2"}
-    assert "FAILED (will retry next cycle)" in capsys.readouterr().out
+    assert "FAILED (will retry next cycle)" in caplog.text
+    # A failed alert is ERROR — the level contract journalctl -p filters
+    # on (review catch: no test pinned any main.py record's level).
+    import logging
+
+    [rec] = [r for r in caplog.records if "FAILED" in r.getMessage()]
+    assert rec.levelno == logging.ERROR
     assert ("push", "A2", True,
             "high-confidence false positive with no escalation, injection, "
             "or campaign signals") in source.calls
 
 
 async def test_thehive_outage_neither_aborts_the_alert_nor_eats_the_page(
-    tmp_path, monkeypatch, capsys
+    tmp_path, monkeypatch, caplog
 ):
     """--case is documented as never fatal, and an outage is a REFUSED
     CONNECTION, not a status code. Untranslated it escaped _maybe_open_case
@@ -309,9 +315,8 @@ async def test_thehive_outage_neither_aborts_the_alert_nor_eats_the_page(
         copilot, source, "d1", _alert("A1"), seen, case=True, notify=True
     )
 
-    out = capsys.readouterr().out
-    assert "Case creation failed" in out            # warned, not raised
-    assert "unreachable" in out                     # and says what happened
+    assert "Case creation failed" in caplog.text    # warned, not raised
+    assert "unreachable" in caplog.text             # and says what happened
     assert len(paged) == 1                          # the page still went out
     assert seen == {"d1"}                           # the alert completed
 
@@ -351,3 +356,45 @@ async def test_seen_alerts_are_not_reworked(tmp_path):
 
     assert copilot.investigated == []
     assert [c[0] for c in source.calls] == ["fetch"]
+
+
+# --- the correlation id, wired end to end -----------------------------------
+
+
+async def test_narration_carries_the_alert_id_end_to_end(tmp_path, capsys):
+    """The headline claim — 'everything logged while one alert is being
+    worked carries that alert's id' — through the REAL pipeline:
+    _watch_once's alert_context binding, the handler's filter, the JSON
+    formatter. A mutant deleting the with-block in _watch_once survived
+    the whole suite before this test (review catch): every other
+    correlation test exercises alert_context directly, never the CLI
+    wiring."""
+    import json
+    import logging
+
+    from soc_copilot.logsetup import configure_logging
+
+    logger = logging.getLogger("soc_copilot")
+    saved_handlers, saved_level = list(logger.handlers), logger.level
+    configure_logging("json", "INFO")
+    try:
+        copilot = _FakeCopilot(tmp_path, {"A1": _closing_inv("A1")})
+        source = _FakeSource(hits=[("d1", _alert("A1"))])
+        source.fail_push_for.add("A1")
+        await _watch_once(
+            copilot, source, set(),
+            agentic=False, tiered=False, auto_close=True,
+            notify=False, case=False, dedup_window=None,
+        )
+    finally:
+        logger.handlers = saved_handlers
+        logger.setLevel(saved_level)
+
+    lines = [
+        json.loads(ln)
+        for ln in capsys.readouterr().err.splitlines() if ln
+    ]
+    failed = [d for d in lines if "FAILED" in d["msg"]]
+    assert failed and failed[0]["alert_id"] == "A1"
+    header = [d for d in lines if "priority:" in d["msg"]]
+    assert header and header[0]["alert_id"] == "A1"

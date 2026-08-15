@@ -191,7 +191,11 @@ def _configure_webhook(monkeypatch, url="https://hook.test/page"):
 
     monkeypatch.setattr(
         config_mod, "settings",
-        SimpleNamespace(WEBHOOK_URL=url),
+        # CORRELATION_WINDOW_HOURS: cycles that fetch real (fake) hits run
+        # _prioritize, which reads it from settings before any per-alert
+        # try — without it the whole cycle "crashes" and every heartbeat
+        # test would see a systemic streak.
+        SimpleNamespace(WEBHOOK_URL=url, CORRELATION_WINDOW_HOURS=72),
     )
 
 
@@ -217,7 +221,7 @@ async def test_exit_goodbye_page_carries_text_too(monkeypatch):
 
 
 async def test_a_webhook_raising_a_non_runtimeerror_never_kills_the_loop(
-    monkeypatch, capsys
+    monkeypatch, caplog
 ):
     """httpx.InvalidURL subclasses Exception, not HTTPError, so it walked
     straight past a RuntimeError-only catch and crashed the entire watch
@@ -231,7 +235,7 @@ async def test_a_webhook_raising_a_non_runtimeerror_never_kills_the_loop(
 
     monkeypatch.setattr(_CapturingWebhook, "post", invalid_url)
     await _act_on_watch_health("page", 3)           # must not raise
-    assert "could not page webhook" in capsys.readouterr().out
+    assert "could not page webhook" in caplog.text
 
 
 async def test_exit_action_pages_then_raises_a_nonzero_systemexit(monkeypatch):
@@ -250,15 +254,14 @@ async def test_no_action_touches_nothing(monkeypatch):
 
 
 async def test_no_webhook_degrades_to_a_loud_line_never_a_crash(
-    monkeypatch, capsys
+    monkeypatch, caplog
 ):
     _configure_webhook(monkeypatch, url=None)
     await _act_on_watch_health("page", 3)
-    out = capsys.readouterr().out
-    assert "HEALTH:" in out and "cannot page" in out
+    assert "HEALTH:" in caplog.text and "cannot page" in caplog.text
 
 
-async def test_a_failing_webhook_never_kills_the_loop(monkeypatch, capsys):
+async def test_a_failing_webhook_never_kills_the_loop(monkeypatch, caplog):
     _configure_webhook(monkeypatch)
 
     async def boom(self, payload):
@@ -266,7 +269,7 @@ async def test_a_failing_webhook_never_kills_the_loop(monkeypatch, capsys):
 
     monkeypatch.setattr(_CapturingWebhook, "post", boom)
     await _act_on_watch_health("page", 3)           # must not raise
-    assert "could not page webhook" in capsys.readouterr().out
+    assert "could not page webhook" in caplog.text
 
 
 # --- the report the cycle actually files -------------------------------------
@@ -374,7 +377,7 @@ class _DeadSource:
 
 
 async def test_a_failed_fetch_is_observed_as_a_crashed_cycle(
-    tmp_path, monkeypatch, capsys
+    tmp_path, monkeypatch, caplog
 ):
     """The wiring the infinite loop used to hide: a fetch failure must
     reach the watchdog as a CRASHED report — a mutant reporting it
@@ -392,7 +395,7 @@ async def test_a_failed_fetch_is_observed_as_a_crashed_cycle(
     assert dog.consecutive_sick == 2
     [payload] = _CapturingWebhook.posted            # the page actually fired
     assert "2 consecutive" in payload["summary"]
-    assert "Poll cycle failed" in capsys.readouterr().out
+    assert "Poll cycle failed" in caplog.text
 
 
 async def test_the_cycle_actually_acts_on_the_watchdogs_exit(
@@ -452,3 +455,192 @@ async def test_watch_once_reports_a_suppressed_alert_as_borrowed(
     )
 
     assert (report.worked, report.borrowed, report.failed) == (0, 1, 0)
+
+
+# --- the systemic judgment, as the shell reads it ----------------------------
+
+
+def test_systemic_property_tracks_distinct_failing_ids():
+    dog = Watchdog()
+    dog.observe(_stuck())
+    assert dog.systemic is False                  # one id: confined
+    dog.observe(_stuck())
+    assert dog.systemic is False                  # SAME id again: still one
+    dog.observe(_sick())                          # a second distinct id
+    assert dog.systemic is True
+
+
+def test_a_crash_makes_the_streak_systemic():
+    dog = Watchdog()
+    dog.observe(CycleReport(crashed=True))
+    assert dog.systemic is True
+
+
+def test_recovery_clears_the_systemic_judgment_and_the_ids():
+    dog = Watchdog()
+    dog.observe(CycleReport(crashed=True))
+    dog.observe(_stuck())
+    dog.observe(_healthy())
+    assert dog.systemic is False
+    assert dog.streak_failed_ids == frozenset()
+
+
+# --- the heartbeat between the thresholds ------------------------------------
+#
+# The page (at page_after) and the exit (at exit_after) announce
+# themselves; the cycles BETWEEN them used to pass in silence. Every
+# sick cycle that takes no action must now say where the streak stands
+# and which kind of sick the desk is.
+
+
+async def test_heartbeat_speaks_on_actionless_sick_cycles(
+    tmp_path, monkeypatch, caplog
+):
+    from soc_copilot.main import _run_watch_cycle
+    from tests.test_watch import _FakeCopilot
+
+    _configure_webhook(monkeypatch)
+    copilot = _FakeCopilot(tmp_path, {})
+    dog = Watchdog(page_after=2, exit_after=30)
+
+    await _run_watch_cycle(copilot, _DeadSource(), set(), dog, _cycle_args())
+    assert "sick streak at 1 consecutive cycle(s)" in caplog.text
+    assert "pages at 2" in caplog.text            # the page is still ahead
+    assert "systemic" in caplog.text              # a crash IS systemic
+    assert "supervisor restart at 30" in caplog.text
+    # The documented level contract is load-bearing (journalctl -p
+    # warning): health lines are WARNING, not INFO (review catch: no
+    # test pinned any main.py record's level).
+    import logging as _logging
+
+    assert all(
+        r.levelno == _logging.WARNING
+        for r in caplog.records if r.getMessage().startswith("HEALTH:")
+    )
+
+    caplog.clear()
+    await _run_watch_cycle(copilot, _DeadSource(), set(), dog, _cycle_args())
+    # The page cycle carries its own announcement — no heartbeat on top.
+    assert len(_CapturingWebhook.posted) == 1
+    assert "sick streak at 2" not in caplog.text
+
+    caplog.clear()
+    await _run_watch_cycle(copilot, _DeadSource(), set(), dog, _cycle_args())
+    assert "sick streak at 3 consecutive cycle(s)" in caplog.text
+    # After the threshold the page already fired: the heartbeat must not
+    # phrase it as still pending (review catch).
+    assert "paged at 2" in caplog.text
+    assert "pages at 2" not in caplog.text
+
+
+async def test_heartbeat_names_a_lone_poisoned_alert_and_promises_no_exit(
+    tmp_path, monkeypatch, caplog
+):
+    """The operator reading the log mid-outage must be able to tell a
+    countdown to a supervisor restart from a single stuck record that
+    will page and hold forever."""
+    from soc_copilot.main import _run_watch_cycle
+    from tests.test_watch import _alert, _closing_inv, _FakeCopilot, _FakeSource
+
+    _configure_webhook(monkeypatch)
+    copilot = _FakeCopilot(tmp_path, {"A1": _closing_inv("A1")})
+    source = _FakeSource(hits=[("d1", _alert("A1"))])
+    source.fail_push_for.add("A1")                # only A1, every cycle
+    dog = Watchdog(page_after=5, exit_after=30)
+
+    await _run_watch_cycle(copilot, source, set(), dog, _cycle_args())
+    assert "confined to A1" in caplog.text
+    assert "never exits" in caplog.text
+    assert "systemic" not in caplog.text
+
+
+async def test_recovery_is_announced_with_the_streak_it_ended(
+    tmp_path, monkeypatch, caplog
+):
+    from soc_copilot.main import _run_watch_cycle
+    from tests.test_watch import _FakeCopilot, _FakeSource
+
+    _configure_webhook(monkeypatch)
+    copilot = _FakeCopilot(tmp_path, {})
+    dog = Watchdog(page_after=10, exit_after=30)
+
+    for _ in range(2):
+        await _run_watch_cycle(copilot, _DeadSource(), set(), dog, _cycle_args())
+    caplog.clear()
+    # A quiet queue is a healthy cycle: the streak ends here.
+    await _run_watch_cycle(copilot, _FakeSource(), set(), dog, _cycle_args())
+
+    assert "recovered" in caplog.text
+    assert "2 sick cycle(s)" in caplog.text
+    assert dog.consecutive_sick == 0
+    # Same WARNING level as the sickness it ends, so a level-filtered
+    # view that saw the outage start also sees it end.
+    import logging as _logging
+
+    [rec] = [r for r in caplog.records if "recovered" in r.getMessage()]
+    assert rec.levelno == _logging.WARNING
+
+
+async def test_healthy_cycles_emit_no_health_lines(
+    tmp_path, monkeypatch, caplog
+):
+    from soc_copilot.main import _run_watch_cycle
+    from tests.test_watch import _FakeCopilot, _FakeSource
+
+    _configure_webhook(monkeypatch)
+    copilot = _FakeCopilot(tmp_path, {})
+    dog = Watchdog()
+
+    await _run_watch_cycle(copilot, _FakeSource(), set(), dog, _cycle_args())
+    assert "HEALTH:" not in caplog.text
+
+
+# --- the page tells the truth about what happens next ------------------------
+
+
+async def test_confined_page_says_the_process_stays_up(monkeypatch):
+    """The systemic page promises an exit and a supervisor restart; a
+    confined (lone-poisoned-alert) streak NEVER exits by design, so its
+    page asserting that promise would tell the one person acting on it
+    to wait for a restart that never comes (review catch)."""
+    _configure_webhook(monkeypatch)
+    await _act_on_watch_health(
+        "page", 3, systemic=False, stuck_ids=frozenset({"P1"})
+    )
+    [payload] = _CapturingWebhook.posted
+    assert "stuck" in payload["text"]
+    assert "P1" in payload["text"]                 # names the poisoned record
+    assert "stays up" in payload["text"]
+    assert "will exit for a supervisor restart" not in payload["text"]
+
+
+async def test_systemic_page_keeps_the_exit_promise(monkeypatch):
+    _configure_webhook(monkeypatch)
+    await _act_on_watch_health(
+        "page", 3, systemic=True, stuck_ids=frozenset()
+    )
+    [payload] = _CapturingWebhook.posted
+    assert "will exit for a supervisor restart" in payload["text"]
+
+
+async def test_the_cycle_wires_systemic_into_the_page_text(
+    tmp_path, monkeypatch
+):
+    """End to end through _run_watch_cycle: a lone failing alert's page
+    must arrive as the stays-up kind — the wiring passing
+    watchdog.systemic into the action is exactly the sort of shell code
+    a mutant can drop while every unit test stays green."""
+    from soc_copilot.main import _run_watch_cycle
+    from tests.test_watch import _alert, _closing_inv, _FakeCopilot, _FakeSource
+
+    _configure_webhook(monkeypatch)
+    copilot = _FakeCopilot(tmp_path, {"A1": _closing_inv("A1")})
+    source = _FakeSource(hits=[("d1", _alert("A1"))])
+    source.fail_push_for.add("A1")
+    dog = Watchdog(page_after=1, exit_after=30)
+
+    await _run_watch_cycle(copilot, source, set(), dog, _cycle_args())
+
+    [payload] = _CapturingWebhook.posted
+    assert "stuck" in payload["text"] and "A1" in payload["text"]
+    assert "will exit for a supervisor restart" not in payload["text"]

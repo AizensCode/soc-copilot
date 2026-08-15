@@ -53,13 +53,27 @@
 import argparse
 import asyncio
 import json
+import logging
 import sys
 from pathlib import Path
 
 from .copilot import SOCCopilot
 from .dedup import DEFAULT_WINDOW_HOURS as DEDUP_WINDOW_HOURS
+from .logsetup import alert_context, configure_logging
 from .models import Alert, Investigation
 from .watchdog import CycleReport, Watchdog
+
+# The CLI's voice (configured in cli() via logsetup.configure_logging —
+# nowhere else). The split this module holds: a command's PRODUCT (an
+# investigation JSON, the scorecard, the digest, usage) is print() on
+# stdout, pipeable; everything that NARRATES — progress, failures,
+# health — goes through this logger to stderr, where it carries a level
+# and, in JSON mode, a timestamp and the alert id being worked.
+# The name is pinned, NOT __name__: under `python -m soc_copilot.main`
+# this module runs as "__main__", which sits outside the "soc_copilot"
+# hierarchy configure_logging configures — every INFO line would vanish
+# into the stdlib's lastResort handler (review catch).
+log = logging.getLogger("soc_copilot.main")
 
 # How often watch mode pulls analyst rulings back from TheHive. Rulings
 # change on a human cadence, so minutes — not poll cycles — is the unit.
@@ -97,13 +111,14 @@ async def _run_export_case(args: argparse.Namespace) -> None:
         try:
             path = export_case(store, alert_id)
         except ValueError as e:
-            print(e)
+            log.error("%s", e)
             sys.exit(1)
         print(f"Exported {alert_id} -> {path}")
         return
 
     eligible = exportable_alert_ids(store)
     for aid in eligible:
+        # The product: the list of what was exported, on stdout, pipeable.
         print(f"Exported {aid} -> {export_case(store, aid)}")
     known = {r["alert_id"] for r in store._iter_records()}
     blocked = [
@@ -111,12 +126,12 @@ async def _run_export_case(args: argparse.Namespace) -> None:
         if aid in known and aid not in eligible
     ]
     for aid in blocked:
-        print(
-            f"Skipped {aid}: ruled, but the record predates full-record "
-            f"storage — re-investigate to make it exportable."
+        log.info(
+            "Skipped %s: ruled, but the record predates full-record "
+            "storage — re-investigate to make it exportable.", aid,
         )
     if not eligible and not blocked:
-        print(
+        log.info(
             "Nothing to export: no analyst-ruled investigations on "
             "record. Sync feedback after analysts work the queue."
         )
@@ -161,11 +176,12 @@ async def _run_ask(args: argparse.Namespace) -> None:
         session = FollowUpSession(alert_id, history_store=store)
     except KeyError:
         known = list(dict.fromkeys(r["alert_id"] for r in store._iter_records()))
-        print(f"No investigation on record for {alert_id!r}.")
+        log.error("No investigation on record for %r.", alert_id)
         if known:
-            print("Investigated alerts (oldest first):")
-            for aid in known:
-                print(f"  {aid}")
+            log.info(
+                "Investigated alerts (oldest first):\n%s",
+                "\n".join(f"  {aid}" for aid in known),
+            )
         sys.exit(1)
 
     question = args.question
@@ -173,10 +189,9 @@ async def _run_ask(args: argparse.Namespace) -> None:
         print(await session.ask(question))
         return
 
-    print(
-        f"Follow-up session on {alert_id} — answers come from the stored "
-        f"record only. Empty line or Ctrl+D to exit.",
-        flush=True,
+    log.info(
+        "Follow-up session on %s — answers come from the stored "
+        "record only. Empty line or Ctrl+D to exit.", alert_id,
     )
     while True:
         try:
@@ -219,12 +234,11 @@ async def _annotate_elastic(changed: list[dict]) -> None:
                 d["alert_id"], d["human_verdict"], d.get("summary")
             )
             if n:
-                print(
-                    f"  -> stamped onto {n} investigation doc(s) in Elastic",
-                    flush=True,
+                log.info(
+                    "  -> stamped onto %d investigation doc(s) in Elastic", n
                 )
         except Exception as e:
-            print(f"  -> Elastic annotation failed: {e}", flush=True)
+            log.warning("  -> Elastic annotation failed: %s", e)
 
 
 def _print_rulings(changed: list[dict], known: set[str]) -> None:
@@ -234,10 +248,9 @@ def _print_rulings(changed: list[dict], known: set[str]) -> None:
             else " (no local investigation on record)"
         )
         note = f' — "{d["summary"]}"' if d.get("summary") else ""
-        print(
-            f"{d['alert_id']}: analyst ruled {d['human_verdict']} "
-            f"[{d['source']}]{note}{marker}",
-            flush=True,
+        log.info(
+            "%s: analyst ruled %s [%s]%s%s",
+            d["alert_id"], d["human_verdict"], d["source"], note, marker,
         )
 
 
@@ -266,16 +279,14 @@ def _print_rejected_rulings(rejected: list[dict]) -> None:
     fresh deployment) resolves it."""
     spoof = [r for r in rejected if r["reason"] == "thehive-id-mismatch"]
     lead = "⚠ " if spoof else ""
-    print(
-        f"{lead}{len(rejected)} ruling(s) not applied (no provenance "
-        f"linking the alert to this copilot):",
-        flush=True,
+    log.warning(
+        "%s%d ruling(s) not applied (no provenance linking the alert to "
+        "this copilot):", lead, len(rejected),
     )
     for r in rejected:
         why = _REJECT_EXPLAIN.get(r["reason"], r["reason"])
-        print(
-            f"  {r['alert_id']}: {why} (thehive id {r.get('thehive_id')})",
-            flush=True,
+        log.warning(
+            "  %s: %s (thehive id %s)", r["alert_id"], why, r.get("thehive_id")
         )
 
 
@@ -296,19 +307,18 @@ async def _run_sync_feedback() -> None:
     try:
         changed, total, rejected = await sync_dispositions(TheHiveClient(), store)
     except RuntimeError as e:
-        print(e)
+        log.error("%s", e)
         sys.exit(1)
     if rejected:
         _print_rejected_rulings(rejected)
     if total == 0:
-        print("No analyst rulings found for alerts this copilot created.")
+        log.info("No analyst rulings found for alerts this copilot created.")
         return
     _print_rulings(changed, known)
     await _annotate_elastic(changed)
-    print(
-        f"{len(changed)} new/changed ruling(s), "
-        f"{total - len(changed)} already known "
-        f"({store.dispositions_path})"
+    log.info(
+        "%d new/changed ruling(s), %d already known (%s)",
+        len(changed), total - len(changed), store.dispositions_path,
     )
 
 
@@ -332,14 +342,14 @@ async def _maybe_open_case(
 
     open_case, reason = should_open_case(investigation)
     if not open_case:
-        print(f"No case opened ({reason})", flush=True)
+        log.info("No case opened (%s)", reason)
         return None
     try:
         case_id = await TheHiveClient().create_alert(alert, investigation)
     except RuntimeError as e:
-        print(f"Case creation failed: {e}", flush=True)
+        log.warning("Case creation failed: %s", e)
         return None
-    print(f"Opened TheHive alert {case_id} ({reason})", flush=True)
+    log.info("Opened TheHive alert %s (%s)", case_id, reason)
     if store is not None:
         # The provenance write is what lets a future ruling on this alert
         # be trusted, so it matters — but a disk error here must not undo a
@@ -349,11 +359,10 @@ async def _maybe_open_case(
         try:
             store.record_created_alert(alert.alert_id, case_id)
         except OSError as e:
-            print(
-                f"Warning: opened alert {case_id} but failed to record its "
-                f"provenance ({e}); a later ruling on {alert.alert_id} may "
-                f"not sync.",
-                flush=True,
+            log.warning(
+                "Opened alert %s but failed to record its provenance (%s); "
+                "a later ruling on %s may not sync.",
+                case_id, e, alert.alert_id,
             )
     return case_id
 
@@ -385,9 +394,9 @@ async def _maybe_notify(
         await WebhookClient().post(
             build_notification(alert, investigation, case_link)
         )
-        print(f"Notified webhook ({reason})", flush=True)
+        log.info("Notified webhook (%s)", reason)
     except RuntimeError as e:
-        print(f"Webhook notification failed: {e}", flush=True)
+        log.warning("Webhook notification failed: %s", e)
 
 
 def positive_int(what: str):
@@ -556,10 +565,11 @@ async def _investigate(
         "phase one — fixed enrichment pipeline"
     )
     if tiered:
-        print(f"[mode: {mode}; tiered — cheap first pass, promote if in doubt]")
+        log.info("[mode: %s; tiered — cheap first pass, promote if in doubt]",
+                 mode)
         inv = await copilot.investigate_tiered(alert, agentic=agentic)
     else:
-        print(f"[mode: {mode}]")
+        log.info("[mode: %s]", mode)
         inv = (
             await copilot.investigate_agentic(alert)
             if agentic
@@ -567,7 +577,7 @@ async def _investigate(
         )
     line = _telemetry_line(inv)
     if line:
-        print(line, flush=True)
+        log.info("%s", line)
     return inv
 
 
@@ -575,7 +585,7 @@ def _write_report(alert: Alert, inv: Investigation, out: Path) -> None:
     from .report import render_report
 
     out.write_text(render_report(alert, inv))
-    print(f"HTML report written to {out}")
+    log.info("HTML report written to %s", out)
 
 
 async def _run_file(args: argparse.Namespace) -> None:
@@ -585,36 +595,40 @@ async def _run_file(args: argparse.Namespace) -> None:
         alert = Alert(**json.load(f))
 
     copilot = SOCCopilot()
-    investigation = await _investigate(
-        copilot, alert, args.agentic, getattr(args, "tiered", False)
-    )
+    with alert_context(alert.alert_id):
+        investigation = await _investigate(
+            copilot, alert, args.agentic, getattr(args, "tiered", False)
+        )
 
-    # Opt-in: a tool should not drop files into the operator's working
-    # directory unasked. The investigation JSON still prints to stdout
-    # below, so nothing is lost by default.
-    if args.debug:
-        debug_path = Path(args.debug)
-        with debug_path.open("w") as f:
-            json.dump(
-                {
-                    "mode": "agentic" if args.agentic else "phase_one",
-                    "alert": alert.model_dump(mode="json"),
-                    "evidence_raw": [
-                        e.model_dump(mode="json") for e in investigation.evidence
-                    ],
-                    "investigation": investigation.model_dump(mode="json"),
-                },
-                f,
-                indent=2,
-                default=str,
-            )
-        print(f"Full debug written to {debug_path}")
+        # Opt-in: a tool should not drop files into the operator's working
+        # directory unasked. The investigation JSON still prints to stdout
+        # below, so nothing is lost by default.
+        if args.debug:
+            debug_path = Path(args.debug)
+            with debug_path.open("w") as f:
+                json.dump(
+                    {
+                        "mode": "agentic" if args.agentic else "phase_one",
+                        "alert": alert.model_dump(mode="json"),
+                        "evidence_raw": [
+                            e.model_dump(mode="json")
+                            for e in investigation.evidence
+                        ],
+                        "investigation": investigation.model_dump(mode="json"),
+                    },
+                    f,
+                    indent=2,
+                    default=str,
+                )
+            log.info("Full debug written to %s", debug_path)
 
-    if args.report:
-        _write_report(alert, investigation, Path(args.report))
+        if args.report:
+            _write_report(alert, investigation, Path(args.report))
 
-    await _maybe_open_case(alert, investigation, args.case, copilot.history)
+        await _maybe_open_case(alert, investigation, args.case, copilot.history)
 
+    # The deliverable: stdout, print — `soc-copilot alert.json | jq` works
+    # because every narrated line above went to stderr.
     print(investigation.model_dump_json(indent=2))
 
 
@@ -626,44 +640,49 @@ async def _run_elastic(args: argparse.Namespace) -> None:
     try:
         source = ElasticAlertSource()
     except RuntimeError as e:
-        print(e)
+        log.error("%s", e)
         sys.exit(1)
-    print(f"Fetching up to {limit} open detection alerts from Elastic...")
+    log.info("Fetching up to %d open detection alerts from Elastic...", limit)
     alerts = await source.fetch_alerts(limit=limit)
     if not alerts:
-        print("No open alerts found.")
+        log.info("No open alerts found.")
         return
 
     copilot = SOCCopilot()
     for alert in alerts:
-        print(f"\n=== {alert.alert_id} — {alert.title} ===")
-        investigation = await _investigate(
-            copilot, alert, args.agentic, getattr(args, "tiered", False)
-        )
-
-        campaign = bool(
-            investigation.correlation and investigation.correlation.is_campaign
-        )
-        print(
-            f"verdict={investigation.verdict} "
-            f"confidence={investigation.confidence} "
-            f"escalate={investigation.escalation_recommended} "
-            f"campaign={campaign} "
-            f"injection_flags={len(investigation.injection_flags)}"
-        )
-
-        if args.report:
-            reports_dir = Path("reports")
-            reports_dir.mkdir(exist_ok=True)
-            _write_report(
-                alert, investigation, reports_dir / f"{alert.alert_id}.html"
+        with alert_context(alert.alert_id):
+            log.info("\n=== %s — %s ===", alert.alert_id, alert.title)
+            investigation = await _investigate(
+                copilot, alert, args.agentic, getattr(args, "tiered", False)
             )
 
-        if args.push:
-            doc_id = await source.push_investigation(alert, investigation)
-            print(f"Pushed investigation to Elastic (doc id: {doc_id})")
+            campaign = bool(
+                investigation.correlation
+                and investigation.correlation.is_campaign
+            )
+            log.info(
+                "verdict=%s confidence=%s escalate=%s campaign=%s "
+                "injection_flags=%d",
+                investigation.verdict, investigation.confidence,
+                investigation.escalation_recommended, campaign,
+                len(investigation.injection_flags),
+            )
 
-        await _maybe_open_case(alert, investigation, args.case, copilot.history)
+            if args.report:
+                reports_dir = Path("reports")
+                reports_dir.mkdir(exist_ok=True)
+                _write_report(
+                    alert, investigation,
+                    reports_dir / f"{alert.alert_id}.html",
+                )
+
+            if args.push:
+                doc_id = await source.push_investigation(alert, investigation)
+                log.info("Pushed investigation to Elastic (doc id: %s)", doc_id)
+
+            await _maybe_open_case(
+                alert, investigation, args.case, copilot.history
+            )
 
 
 def _prioritize(
@@ -737,10 +756,7 @@ async def _work_alert(
         result = try_suppress(copilot.history, alert, dedup_window)
         if result:
             investigation, suppressed_reason = result
-            print(
-                f"[dedup: {suppressed_reason} — no model call spent]",
-                flush=True,
-            )
+            log.info("[dedup: %s — no model call spent]", suppressed_reason)
     if suppressed_reason is None:
         investigation = await _investigate(copilot, alert, agentic, tiered)
     close, reason = (
@@ -768,12 +784,10 @@ async def _work_alert(
         if close
         else "alert acknowledged"
     )
-    print(
-        f"verdict={investigation.verdict} "
-        f"confidence={investigation.confidence} "
-        f"escalate={investigation.escalation_recommended} "
-        f"-> pushed {result_id}, {disposition}",
-        flush=True,
+    log.info(
+        "verdict=%s confidence=%s escalate=%s -> pushed %s, %s",
+        investigation.verdict, investigation.confidence,
+        investigation.escalation_recommended, result_id, disposition,
     )
     # Whether this completion was a dedup-borrowed conclusion (no model
     # call) — the watchdog must not count those as proof the
@@ -810,25 +824,28 @@ async def _watch_once(
     hits = await source.fetch_alert_hits(limit=10, status="open")
     fresh = [(d, a) for d, a in hits if d not in seen]
     for doc_id, alert, why in _prioritize(copilot, fresh):
-        print(
-            f"\n=== {alert.alert_id} — {alert.title} "
-            f"[priority: {why}] ===",
-            flush=True,
-        )
-        try:
-            borrowed = await _work_alert(
-                copilot, source, doc_id, alert, seen,
-                agentic=agentic, tiered=tiered, auto_close=auto_close,
-                notify=notify, case=case, dedup_window=dedup_window,
+        # The correlation id: every line logged while THIS alert is being
+        # worked — the mode line, tool chatter, the failure — carries its
+        # id in JSON mode, so one alert's story greps out of the night.
+        with alert_context(alert.alert_id):
+            log.info(
+                "\n=== %s — %s [priority: %s] ===",
+                alert.alert_id, alert.title, why,
             )
-            if borrowed:
-                report.borrowed += 1
-            else:
-                report.worked += 1
-        except Exception as e:
-            report.failed += 1
-            report.failed_ids.add(alert.alert_id)
-            print(f"FAILED (will retry next cycle): {e}", flush=True)
+            try:
+                borrowed = await _work_alert(
+                    copilot, source, doc_id, alert, seen,
+                    agentic=agentic, tiered=tiered, auto_close=auto_close,
+                    notify=notify, case=case, dedup_window=dedup_window,
+                )
+                if borrowed:
+                    report.borrowed += 1
+                else:
+                    report.worked += 1
+            except Exception as e:
+                report.failed += 1
+                report.failed_ids.add(alert.alert_id)
+                log.error("FAILED (will retry next cycle): %s", e)
     return report
 
 
@@ -845,8 +862,8 @@ async def _page_watch_health(text: str) -> None:
     from .notify import WebhookClient
 
     if not settings.WEBHOOK_URL:
-        print(f"HEALTH: {text} (no WEBHOOK_URL configured; cannot page)",
-              flush=True)
+        log.warning("HEALTH: %s (no WEBHOOK_URL configured; cannot page)",
+                    text)
         return
     try:
         # Top-level `text` is the channel's contract (see notify.py): it is
@@ -859,36 +876,59 @@ async def _page_watch_health(text: str) -> None:
             "kind": "copilot-health",
             "summary": text,
         })
-        print(f"HEALTH: paged webhook — {text}", flush=True)
+        log.warning("HEALTH: paged webhook — %s", text)
     except Exception as e:
         # Broad on purpose: this is the best-effort path of last resort,
         # and anything escaping here would kill the loop at the exact
         # moment it first tried to report sickness — httpx.InvalidURL from
         # a typo'd WEBHOOK_URL is not an httpx.HTTPError, so the narrower
         # RuntimeError-only catch did exactly that (review catch).
-        print(f"HEALTH: could not page webhook ({e}) — {text}", flush=True)
+        log.error("HEALTH: could not page webhook (%s) — %s", e, text)
 
 
-async def _act_on_watch_health(action: str | None, sick_cycles: int) -> None:
+async def _act_on_watch_health(
+    action: str | None,
+    sick_cycles: int,
+    *,
+    systemic: bool = True,
+    stuck_ids: frozenset[str] = frozenset(),
+) -> None:
     """Carry out the watchdog's verdict. Split from the loop shell so the
     page-once and exit-nonzero behaviors are pinned by tests rather than
-    read off an infinite loop."""
+    read off an infinite loop.
+
+    The page must tell the truth about what happens next, and that
+    depends on which kind of sick the desk is: a systemic streak really
+    is counting down to an exit, but a confined streak (one poisoned
+    alert) pages and then HOLDS — observe() never returns "exit" for it —
+    so promising "will exit for a supervisor restart" there asserts a
+    restart that never comes to the one person acting on the page
+    (review catch)."""
     if action == "page":
-        await _page_watch_health(
-            f"soc-copilot watch loop is unhealthy: {sick_cycles} "
-            f"consecutive cycles completed no work. Still retrying; "
-            f"will exit for a supervisor restart if this persists."
-        )
+        if systemic:
+            await _page_watch_health(
+                f"soc-copilot watch loop is unhealthy: {sick_cycles} "
+                f"consecutive cycles completed no work. Still retrying; "
+                f"will exit for a supervisor restart if this persists."
+            )
+        else:
+            ids = ", ".join(sorted(stuck_ids)) or "one alert"
+            await _page_watch_health(
+                f"soc-copilot watch loop is stuck: {sick_cycles} "
+                f"consecutive cycles completed no work, all failing on "
+                f"{ids}. The process stays up and keeps retrying — ack or "
+                f"fix that alert in Elastic. It escalates to an exit only "
+                f"if more alerts start failing."
+            )
     elif action == "exit":
         await _page_watch_health(
             f"soc-copilot watch loop is exiting after {sick_cycles} "
             f"consecutive failed cycles so a supervisor can restart it."
         )
-        print(
-            f"Watch loop exiting: {sick_cycles} consecutive cycles "
-            f"completed no work. A supervisor (systemd/docker) should "
-            f"restart the process; without one, restart it manually.",
-            flush=True,
+        log.error(
+            "Watch loop exiting: %d consecutive cycles completed no work. "
+            "A supervisor (systemd/docker) should restart the process; "
+            "without one, restart it manually.", sick_cycles,
         )
         raise SystemExit(2)
 
@@ -917,12 +957,59 @@ async def _run_watch_cycle(
         )
     except Exception as e:
         report = CycleReport(crashed=True)
-        print(
-            f"Poll cycle failed (retrying in {args.interval}s): {e}",
-            flush=True,
-        )
+        log.error("Poll cycle failed (retrying in %ds): %s", args.interval, e)
+    prev_sick = watchdog.consecutive_sick
+    action = watchdog.observe(report)
+    _log_watch_health(watchdog, action, prev_sick)
     await _act_on_watch_health(
-        watchdog.observe(report), watchdog.consecutive_sick
+        action, watchdog.consecutive_sick,
+        systemic=watchdog.systemic, stuck_ids=watchdog.streak_failed_ids,
+    )
+
+
+def _log_watch_health(
+    watchdog: Watchdog, action: str | None, prev_sick: int
+) -> None:
+    """The heartbeat between the thresholds. The page (at 3) and the
+    exit (at 30) each announce themselves, but the 26 cycles between
+    them used to pass in silence — an operator reading the log during an
+    outage had per-cycle FAILED lines and no way to know how deep into
+    the countdown the desk was, or whether the streak even COULD end in
+    an exit. Every sick cycle that takes no action now says where the
+    streak stands and which kind of sick it is (systemic — counting
+    down to a supervisor restart — or one poisoned alert that pages and
+    holds forever). Recovery is announced at the same WARNING level the
+    sickness was, so a level-filtered view that saw the outage start
+    also sees it end."""
+    if prev_sick and not watchdog.consecutive_sick:
+        log.warning(
+            "HEALTH: recovered — work is completing again after %d sick "
+            "cycle(s).", prev_sick,
+        )
+        return
+    if action is not None or not watchdog.consecutive_sick:
+        return  # page/exit speak for themselves; healthy needs no pulse
+    if watchdog.systemic:
+        scope = (
+            f"systemic — exits for a supervisor restart at "
+            f"{watchdog.exit_after}"
+        )
+    else:
+        ids = ", ".join(sorted(watchdog.streak_failed_ids))
+        scope = (
+            f"confined to {ids} — pages then holds; a lone failing alert "
+            f"never exits the desk (ack or fix it in Elastic)"
+        )
+    # After the threshold, the page already fired (or was attempted and
+    # said so at ERROR) — phrasing it as still ahead would misreport the
+    # outage's own timeline (review catch).
+    page_word = (
+        "paged at" if watchdog.consecutive_sick >= watchdog.page_after
+        else "pages at"
+    )
+    log.warning(
+        "HEALTH: sick streak at %d consecutive cycle(s), %s %d (%s).",
+        watchdog.consecutive_sick, page_word, watchdog.page_after, scope,
     )
 
 
@@ -976,12 +1063,12 @@ async def _run_watch(args: argparse.Namespace) -> None:
     try:
         source = ElasticAlertSource()
     except RuntimeError as e:
-        print(e)
+        log.error("%s", e)
         sys.exit(1)
 
     if args.notify and not settings.WEBHOOK_URL:
         # Fail loudly at startup rather than silently never paging.
-        print("--notify requires WEBHOOK_URL in your .env")
+        log.error("--notify requires WEBHOOK_URL in your .env")
         sys.exit(1)
     if settings.WEBHOOK_URL:
         # The health watchdog pages this URL even without --notify, so a
@@ -993,8 +1080,8 @@ async def _run_watch(args: argparse.Namespace) -> None:
         try:
             httpx.URL(settings.WEBHOOK_URL)
         except httpx.InvalidURL as e:
-            print(f"WEBHOOK_URL is not a usable URL ({e}): "
-                  f"{settings.WEBHOOK_URL!r}")
+            log.error("WEBHOOK_URL is not a usable URL (%s): %r",
+                      e, settings.WEBHOOK_URL)
             sys.exit(1)
     copilot = SOCCopilot()
     seen: set[str] = set()
@@ -1002,17 +1089,17 @@ async def _run_watch(args: argparse.Namespace) -> None:
     mode = "agentic" if args.agentic else "phase one"
     feedback = bool(settings.THEHIVE_URL and settings.THEHIVE_API_KEY)
     last_feedback_sync = float("-inf")
-    # flush every line: when watch runs under nohup/systemd its output is
-    # the operator's only heartbeat, and block-buffering would hide it
-    print(
-        f"Watching {source.alerts_index} every {interval}s ({mode} mode"
-        f"{', tiered on' if args.tiered else ''}"
-        f"{', auto-close on' if args.auto_close else ''}"
-        f"{', notifications on' if args.notify else ''}"
-        f"{f', dedup on ({args.dedup}h window)' if args.dedup else ''}"
-        f"{', analyst-feedback sync on' if feedback else ''}). "
-        f"Ctrl+C to stop.",
-        flush=True,
+    # When watch runs under nohup/systemd its output is the operator's
+    # only heartbeat; the logging handler flushes per record, so nothing
+    # here needs flush=True anymore.
+    log.info(
+        "Watching %s every %ds (%s mode%s%s%s%s%s). Ctrl+C to stop.",
+        source.alerts_index, interval, mode,
+        ", tiered on" if args.tiered else "",
+        ", auto-close on" if args.auto_close else "",
+        ", notifications on" if args.notify else "",
+        f", dedup on ({args.dedup}h window)" if args.dedup else "",
+        ", analyst-feedback sync on" if feedback else "",
     )
     while True:
         if feedback and time.monotonic() - last_feedback_sync >= FEEDBACK_SYNC_INTERVAL:
@@ -1026,7 +1113,7 @@ async def _run_watch(args: argparse.Namespace) -> None:
                 if rejected:
                     _print_rejected_rulings(rejected)
                 if changed:
-                    print("Analyst feedback synced from TheHive:", flush=True)
+                    log.info("Analyst feedback synced from TheHive:")
                     known = {
                         r["alert_id"]
                         for r in copilot.history._iter_records()
@@ -1034,9 +1121,7 @@ async def _run_watch(args: argparse.Namespace) -> None:
                     _print_rulings(changed, known)
                     await _annotate_elastic(changed)
             except Exception as e:
-                print(
-                    f"Feedback sync failed (will retry): {e}", flush=True
-                )
+                log.warning("Feedback sync failed (will retry): %s", e)
         await _run_watch_cycle(copilot, source, seen, watchdog, args)
         await asyncio.sleep(interval)
 
@@ -1065,20 +1150,34 @@ def cli() -> None:
     # Parse synchronously (argparse exits with code 2 on a bad flag/value,
     # which is the whole safety point) before entering the event loop.
     command, args = _parse_args(sys.argv[1:])
+    configured = False
     try:
+        from .config import settings
+
+        # The one place logging is configured — before any dispatch, so
+        # every narrated line of every command speaks through it.
+        configure_logging(settings.LOG_FORMAT, settings.LOG_LEVEL)
+        configured = True
         asyncio.run(_dispatch(command, args))
     except KeyboardInterrupt:
         # Must live OUTSIDE asyncio.run: on Python 3.12 a SIGINT reaches
         # the coroutine as CancelledError and KeyboardInterrupt is raised
         # only at the run() boundary, so a handler inside _dispatch was
         # dead code and Ctrl+C died with a traceback (review catch).
-        print("\nStopped.")
+        # stderr like all narration — a piped stdout product stays clean.
+        print("\nStopped.", file=sys.stderr)
         sys.exit(130)
     except RuntimeError as e:
         # A missing-key (or other configuration) error should read as one
         # clear line, not a stack trace — the message already names the
-        # exact environment variable to set.
-        print(f"Configuration error: {e}", file=sys.stderr)
+        # exact environment variable to set. Spoken through the logger
+        # when it exists (so JSON mode stays JSON to the last line), and
+        # through bare stderr when the logging config ITSELF was the
+        # broken thing.
+        if configured:
+            log.error("Configuration error: %s", e)
+        else:
+            print(f"Configuration error: {e}", file=sys.stderr)
         sys.exit(1)
 
 

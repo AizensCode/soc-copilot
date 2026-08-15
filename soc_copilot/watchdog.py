@@ -83,6 +83,23 @@ class Watchdog:
         self._streak_crashed = False
         self._streak_failed_ids: set[str] = set()
 
+    @property
+    def systemic(self) -> bool:
+        """Whether the CURRENT streak looks systemic: it included a
+        crashed cycle, or more than one distinct alert has failed. This
+        is the exit gate's judgment, exposed so the shell's heartbeat
+        can tell the operator which kind of sick the desk is — one that
+        will end in a supervisor restart, or one lone poisoned alert
+        that will page and hold forever."""
+        return self._streak_crashed or len(self._streak_failed_ids) > 1
+
+    @property
+    def streak_failed_ids(self) -> frozenset[str]:
+        """The distinct alert ids that failed during the current streak
+        (empty when healthy). Frozen: the streak is the watchdog's to
+        mutate, the shell's to read."""
+        return frozenset(self._streak_failed_ids)
+
     def observe(self, report: CycleReport) -> str | None:
         """Record one cycle; return the action it warrants.
 
@@ -101,8 +118,7 @@ class Watchdog:
         self.consecutive_sick += 1
         self._streak_crashed = self._streak_crashed or report.crashed
         self._streak_failed_ids |= report.failed_ids
-        systemic = self._streak_crashed or len(self._streak_failed_ids) > 1
-        if self.consecutive_sick >= self.exit_after and systemic:
+        if self.consecutive_sick >= self.exit_after and self.systemic:
             return "exit"
         if self.consecutive_sick >= self.page_after and not self._paged:
             self._paged = True

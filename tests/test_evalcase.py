@@ -106,3 +106,27 @@ def test_exportable_ids_are_ruled_and_fully_recorded_only(tmp_path):
     store.record_disposition("GHOST", "false_positive", "x")
 
     assert exportable_alert_ids(store) == ["RULED"]
+
+
+async def test_export_case_cli_narrates_the_empty_store_at_info(
+    tmp_path, monkeypatch, caplog
+):
+    """The CLI seam: 'Nothing to export' is narration, not product — it
+    goes through the logger (stderr, leveled), keeping stdout clean for
+    the 'Exported ...' product lines (review catch: the docs claimed all
+    narration was on stderr while this line was still print())."""
+    import argparse
+    import logging
+    from types import SimpleNamespace
+
+    import soc_copilot.config as config_mod
+    from soc_copilot.main import _run_export_case
+
+    monkeypatch.setattr(
+        config_mod, "settings",
+        SimpleNamespace(HISTORY_PATH=str(tmp_path / "investigations.jsonl")),
+    )
+    with caplog.at_level(logging.INFO, logger="soc_copilot"):
+        await _run_export_case(argparse.Namespace(alert_id=None))
+    [rec] = [r for r in caplog.records if "Nothing to export" in r.getMessage()]
+    assert rec.levelno == logging.INFO

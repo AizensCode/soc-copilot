@@ -58,6 +58,11 @@ class Settings:
     # Escalation webhook (Slack/Mattermost/generic) — optional. When set and
     # --notify is passed in watch mode, escalations and campaigns POST here.
     WEBHOOK_URL: str | None = None
+    # How the CLI narrates (soc_copilot/logsetup.py): "text" is exactly
+    # the prose print() produced; "json" is one machine-parseable object
+    # per line for a log shipper. Validated loudly at startup.
+    LOG_FORMAT: str = "text"
+    LOG_LEVEL: str = "INFO"
 
     def require(self, *attrs: str) -> None:
         """Assert the given settings are present, or raise naming the
@@ -94,7 +99,7 @@ class Settings:
         # as env-overridable but silently weren't — only override when set.
         for name in ("ELASTIC_ALERTS_INDEX", "ELASTIC_RESULTS_INDEX",
                      "ELASTIC_EVENTS_INDEX", "HISTORY_PATH", "MODEL",
-                     "TIER_CHEAP_MODEL"):
+                     "TIER_CHEAP_MODEL", "LOG_FORMAT", "LOG_LEVEL"):
             if (val := os.environ.get(name)) is not None:
                 overrides[name] = val
         if (raw := os.environ.get("CORRELATION_WINDOW_HOURS")) is not None:

@@ -153,3 +153,113 @@ def test_flagless_commands_reject_stray_arguments(capsys):
     assert command == "scorecard"
     with pytest.raises(SystemExit):
         _parse_args(["--scorecard", "extra"])
+
+
+# --- the logging bootstrap in cli() ------------------------------------------
+#
+# cli() is the only place logging is configured; if the call is dropped,
+# every INFO line in production falls into the stdlib's lastResort
+# handler and vanishes — with the whole suite green, because nothing
+# else exercises cli() (review catch).
+
+
+def test_python_dash_m_keeps_the_narration(tmp_path):
+    """Under `python -m soc_copilot.main` the module runs as "__main__";
+    a getLogger(__name__) narrator would sit outside the configured
+    "soc_copilot" hierarchy and every INFO line would silently vanish
+    into the stdlib's lastResort handler (review catch). Only a real
+    child process can pin this: under pytest the module is IMPORTED as
+    soc_copilot.main, so __name__ equals the pinned name and an
+    in-process assertion cannot tell them apart (mutation catch — the
+    name-equality version of this test survived the revert)."""
+    import os
+    import subprocess
+    import sys
+
+    env = dict(
+        os.environ,
+        HISTORY_PATH=str(tmp_path / "investigations.jsonl"),
+        LOG_FORMAT="text",
+        LOG_LEVEL="INFO",
+    )
+    r = subprocess.run(
+        [sys.executable, "-m", "soc_copilot.main", "--export-case"],
+        capture_output=True, text=True, env=env,
+    )
+    assert r.returncode == 0, r.stderr
+    assert "Nothing to export" in r.stderr        # INFO narration survived
+
+
+def test_cli_configures_logging_before_dispatching(monkeypatch):
+    import soc_copilot.main as main
+
+    order: list[tuple] = []
+
+    def fake_configure(fmt, level):
+        order.append(("configure", fmt, level))
+
+    async def fake_dispatch(command, args):
+        order.append(("dispatch", command))
+
+    monkeypatch.setattr(main, "configure_logging", fake_configure)
+    monkeypatch.setattr(main, "_dispatch", fake_dispatch)
+    monkeypatch.setattr(main.sys, "argv", ["soc-copilot", "--scorecard"])
+
+    main.cli()
+
+    assert [step[0] for step in order] == ["configure", "dispatch"]
+    from soc_copilot.config import settings
+
+    assert order[0][1:] == (settings.LOG_FORMAT, settings.LOG_LEVEL)
+
+
+def test_a_broken_logging_config_is_reported_on_bare_stderr(
+    monkeypatch, capsys
+):
+    """When the logging config ITSELF is the broken thing, there is no
+    logger to speak through — the error must still reach stderr as one
+    plain line, exit 1."""
+    import soc_copilot.main as main
+
+    def broken_configure(fmt, level):
+        raise RuntimeError("LOG_FORMAT must be one of text, json, got 'yaml'")
+
+    monkeypatch.setattr(main, "configure_logging", broken_configure)
+    monkeypatch.setattr(main.sys, "argv", ["soc-copilot", "--scorecard"])
+
+    with pytest.raises(SystemExit) as exc:
+        main.cli()
+    assert exc.value.code == 1
+    err = capsys.readouterr().err
+    assert "Configuration error" in err and "LOG_FORMAT" in err
+
+
+def test_config_errors_after_the_bootstrap_speak_through_the_logger(
+    monkeypatch, caplog
+):
+    """Once logging IS configured, a missing-key RuntimeError from
+    dispatch must go through the logger (so LOG_FORMAT=json stays JSON
+    to the last line), still exit 1."""
+    import logging
+
+    import soc_copilot.main as main
+
+    logger = logging.getLogger("soc_copilot")
+    saved_handlers, saved_level = list(logger.handlers), logger.level
+
+    async def failing_dispatch(command, args):
+        raise RuntimeError("Missing required environment variable(s): X")
+
+    monkeypatch.setattr(main, "_dispatch", failing_dispatch)
+    monkeypatch.setattr(main.sys, "argv", ["soc-copilot", "--scorecard"])
+    try:
+        with pytest.raises(SystemExit) as exc:
+            main.cli()
+    finally:
+        logger.handlers = saved_handlers
+        logger.setLevel(saved_level)
+
+    assert exc.value.code == 1
+    [rec] = [r for r in caplog.records if "Configuration error" in r.getMessage()]
+    assert rec.levelno == logging.ERROR
+    assert "Missing required" in rec.getMessage()

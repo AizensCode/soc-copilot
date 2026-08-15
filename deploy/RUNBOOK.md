@@ -36,9 +36,38 @@ only the results index makes every acknowledgement 403 *after* the paid
 investigation succeeded, which the watchdog will eventually report as a
 systemic outage.
 
-Nothing else. No temp files, no logs on disk (stdout is the log —
-capture it with `journalctl`/`docker logs`), no writes outside `data/`.
-The systemd unit enforces that with `ProtectSystem=strict`.
+Nothing else. No temp files, no log files on disk — the process's
+streams are the log, and `journalctl`/`docker logs` capture both:
+narration (progress, failures, health) goes to **stderr** with a level;
+a command's product (an investigation JSON, the scorecard) goes to
+**stdout**, pipeable. No writes outside `data/`. The systemd unit
+enforces that with `ProtectSystem=strict`.
+
+## Reading the log
+
+Two knobs in `.env`, validated loudly at startup:
+
+- `LOG_FORMAT=json` emits one `{"ts","level","msg","alert_id"}` object
+  per line (`ts` is UTC ISO-8601; `alert_id` is present on every line
+  logged while that alert was being worked, so
+  `jq 'select(.alert_id=="X")'` replays one alert's story). The default
+  `text` is the same prose as always, message-only — journald and
+  docker already stamp timestamps, so the copilot doesn't double them.
+- `LOG_LEVEL` (default `INFO`): progress is INFO, degraded-but-
+  continuing (a failed webhook page, a TheHive outage, a feedback-sync
+  miss) is WARNING, a failed alert or cycle is ERROR. `journalctl -p
+  warning` is the "problems only" view of an unattended night — health
+  lines are WARNING and up, so that view never hides them.
+
+Under the systemd unit the `journalctl -p` filter works because the
+copilot detects that stderr is the journal socket (`$JOURNAL_STREAM`)
+and prefixes each line with the sd-daemon `<N>` priority token, which
+journald strips and records as the line's real priority. Without that,
+every captured line would sit at the unit default (info) and the
+filtered view would be empty. The prefix appears ONLY when stderr is
+the journal — terminals, pipes, and Docker never see it. `docker logs`
+has no priority filter at all: there, use `LOG_FORMAT=json` and filter
+with `jq 'select(.level != "INFO")'`.
 
 **The history files are the copilot's memory.** Losing them loses
 prior-sighting context, dedup anchors, the scorecard's evidence, and
@@ -55,7 +84,7 @@ secrets, not with the data).
 |---|---|---|
 | 0 | clean end (one-shot commands) | none |
 | 1 | configuration error (missing/invalid key, bad `WEBHOOK_URL`) — printed as one line, at startup | fix `.env`, start again |
-| 2 | two distinct causes, easy to tell apart: an **instant** exit 2 with a usage message is argparse rejecting a flag (fix the command); an exit 2 after ~30 minutes is **the watchdog giving up** on systemic failure (fetch crashing, or 2+ distinct alerts all failing) | typo: fix the flag. Watchdog: the supervisor restarts it; if it exits 2 again, read stdout — the cause is printed every cycle |
+| 2 | two distinct causes, easy to tell apart: an **instant** exit 2 with a usage message is argparse rejecting a flag (fix the command); an exit 2 after ~30 minutes is **the watchdog giving up** on systemic failure (fetch crashing, or 2+ distinct alerts all failing) | typo: fix the flag. Watchdog: the supervisor restarts it; if it exits 2 again, read the log (stderr — `journalctl`/`docker logs` capture it): the cause is printed every cycle |
 | 130 | operator Ctrl+C | none |
 | 143 | SIGTERM (`docker stop` / `systemctl stop`) | none — this is what stopping looks like |
 
@@ -78,15 +107,28 @@ one message the channel exists for):
   process lifetime** — under a supervisor, a persistent systemic outage
   therefore re-pages each restart round, roughly twice an hour, which is
   a deliberate reminder cadence rather than a pager storm; text
-  beginning `🤒 soc-copilot watch loop is unhealthy` — check stdout for
-  the per-cycle cause (`FAILED (will retry next cycle): ...` or
-  `Poll cycle failed: ...`);
+  beginning `🤒 soc-copilot watch loop is unhealthy` (systemic — the
+  exit countdown is real) or `🤒 soc-copilot watch loop is stuck`
+  (one poisoned alert; the page says the process stays up, because it
+  does) — check the log (stderr) for the per-cycle cause
+  (`FAILED (will retry next cycle): ...` or `Poll cycle failed: ...`);
 - just before an exit-2: a goodbye page saying it is handing over to
   the supervisor.
 
 A page that names ONE alert id failing repeatedly with a quiet queue is
 a poisoned record, not an outage: the process deliberately stays up.
 Acknowledge or fix that alert in Elastic and the loop moves on.
+
+Every sick cycle that takes no action itself — from the first, and
+through the stretch between the page (3) and the exit (30) — the log
+carries a heartbeat at WARNING: `HEALTH: sick streak at N consecutive
+cycle(s), pages at 3 ...` (or `paged at 3` once it has), saying which
+kind of sick the desk is — `systemic — exits for a supervisor restart
+at 30`, or `confined to <alert id> — pages then holds` (the
+lone-poisoned-record case above, which never exits). Recovery is
+announced the same way (`HEALTH: recovered — work is completing again
+after N sick cycle(s)`), at WARNING too, so a `journalctl -p warning`
+view that saw the outage start also sees it end.
 
 ## Stopping, restarting, upgrading
 

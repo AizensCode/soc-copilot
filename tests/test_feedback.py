@@ -286,7 +286,7 @@ async def test_maybe_open_case_records_the_provenance_ledger(tmp_path, monkeypat
 
 
 async def test_maybe_open_case_survives_a_ledger_write_failure(
-    tmp_path, monkeypatch, capsys
+    tmp_path, monkeypatch, caplog
 ):
     """The never-fatal contract (review catch): a disk error writing the
     provenance ledger must not undo a case that already succeeded — the
@@ -306,7 +306,7 @@ async def test_maybe_open_case_survives_a_ledger_write_failure(
         _alert("ALRT-Y", ["2.2.2.2"]), _inv("ALRT-Y"), case=True, store=store
     )
     assert case_id == "~obj-123"                    # the case was NOT lost
-    assert "failed to record its provenance" in capsys.readouterr().out
+    assert "failed to record its provenance" in caplog.text
 
 
 # --- Elastic annotation ------------------------------------------------------

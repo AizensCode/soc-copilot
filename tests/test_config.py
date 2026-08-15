@@ -20,7 +20,7 @@ _OTHER_VARS = [
     "ELASTIC_URL", "ELASTIC_API_KEY", "ELASTIC_ALERTS_INDEX",
     "ELASTIC_RESULTS_INDEX", "THEHIVE_URL", "THEHIVE_API_KEY",
     "THEHIVE_ORGANISATION", "HISTORY_PATH", "MODEL",
-    "CORRELATION_WINDOW_HOURS",
+    "CORRELATION_WINDOW_HOURS", "LOG_FORMAT", "LOG_LEVEL",
 ]
 
 
@@ -78,6 +78,18 @@ def test_history_path_and_window_are_env_overridable(clean_env):
     s = Settings.from_env()
     assert s.HISTORY_PATH == "/tmp/custom/history.jsonl"
     assert s.CORRELATION_WINDOW_HOURS == 48
+
+
+def test_log_format_and_level_are_env_overridable(clean_env):
+    """Same bug class as HISTORY_PATH above: .env.example documents
+    LOG_FORMAT=json as the way to turn on the shipper format, so a
+    from_env that silently ignores it would strand every JSON deployment
+    on prose logs with the suite green (review catch: the mutant
+    removing these two names from the override tuple survived)."""
+    clean_env.setenv("LOG_FORMAT", "json")
+    clean_env.setenv("LOG_LEVEL", "DEBUG")
+    s = Settings.from_env()
+    assert (s.LOG_FORMAT, s.LOG_LEVEL) == ("json", "DEBUG")
 
 
 def test_absent_overrides_keep_the_defaults(clean_env):
