@@ -10,6 +10,7 @@ no new dependency, and it matches the project's existing file-based persistence.
 The interface is deliberately backend-agnostic — a SQLite implementation could
 replace it without touching callers.
 """
+import bisect
 import ipaddress
 import json
 import re
@@ -137,11 +138,19 @@ class _CachedJsonl:
         self._offset = 0          # bytes consumed, always at a line boundary
         self._tail = b""          # last bytes consumed, to verify the prefix
         self._records: list[dict] = []
+        # Bumped every time the record list is REBUILT rather than extended
+        # (file replaced, truncated, or gone). Derived structures — the
+        # store's query index — key their own validity on this: same
+        # generation means their prefix of the list is still exactly what
+        # they indexed, so they only need to index the new tail.
+        self.generation = 0
 
     def records(self) -> list[dict]:
         try:
             st = self.path.stat()
         except OSError:  # missing file: an empty store, not an error
+            if self._state is not None or self._records:
+                self.generation += 1     # a real wipe, not a repeat look
             self._state, self._offset = None, 0
             self._tail, self._records = b"", []
             return self._records
@@ -164,6 +173,14 @@ class _CachedJsonl:
                 # shorter than our offset cannot return those bytes there,
                 # so an explicit size check would be unreachable (mutation
                 # testing proved it dead — no test could tell it apart).
+                # The check is PROBABILISTIC, and honestly so: a rewrite
+                # that reuses the inode and preserves both the byte at
+                # our offset boundary and the exact final 64 bytes passes
+                # it (observed in a test where two same-shape records
+                # differed only mid-line). The supported rotation —
+                # offline, see deploy/RUNBOOK.md — sidesteps the window
+                # entirely; a same-size in-place rewrite under a running
+                # process is outside the append-only contract.
                 f.seek(self._offset - len(self._tail))
                 reset = f.read(len(self._tail)) != self._tail
             # Everything below is staged in locals and committed to self
@@ -185,6 +202,7 @@ class _CachedJsonl:
             # call looks again: the file is mid-append, and the rest of that
             # line must not be skipped once the writer finishes it.
             if reset:
+                self.generation += 1
                 self._offset, self._records, self._tail = 0, [], b""
                 self._state = state
             return self._records
@@ -194,6 +212,8 @@ class _CachedJsonl:
             if line.strip()
         ]
         base = [] if reset else self._records
+        if reset:
+            self.generation += 1
         # Rebind rather than extend, so an iterator handed out before this
         # append keeps walking the snapshot it started on.
         self._records = base + fresh if fresh else base
@@ -203,6 +223,200 @@ class _CachedJsonl:
         )[-_PREFIX_CHECK_BYTES:]
         self._state = state
         return self._records
+
+
+def _net24(value: object) -> str | None:
+    """The /24 network key for anything ip_address() reads as IPv4, or
+    None. The input domain is deliberately as WIDE as the readers'
+    predicates: ipaddress.ip_address accepts ints (a hand-imported
+    record can carry a JSON-number IOC), and the original _same_24 scan
+    matched those — so the network is built from the PARSED address,
+    which renders dotted-quad whatever the input shape. Building it
+    from the raw value crashed correlate on exactly the records the
+    full scan handled (review catch, reproduced end to end)."""
+    try:
+        ip = ipaddress.ip_address(value)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(ip, ipaddress.IPv4Address):
+        return None
+    return str(ipaddress.ip_network(f"{ip}/24", strict=False).network_address)
+
+
+_EPOCH = datetime.min.replace(tzinfo=timezone.utc)
+
+
+class _RecordIndex:
+    """Query indexes over one _CachedJsonl's records.
+
+    The incremental cache removed the PARSE cost; these remove the SCAN
+    cost. Every hot reader used to walk all of history per alert —
+    prior_sightings and correlate looking for shared infrastructure,
+    dedup's anchor scan looking for a recent same-fingerprint record —
+    which is O(history) by construction and was the dominant per-alert
+    term once parsing went incremental (61+17+15ms of the ~95ms at 50k
+    records).
+
+    The design rule that keeps this SAFE: indexes only PRESELECT
+    candidate rows; every caller re-applies its original per-record
+    predicates to each candidate. An index bug can therefore only make a
+    query slower (too many candidates) or incomplete (a missing posting)
+    — never accept a record the old scan would have rejected — and the
+    equivalence tests in tests/test_history_index.py hold indexed and
+    brute-force results equal on randomized stores.
+
+    Four posting maps (row = position in the records list, file order):
+    - ioc_rows:   IOC string -> rows whose record lists that IOC
+    - host_rows:  host       -> rows on that host
+    - net24_rows: IPv4 /24   -> rows with an IPv4 IOC in that network
+      (correlate's related_ip signal needs neighbors, not equality)
+    - id_rows:    alert_id   -> rows for that alert (latest_record,
+      dedup's already-investigated and analyst-overturn checks)
+
+    And one time array for dedup's window: investigated_at is stamped at
+    write time, so it is monotone in file order — modulo clock steps,
+    which is why the bisect runs over the CUMULATIVE MAX of the parsed
+    times (a sorted sequence by construction) rather than the raw
+    values: a row can never hide before the window's start position,
+    because cummax[j] < cutoff implies that row's own time is below the
+    cutoff too. Unparseable or missing times index as the previous max
+    (they cannot advance the clock); naive times are assumed UTC.
+
+    Maintenance mirrors the cache: same generation -> the already-indexed
+    prefix is untouched, index only the new tail; a generation bump
+    (file replaced, truncated, gone) -> rebuild from scratch.
+    """
+
+    def __init__(self, cache: _CachedJsonl) -> None:
+        self._cache = cache
+        self._generation = cache.generation - 1   # force first build
+        self._count = 0
+        self.rows: list[dict] = []
+        self.ioc_rows: dict[str, list[int]] = {}
+        self.host_rows: dict[str, list[int]] = {}
+        self.net24_rows: dict[str, list[int]] = {}
+        self.id_rows: dict[str, list[int]] = {}
+        self.inv_cummax: list[datetime] = []
+        # The alert timestamp, parsed once per record instead of once per
+        # (record, query) — at 50k records the per-candidate fromisoformat
+        # was most of correlate's remaining cost. None where the field is
+        # missing or unparseable; readers FALL BACK to the original
+        # expression there, so those records fail exactly as the full
+        # scan failed (loudly), never silently skip.
+        self.ts: list[datetime | None] = []
+        # Scratch space for derived per-row values owned by CALLERS (e.g.
+        # dedup memoizes record fingerprints under "fingerprint"). Cleared
+        # whenever the index rebuilds; within a generation rows only ever
+        # append, so a value memoized by row number can never go stale.
+        self.memo: dict[str, dict] = {}
+
+    def sync(self) -> list[dict]:
+        """Bring the index up to date; return the records it indexes."""
+        records = self._cache.records()
+        if self._cache.generation != self._generation:
+            self._generation = self._cache.generation
+            self._count = 0
+            self.ioc_rows, self.host_rows = {}, {}
+            self.net24_rows, self.id_rows = {}, {}
+            self.inv_cummax = []
+            self.ts = []
+            self.memo = {}
+        for row in range(self._count, len(records)):
+            self._add(row, records[row])
+            # Committed per row, not per batch: if a future _add ever
+            # raises mid-batch, a retry must not re-post the rows that
+            # already succeeded (duplicated postings, misaligned arrays —
+            # review catch).
+            self._count = row + 1
+        self.rows = records
+        return records
+
+    def _add(self, row: int, rec: object) -> None:
+        """Index one record. Total over anything json.loads can produce:
+        every field access is isinstance-guarded, so a malformed line
+        degrades to an unindexed (never-preselected) row instead of
+        crashing EVERY indexed reader at build time — the full scans
+        crashed only the queries that touched the bad record, and the
+        index must not widen that blast radius (review catch). The two
+        parallel arrays are appended exactly once per row, on every
+        path, so they can never fall out of alignment with rows."""
+        ts_parsed: datetime | None = None
+        prev = self.inv_cummax[-1] if self.inv_cummax else _EPOCH
+        when = prev
+        if isinstance(rec, dict):
+            iocs = rec.get("iocs")
+            # A string value degrades to its characters — the same shape
+            # set(rec.get("iocs", [])) gave the full scans. Anything
+            # non-iterable is skipped (the scans crashed there; a record
+            # that can't be indexed can still be reached via its other
+            # postings, where the reader's own access fails as before).
+            if isinstance(iocs, (list, str)):
+                for ioc in iocs:
+                    if isinstance(ioc, str):
+                        self.ioc_rows.setdefault(ioc, []).append(row)
+                    # net24 postings take the READERS' domain, not the
+                    # string domain: _ipv4s and the /24 pair check accept
+                    # ints, so a numeric IOC must still be preselected
+                    # (review catch: it silently vanished from correlate).
+                    net = _net24(ioc)
+                    if net is not None:
+                        self.net24_rows.setdefault(net, []).append(row)
+            host = rec.get("host")
+            if isinstance(host, str) and host:
+                self.host_rows.setdefault(host, []).append(row)
+            alert_id = rec.get("alert_id")
+            # Any JSON scalar: the joins this index serves were plain
+            # dict lookups (rulings.get(rec["alert_id"])), which match
+            # non-string ids too — a string-only index silently dropped
+            # an analyst overturn keyed by a numeric id (review catch).
+            if alert_id is not None and not isinstance(alert_id, (list, dict)):
+                self.id_rows.setdefault(alert_id, []).append(row)
+            ts = rec.get("timestamp")
+            if isinstance(ts, str):
+                try:
+                    ts_parsed = datetime.fromisoformat(ts)
+                except ValueError:
+                    ts_parsed = None
+            raw = rec.get("investigated_at")
+            if isinstance(raw, str):
+                try:
+                    parsed = datetime.fromisoformat(raw)
+                except ValueError:
+                    parsed = None
+                if parsed is not None:
+                    if parsed.tzinfo is None:
+                        parsed = parsed.replace(tzinfo=timezone.utc)
+                    when = max(prev, parsed)
+        self.ts.append(ts_parsed)
+        self.inv_cummax.append(when)
+
+    def rows_since(self, cutoff: datetime) -> int:
+        """First row that could carry investigated_at >= cutoff. Every
+        earlier row is provably below the cutoff (see class docstring);
+        rows from here on still get the caller's exact time filter."""
+        if cutoff.tzinfo is None:
+            cutoff = cutoff.replace(tzinfo=timezone.utc)
+        return bisect.bisect_left(self.inv_cummax, cutoff)
+
+    def candidate_rows(
+        self,
+        iocs: set[str] | None = None,
+        host: str | None = None,
+        ips: list[str] | None = None,
+    ) -> list[int]:
+        """Sorted union of rows sharing any given signal — file order, so
+        callers that keep 'first record per alert_id' semantics see the
+        same record the full scan saw."""
+        rows: set[int] = set()
+        for ioc in iocs or ():
+            rows.update(self.ioc_rows.get(ioc, ()))
+        if host:
+            rows.update(self.host_rows.get(host, ()))
+        for ip in ips or ():
+            net = _net24(ip)
+            if net is not None:
+                rows.update(self.net24_rows.get(net, ()))
+        return sorted(rows)
 
 
 class AlertHistoryStore:
@@ -220,14 +434,23 @@ class AlertHistoryStore:
     appends, which is exactly the property the incremental read depends
     on.
 
-    That removes the PARSE cost, not every cost. Measured at 50k records
-    (72MB), per alert: parsing fell from 556ms to 0.3ms, but the readers
-    that walk every record still dominate what is left — correlate 61ms,
-    prior_sightings 17ms, dedup's anchor scan 15ms. Those are O(history)
-    by construction and want real indexes (by IOC, by host, by time) to
-    go further; the cache only stopped the desk from re-reading its own
-    file. Roughly 650ms -> 95ms per alert at that size, not the ~2000x
-    the parse numbers alone would suggest.
+    The incremental cache removed the PARSE cost; the query index
+    (_RecordIndex) removed the SCAN cost that then dominated. Measured
+    at 50k records (~90MB synthetic, timings the medians of repeated
+    calls on this dev machine): prior_sightings 19ms -> 0.08ms (2ms when
+    the probe carries an IOC present in ~1k records), dedup's
+    find_anchor 16ms -> 0.2ms (window bisect + memoized fingerprints),
+    correlate 51-69ms -> 9-11ms. Correlate's residual is honest and
+    data-dependent: it is O(candidate rows) — rows sharing an IOC, a
+    /24, or a host — and the benchmark deliberately packs 2000 IPs into
+    eight /24s, so thousands of rows qualify; a sparser environment
+    pays proportionally less, a denser one more. Building the index
+    costs ~330-350ms once per process at that size (on top of ~650-750ms
+    cold parse; the build is now timed by the same bench script as every
+    other number here — the first draft said ~150ms from memory, the one
+    figure with no provenance, and it was ~2x off: review catch), then
+    stays warm via the same append-only incremental discipline as the
+    cache.
     """
 
     def __init__(self, path: str | Path) -> None:
@@ -239,9 +462,17 @@ class AlertHistoryStore:
         self._dispositions_cache = _CachedJsonl(self.dispositions_path)
         self._closures_cache = _CachedJsonl(self.closures_path)
         self._created_alerts_cache = _CachedJsonl(self.created_alerts_path)
+        self._record_index = _RecordIndex(self._records_cache)
 
     def _iter_records(self) -> Iterator[dict]:
         yield from self._records_cache.records()
+
+    def _index(self) -> _RecordIndex:
+        """The synced query index over the investigations file. Internal:
+        used by this class's own readers and by dedup's scans (which
+        already live inside the store's privacy boundary)."""
+        self._record_index.sync()
+        return self._record_index
 
     def record_disposition(
         self,
@@ -373,10 +604,9 @@ class AlertHistoryStore:
     def latest_record(self, alert_id: str) -> dict | None:
         """The most recent investigation record for an alert, with the
         analyst's ruling (if any) joined in under "ruling"."""
-        found: dict | None = None
-        for rec in self._iter_records():
-            if rec["alert_id"] == alert_id:
-                found = rec  # file order: last line wins
+        index = self._index()
+        rows = index.id_rows.get(alert_id)
+        found = index.rows[rows[-1]] if rows else None  # last line wins
         if found is None:
             return None
         ruling = self.dispositions().get(alert_id)
@@ -397,7 +627,12 @@ class AlertHistoryStore:
         rulings = self.dispositions()
         sightings: list[PriorSighting] = []
         seen_alert_ids: set[str] = set()
-        for rec in self._iter_records():
+        index = self._index()
+        # The index preselects rows sharing at least one IOC — in file
+        # order, so the record chosen per alert_id is the one the full
+        # scan chose; the exact match below re-derives matched_iocs.
+        for row in index.candidate_rows(iocs=current):
+            rec = index.rows[row]
             if rec["alert_id"] == alert.alert_id:
                 continue  # don't match an alert against itself
             if rec["alert_id"] in seen_alert_ids:
@@ -447,18 +682,32 @@ class AlertHistoryStore:
         """
         current_iocs = set(alert_iocs(alert))
         current_ips = _ipv4s(list(current_iocs))
+        current_nets = [(a, _net24(a)) for a in current_ips]
         current_host = alert_host(alert)
         current_techs = _parent_tcodes(techniques or [])
         window = timedelta(hours=window_hours)
 
         related: list[RelatedAlert] = []
         seen_alert_ids: set[str] = set()
-        for rec in self._iter_records():
+        index = self._index()
+        # Relatedness REQUIRES an infrastructure/target signal (exact IOC,
+        # /24-adjacent IP, or same host) — a shared technique only ever
+        # corroborates — so the union of those three posting lists is a
+        # complete candidate set. Every filter below is the full scan's,
+        # re-applied; the time window stays a per-record check because the
+        # alert's own timestamp (the window's center) is not something the
+        # file is ordered by.
+        for row in index.candidate_rows(
+            iocs=current_iocs, host=current_host, ips=current_ips
+        ):
+            rec = index.rows[row]
             if rec["alert_id"] == alert.alert_id:
                 continue
             if rec["alert_id"] in seen_alert_ids:
                 continue
-            rec_time = datetime.fromisoformat(rec["timestamp"])
+            rec_time = index.ts[row]
+            if rec_time is None:  # missing/bad field: fail as the scan did
+                rec_time = datetime.fromisoformat(rec["timestamp"])
             if abs(alert.timestamp - rec_time) > window:
                 continue
 
@@ -469,9 +718,16 @@ class AlertHistoryStore:
                 signals.append(f"shared_ioc:{shared}")
 
             rec_ips = _ipv4s(list(rec_iocs))
-            for a in current_ips:
-                for b in rec_ips:
-                    if _same_24(a, b):
+            # Same /24, different address — computed by comparing each
+            # side's precomputed network key instead of building an
+            # ip_network object per PAIR (the pairwise construction was
+            # the dominant per-candidate cost at scale). _net24 is the
+            # same arithmetic _same_24 performed; the pair loop and its
+            # signal order are unchanged.
+            rec_nets = [(b, _net24(b)) for b in rec_ips]
+            for a, a_net in current_nets:
+                for b, b_net in rec_nets:
+                    if a_net == b_net and a != b:
                         signals.append(f"related_ip:{b}/24")
 
             rec_host = rec.get("host")

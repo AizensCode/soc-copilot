@@ -157,14 +157,29 @@ def _record_fingerprint(rec: dict) -> str | None:
     return fingerprint(alert) if alert is not None else None
 
 
+def _row_fingerprint(index, row: int) -> str | None:
+    """A record's fingerprint, memoized on the store's index. The same
+    in-window tail is re-fingerprinted on every alert of every cycle —
+    each fingerprint costs a pydantic Alert reconstruction plus a
+    canonical-JSON hash — and a record's fingerprint never changes, so
+    computing it once per index generation is pure win. The memo lives
+    on the index because the index knows when rows are rebuilt (see
+    _RecordIndex.memo)."""
+    memo = index.memo.setdefault("fingerprint", {})
+    if row not in memo:
+        memo[row] = _record_fingerprint(index.rows[row])
+    return memo[row]
+
+
 def _has_real_record(store: AlertHistoryStore, alert_id: str) -> bool:
     """True if this alert_id already has a non-suppressed investigation on
     record — it was really worked, so a re-arrival (e.g. a retry after a
     failed push) must not be suppressed and have that verdict discarded."""
-    for rec in store._iter_records():
-        if rec["alert_id"] == alert_id and not rec.get("duplicate_of"):
-            return True
-    return False
+    index = store._index()
+    return any(
+        not index.rows[row].get("duplicate_of")
+        for row in index.id_rows.get(alert_id, ())
+    )
 
 
 def _fingerprint_overturned(
@@ -178,14 +193,18 @@ def _fingerprint_overturned(
     rulings = store.dispositions()
     if not rulings:
         return None
-    for rec in store._iter_records():
-        ruling = rulings.get(rec["alert_id"])
-        if not ruling:
-            continue
+    # Walk the RULED alerts' rows (via the id index) instead of all of
+    # history: fingerprints are only ever computed for records an analyst
+    # actually ruled on, and rulings arrive at human speed. Same records
+    # reach the same fingerprint check as the full scan — only the
+    # iteration order differs, and the caller uses existence alone.
+    index = store._index()
+    for alert_id, ruling in rulings.items():
         if ruling.get("human_verdict") == "false_positive":
             continue
-        if _record_fingerprint(rec) == fp:
-            return rec["alert_id"]
+        for row in index.id_rows.get(alert_id, ()):
+            if _row_fingerprint(index, row) == fp:
+                return alert_id
     return None
 
 
@@ -207,9 +226,16 @@ def find_anchor(
     cutoff = now - timedelta(hours=window_hours)
     fp = fingerprint(alert)
 
+    # investigated_at is stamped at write time, so the window's worth of
+    # records is a TAIL of the file: the index bisects to the first row
+    # that could be in-window and only that tail is walked (and only its
+    # rows fingerprinted). Every filter below is the full scan's,
+    # re-applied — rows_since() only preselects (see _RecordIndex).
+    index = store._index()
     anchor: dict | None = None
     anchor_at: datetime | None = None
-    for rec in store._iter_records():
+    for row in range(index.rows_since(cutoff), len(index.rows)):
+        rec = index.rows[row]
         if rec["alert_id"] == alert.alert_id:
             continue
         if rec.get("duplicate_of"):
@@ -220,7 +246,7 @@ def find_anchor(
         when = datetime.fromisoformat(investigated_at)
         if when < cutoff:
             continue
-        if _record_fingerprint(rec) != fp:
+        if _row_fingerprint(index, row) != fp:
             continue
         anchor, anchor_at = rec, when  # file order: latest matching wins
 
@@ -228,9 +254,11 @@ def find_anchor(
         return None, 0
 
     # Count suppressions of this fingerprint charged since the anchor was
-    # investigated — the cap is measured from the last real look.
+    # investigated — the cap is measured from the last real look. The
+    # anchor is in-window, so this tail is a subset of the one above.
     suppressions = 0
-    for rec in store._iter_records():
+    for row in range(index.rows_since(anchor_at), len(index.rows)):
+        rec = index.rows[row]
         if not rec.get("duplicate_of"):
             continue
         investigated_at = rec.get("investigated_at")
@@ -238,7 +266,7 @@ def find_anchor(
             continue
         if datetime.fromisoformat(investigated_at) < anchor_at:
             continue
-        if _record_fingerprint(rec) == fp:
+        if _row_fingerprint(index, row) == fp:
             suppressions += 1
     return anchor, suppressions
 
