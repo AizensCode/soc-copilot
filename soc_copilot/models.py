@@ -265,6 +265,11 @@ class PhishingAnalysis(BaseModel):
         "forwarding, and the usual benign explanation of a DMARC failure",
     )
     urls_examined: list[str] = Field(default_factory=list)
+    attachments_examined: list[str] = Field(
+        default_factory=list,
+        description="Filenames of the attachment records READ (never "
+        "opened): what the mail gateway wrote down, not a detonation.",
+    )
     signals: list[PhishingSignal] = Field(default_factory=list)
     summary: str = ""
 

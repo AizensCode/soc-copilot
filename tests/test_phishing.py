@@ -13,6 +13,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
+import pytest
+
 from soc_copilot.models import Alert
 from soc_copilot.phishing import (
     analyze_phishing,
@@ -780,3 +782,524 @@ def test_committed_brand_data_is_wellformed():
         assert owners, brand
         for owner in owners:
             assert "." in owner, (brand, owner)
+
+
+# --- the attachment channel (QR codes, embedded links, file types) ----------
+#
+# The channel is the point of this section. Every gateway rewrites and
+# scans links in the message BODY; almost none rewrite a link printed as a
+# QR code or buried inside an attachment. The URL's own anatomy is analyzed
+# by the same machinery either way — what these signals add is how the link
+# reached the user, which anatomy cannot show.
+
+_ALIGNED_AR = (
+    "mx; spf=pass smtp.mailfrom=corp.example; "
+    "dkim=pass header.d=corp.example; dmarc=pass header.from=corp.example"
+)
+
+
+def _mail(attachments, from_addr="IT <it@corp.example>", **raw_extra) -> Alert:
+    return _alert(
+        {"From": from_addr, "Authentication-Results": _ALIGNED_AR},
+        attachments=attachments, **raw_extra,
+    )
+
+
+def test_a_qr_destination_off_the_sending_domain_is_strong():
+    """Quishing's whole trick: the destination is printed as pixels, so
+    there is no href to rewrite, nothing to reputation-score, and nothing
+    to hover over — and the click lands on a phone, off the managed
+    endpoint."""
+    result = analyze_phishing(_mail([{
+        "filename": "enroll.png", "content_type": "image/png",
+        "qr_codes": ["https://corp-example.mfa-reverify.top/enroll"],
+    }]))
+    qr = [s for s in result.signals if s.name == "attachment_qr_url"]
+    assert len(qr) == 1
+    assert qr[0].strength == "strong"
+    assert "mfa-reverify.top" in qr[0].fact
+    assert "corp.example" in qr[0].fact       # names BOTH sides of the compare
+
+
+def test_a_qr_destination_on_the_sending_domain_is_weak_with_its_twin():
+    """The discriminator is where the QR points, never that a QR exists.
+    Event tickets, MFA enrollment and payment links are ordinary QR uses,
+    and a detection that fires on the channel gets muted within a week."""
+    result = analyze_phishing(_mail([{
+        "filename": "enroll.png", "content_type": "image/png",
+        "qr_codes": ["https://sso.corp.example/mfa/enroll"],
+    }]))
+    [qr] = [s for s in result.signals if s.name == "attachment_qr_url"]
+    assert qr.strength == "weak"
+    assert qr.benign_cause is not None
+    assert "legitimate" in qr.benign_cause.lower()
+
+
+def test_a_qr_url_is_analyzed_by_the_ordinary_url_machinery_too():
+    """The channel signal does not replace the anatomy. A QR destination
+    gets punycode, userinfo, brand-in-subdomain and recipient-in-fragment
+    exactly as a body link would — otherwise moving a link into an image
+    would be a way to evade every URL check this module has."""
+    result = analyze_phishing(_mail(
+        [{"filename": "q.png",
+          "qr_codes": ["https://login.microsoftonline.com.evil.top/x#e.varga@corp.example"]}],
+    ))
+    names = {s.name for s in result.signals}
+    assert "brand_in_subdomain" in names
+    assert "recipient_in_url_fragment" in names
+    assert "attachment_qr_url" in names
+
+
+def test_attachment_urls_are_never_the_ones_truncated_away():
+    """MAX_URLS bounds hostile input, and the bound must not drop the link
+    that arrived through the channel the gateway does NOT rewrite. The
+    attachment corpus goes first."""
+    from soc_copilot.phishing import MAX_URLS
+
+    body = "\n".join(f"https://filler{i}.example/x" for i in range(MAX_URLS + 50))
+    result = analyze_phishing(_mail(
+        [{"filename": "q.png", "qr_codes": ["https://the-qr-target.example/go"]}],
+        body_text=body,
+    ))
+    assert len(result.urls_examined) == MAX_URLS
+    assert result.urls_examined[0] == "https://the-qr-target.example/go"
+
+
+def test_message_level_qr_records_take_the_same_path():
+    """A QR usually rides in an inline image rather than a named
+    attachment. That record becomes one synthetic attachment so there is a
+    single code path and a single set of gates, not a parallel one that
+    drifts."""
+    result = analyze_phishing(_alert(
+        {"From": "IT <it@corp.example>", "Authentication-Results": _ALIGNED_AR},
+        qr_codes=["https://not-corp.example/go"],
+    ))
+    [qr] = [s for s in result.signals if s.name == "attachment_qr_url"]
+    assert qr.strength == "strong"
+    assert "inline image" in qr.fact
+
+
+def test_a_right_to_left_override_filename_is_reported_with_both_forms():
+    """`invoice<U+202E>gnp.js` displays as `invoicesj.png`. The extension
+    that decides what runs is the RAW one, so the raw name is what the
+    analyzer reasons over and both forms are shown to the analyst."""
+    result = analyze_phishing(_mail([{"name": "invoice‮gnp.js"}]))
+    [sig] = [s for s in result.signals if s.name == "attachment_bidi_filename"]
+    assert sig.strength == "strong"
+    assert "invoicesj.png" in sig.fact          # the rendered deception
+    # NOT just `".js" in sig.fact`: repr() escapes U+202E to the ASCII
+    # sequence \u202e, so the raw name's own repr contains ".js" whatever
+    # the extension logic computed — the assertion passed even with
+    # `_extension_of` reading the RENDERED name, the exact mistake its
+    # docstring forbids (review catch). Pin the computed extension.
+    assert "raw extension (.js)" in sig.fact
+
+
+def test_ordinary_bidi_marks_in_a_filename_are_not_an_attack():
+    """RLM and the embeddings are ordinary in Arabic and Hebrew filenames.
+    Only the OVERRIDE reorders arbitrary text, and a tool that calls the
+    others an attack is wrong far more often than right — the same
+    discipline the lookalike scoring already follows."""
+    for control in ("‏", "‫", "⁧"):
+        result = analyze_phishing(_mail([{"name": f"فاتورة{control}.pdf"}]))
+        assert "attachment_bidi_filename" not in {s.name for s in result.signals}
+
+
+def test_a_double_extension_is_reported_against_the_claimed_type():
+    result = analyze_phishing(_mail([{"name": "statement.pdf.exe"}]))
+    names = {s.name for s in result.signals}
+    assert "attachment_double_extension" in names
+    assert "attachment_executable_type" in names
+
+
+def test_an_ordinary_dotted_filename_is_not_a_double_extension():
+    """`Q2.2026.report.pdf` has three dots and is a PDF. The tell is a
+    document extension followed by an EXECUTABLE one, not dot-counting."""
+    result = analyze_phishing(_mail([{"name": "Q2.2026.report.pdf"}]))
+    assert not {s.name for s in result.signals} & {
+        "attachment_double_extension", "attachment_executable_type",
+    }
+
+
+def test_html_attachments_are_strong_because_there_is_no_link_to_scan():
+    result = analyze_phishing(_mail([{
+        "name": "voicemail.html", "content_type": "text/html",
+        "extracted_urls": ["https://collect.example/post"],
+    }]))
+    signals = {s.name: s for s in result.signals}
+    assert signals["attachment_html_document"].strength == "strong"
+    assert signals["attachment_embedded_url"].strength == "moderate"
+    assert "not rewritten" in signals["attachment_embedded_url"].fact
+
+
+def test_container_and_macro_and_encrypted_types_are_graded_not_binary():
+    """Each of these has a real benign population, so each carries its
+    legitimate pattern rather than being reported as a verdict."""
+    result = analyze_phishing(_mail([
+        {"name": "delivery.iso"},
+        {"name": "budget.xlsm"},
+        {"name": "docs.zip", "password_protected": True},
+    ]))
+    by_name = {s.name: s for s in result.signals}
+    for name in ("attachment_mark_of_the_web_container",
+                 "attachment_macro_enabled_document",
+                 "attachment_encrypted_archive"):
+        assert by_name[name].strength == "moderate", name
+        assert by_name[name].benign_cause, name
+
+
+def test_a_declared_type_that_contradicts_the_extension_is_reported():
+    result = analyze_phishing(_mail([
+        {"name": "report.exe", "content_type": "application/pdf"},
+    ]))
+    assert "attachment_type_mismatch" in {s.name for s in result.signals}
+
+
+def test_an_incomplete_mime_mapping_never_invents_a_mismatch():
+    """The mapping lists only unambiguous families. An unlisted type must
+    stay silent rather than report a contradiction it cannot establish —
+    the fail-open direction is the safe one for a *discrepancy* signal."""
+    result = analyze_phishing(_mail([
+        {"name": "design.psd", "content_type": "image/vnd.adobe.photoshop"},
+    ]))
+    assert "attachment_type_mismatch" not in {s.name for s in result.signals}
+
+
+def test_attachment_reading_is_total_over_hostile_shapes():
+    """Header values arrive from whatever the source system serialized,
+    and the analyzer has a standing review catch about a nested dict
+    raising TypeError straight out of enrichment. Attachments get the same
+    treatment: anything unparseable is ignored, never fatal."""
+    result = analyze_phishing(_mail([
+        {"filename": {"nested": "dict"}, "content_type": 7},
+        {"name": None, "urls": {"deep": {"deeper": ["https://x.example/a"]}}},
+        ["not", "a", "record"],
+        "bare-filename.exe",
+        42,
+    ]))
+    assert result is not None
+    names = {s.name for s in result.signals}
+    assert "attachment_executable_type" in names       # the bare string parsed
+    # NOT `in result.urls_examined`: _urls_in walks the whole raw_log and
+    # would find that URL even if _urls_under never recursed at all. The
+    # signal is the only thing that proves the ATTACHMENT walker reached it
+    # (review catch — the depth mutation survived the first version).
+    embedded = [s for s in analyze_phishing(_mail([
+        {"name": None, "urls": {"deep": {"deeper": ["https://x.example/a"]}}},
+    ])).signals if s.name == "attachment_embedded_url"]
+    assert len(embedded) == 1
+    assert "https://x.example/a" in embedded[0].fact
+
+
+def test_an_alert_with_no_attachments_reports_none_and_says_nothing():
+    """The threshold that keeps this enricher from perturbing every
+    previously-calibrated fixture: no attachment records, no attachment
+    prose in the summary, no attachment signals."""
+    result = analyze_phishing(_alert(
+        {"From": "a@corp.example", "Authentication-Results": _ALIGNED_AR}
+    ))
+    assert result.attachments_examined == []
+    assert "attachment" not in result.summary.lower()
+    assert not [s for s in result.signals if s.name.startswith("attachment_")]
+
+
+def test_the_summary_refuses_to_imply_detonation():
+    """The module opens nothing and decodes no images. A summary that let
+    a reader believe otherwise would be the worst kind of security-tool
+    dishonesty: implied coverage."""
+    result = analyze_phishing(_mail([{"name": "x.pdf"}]))
+    assert "NOT opened" in result.summary
+    assert "mail gateway recorded" in result.summary
+
+
+def test_the_macro_signal_never_names_a_file_format_that_does_not_exist():
+    """Every fact string here is read by an analyst and cited by the model,
+    so naming a nonexistent file type is the worst defect this module can
+    have. Deriving the plain-format counterpart by stripping the 'm' and
+    appending 'x' invents .xlax, .ppax and .xlx — the map is explicit, and
+    add-in formats drop the clause instead of guessing."""
+    from soc_copilot.phishing import (
+        _MACRO_OFFICE_EXTS,
+        _MACRO_PLAIN_COUNTERPART,
+    )
+
+    real_formats = {
+        "docx", "dotx", "xlsx", "xltx", "pptx", "potx", "ppsx", "xlam",
+    }
+    for ext in _MACRO_OFFICE_EXTS:
+        plain = _MACRO_PLAIN_COUNTERPART.get(ext)
+        if plain is not None:
+            assert plain in real_formats, f"{ext} -> invented .{plain}"
+        result = analyze_phishing(_mail([{"name": f"budget.{ext}"}]))
+        [sig] = [
+            s for s in result.signals
+            if s.name == "attachment_macro_enabled_document"
+        ]
+        if plain is None:
+            assert "no macro-free counterpart" in sig.fact
+        else:
+            assert f".{plain} format cannot" in sig.fact
+
+
+def test_a_native_code_office_addin_is_graded_as_an_executable():
+    """.xll is an Excel add-in written as a native DLL — Excel loads and
+    runs compiled code. Filing it with the macro documents would understate
+    it (there is no macro prompt and no protected view in its path)."""
+    result = analyze_phishing(_mail([{"name": "helper.xll"}]))
+    by_name = {s.name: s for s in result.signals}
+    assert by_name["attachment_executable_type"].strength == "strong"
+    assert "attachment_macro_enabled_document" not in by_name
+
+
+def test_filenames_are_classified_as_the_os_resolves_them():
+    """Three cheap tricks hide an extension from a literal-string matcher
+    while the file still opens as an executable. Win32 strips trailing
+    dots and spaces, so `invoice.exe.` runs as invoice.exe; an NTFS '::'
+    suffix names the file's own stream; zero-width characters are
+    invisible in a mail client. Each defeated the executable signal
+    entirely before normalization (self-caught while probing the analyzer
+    the way an attacker would)."""
+    for name in ("invoice.exe.", "invoice.exe::$DATA", "invoice.exe​"):
+        names = {s.name for s in analyze_phishing(_mail([{"name": name}])).signals}
+        assert "attachment_executable_type" in names, name
+        assert "attachment_filename_obscured" in names, name
+
+
+def test_the_obscured_name_signal_shows_both_forms():
+    [sig] = [
+        s for s in analyze_phishing(_mail([{"name": "invoice.exe."}])).signals
+        if s.name == "attachment_filename_obscured"
+    ]
+    assert "invoice.exe." in sig.fact          # what was recorded
+    assert "invoice.exe'" in sig.fact          # what actually opens
+    assert sig.benign_cause                    # stray spaces are real
+
+
+def test_an_ordinary_filename_is_not_reported_as_obscured():
+    """The signal must not fire on every attachment: an unremarkable name
+    resolves to itself."""
+    for name in ("report.pdf", "Q2 budget.xlsx", "INVOICE.PDF"):
+        names = {s.name for s in analyze_phishing(_mail([{"name": name}])).signals}
+        assert "attachment_filename_obscured" not in names, name
+
+
+def test_a_trailing_dot_double_extension_is_still_a_double_extension():
+    """The double-extension split runs on the resolved name too, or
+    `statement.pdf.exe.` would split into ['statement','pdf','exe',''] and
+    miss."""
+    names = {
+        s.name for s in
+        analyze_phishing(_mail([{"name": "statement.pdf.exe."}])).signals
+    }
+    assert "attachment_double_extension" in names
+
+
+def test_the_container_claim_does_not_promise_the_marker_is_missing():
+    """Windows and current archivers propagate mark-of-the-web now. The
+    fact may say this is the technique the format is chosen for; it may
+    not tell an analyst the marker is absent on their endpoint."""
+    [sig] = [
+        s for s in analyze_phishing(_mail([{"name": "delivery.iso"}])).signals
+        if s.name == "attachment_mark_of_the_web_container"
+    ]
+    assert "historically" in sig.fact
+    assert "not as a guarantee" in sig.fact
+
+
+# --- the review's confirmed findings, each with its oracle ------------------
+
+def test_an_unknown_sender_makes_the_qr_comparison_unknown_not_wrong():
+    """THREE states, not two. The first version collapsed "the sender's
+    domain could not be determined" into "does not align" and emitted a
+    STRONG signal whose fact asserted a comparison against `the sender
+    unknown` — a claim about a comparison that was never made. Three
+    review lenses found it independently, and it is reachable on ordinary
+    mail: a gateway that records only Authentication-Results, or a
+    display-name-only From:, gets there."""
+    result = analyze_phishing(_alert(
+        {"Authentication-Results": "mx; spf=pass smtp.mailfrom=corp.example"},
+        attachments=[{"name": "q.png", "qr_codes": ["https://x.example/go"]}],
+    ))
+    [qr] = [s for s in result.signals if s.name == "attachment_qr_url"]
+    assert qr.strength == "moderate"
+    assert "UNKNOWN" in qr.fact
+    assert "unknown)" not in qr.fact       # never asserts against a non-domain
+    assert qr.benign_cause
+
+
+def test_the_strong_qr_branch_still_carries_its_benign_cause():
+    """Off-domain QR destinations are how ticketing, payment processors and
+    outsourced enrollment work. 'Not the sender's domain' is a reason to
+    look, never a verdict — and a strong signal with no benign cause is
+    how this module's own docstring says a detection gets muted."""
+    result = analyze_phishing(_mail([
+        {"name": "q.png", "qr_codes": ["https://random-host.example/go"]},
+    ]))
+    [qr] = [s for s in result.signals if s.name == "attachment_qr_url"]
+    assert qr.strength == "strong"
+    assert qr.benign_cause and "brands.json" in qr.benign_cause
+
+
+def test_a_qr_to_an_operator_authorized_brand_domain_grades_down():
+    """The operator's curated brand list is the checkable middle ground:
+    a destination that is not the sender's domain but IS recorded as
+    authorized for a brand is a delegated flow, not an unknown host."""
+    result = analyze_phishing(_mail([
+        {"name": "q.png", "qr_codes": ["https://login.microsoftonline.com/e"]},
+    ]))
+    [qr] = [s for s in result.signals if s.name == "attachment_qr_url"]
+    assert qr.strength == "moderate"
+    assert "microsoft" in qr.fact
+
+
+def test_channel_urls_are_deduped_and_capped_with_the_count_disclosed():
+    """625 records x 25 URLs each all landed in the signal list AND in the
+    summary's strong/moderate tally, so an attacker could bury the real
+    findings under their own and inflate the counts the model reads as a
+    severity proxy (review catch, two lenses)."""
+    from soc_copilot.phishing import MAX_ATTACHMENT_URLS, MAX_REPORTED_CHANNEL_URLS
+
+    # DISTINCT urls per record, so "deduped across attachments" is actually
+    # under test. Each record's list is separately bounded by
+    # MAX_ATTACHMENT_URLS, so the distinct total is records x that bound.
+    records = 10
+    result = analyze_phishing(_mail([
+        {"name": f"a{r}.pdf",
+         "urls": [f"https://h{r}-{i}.example/p" for i in range(40)]}
+        for r in range(records)
+    ]))
+    embedded = [s for s in result.signals if s.name == "attachment_embedded_url"]
+    assert len(embedded) == MAX_REPORTED_CHANNEL_URLS
+    assert len({s.fact.split("link to ")[1] for s in embedded}) == len(embedded)
+    [trunc] = [
+        s for s in result.signals if s.name == "attachment_embedded_urls_truncated"
+    ]
+    assert f"{records * MAX_ATTACHMENT_URLS} distinct" in trunc.fact
+
+
+def test_attachment_urls_cannot_evict_every_body_link():
+    """The ordering that protects the un-rewritten channel must not become
+    a way to hide the body: attachment links get a reserved share of the
+    MAX_URLS budget, not all of it (review catch)."""
+    from soc_copilot.phishing import ATTACHMENT_URL_BUDGET, MAX_URLS
+
+    # DISTINCT urls per attachment: 25 records x 25 each = 625 candidates,
+    # which is what the eviction scenario actually needs (a repeated list
+    # dedupes down to 25 and proves nothing).
+    result = analyze_phishing(_mail(
+        [
+            {"name": f"a{r}.pdf",
+             "urls": [f"https://att{r}-{i}.example/p" for i in range(25)]}
+            for r in range(25)
+        ],
+        body_text="https://the-body-link.example/important",
+    ))
+    assert result.urls_examined[0].startswith("https://att")   # channel first
+    # The whole point: 625 attacker-supplied attachment links do not push
+    # the body link out of analysis.
+    assert "https://the-body-link.example/important" in result.urls_examined
+    attachment_share = sum(
+        1 for u in result.urls_examined if u.startswith("https://att")
+    )
+    assert attachment_share == ATTACHMENT_URL_BUDGET < MAX_URLS
+
+
+def test_truncated_attachment_lists_are_disclosed_not_reported_as_complete():
+    """Padding a message with inline images to push the payload past the
+    cap is a total bypass of this channel. The cap stays, but the summary
+    may not report a capped count as though it were the whole message —
+    'implied coverage' is what this module's docstring calls the worst
+    thing a security tool can offer (review catch)."""
+    from soc_copilot.phishing import MAX_ATTACHMENTS
+
+    padding = [{"name": f"img{i}.png", "content_type": "image/png"}
+               for i in range(MAX_ATTACHMENTS)]
+    result = analyze_phishing(_mail(padding + [{"name": "Invoice.pdf.exe"}]))
+    assert f"read of {MAX_ATTACHMENTS + 1} delivered" in result.summary.replace(
+        f"{MAX_ATTACHMENTS} attachment record(s) read", "read"
+    )
+    assert "were NOT analyzed" in result.summary
+
+
+def test_a_cabinet_is_not_described_as_mounted():
+    """CAB is extracted by expand.exe / the shell handler, never mounted.
+    It belongs to the same mark-of-the-web family and gets the same signal,
+    but the fact may not tell an analyst it is mounted — a container family
+    and a mount mechanism are different claims (review catch)."""
+    cab = [s for s in analyze_phishing(_mail([{"name": "update.cab"}])).signals
+           if s.name == "attachment_mark_of_the_web_container"][0]
+    assert "cabinet archive" in cab.fact
+    assert "mount" not in cab.fact
+
+    iso = [s for s in analyze_phishing(_mail([{"name": "setup.iso"}])).signals
+           if s.name == "attachment_mark_of_the_web_container"][0]
+    assert "mountable disk image" in iso.fact
+
+
+def test_plain_text_attachments_never_report_a_type_mismatch():
+    """text/plain is the catch-all gateways apply to anything textual, so
+    it cannot establish a contradiction. Listing {txt, log, csv} made every
+    .yaml, .md, .json and .xml attachment assert that its declared type and
+    name 'disagree about what this file is' — false, and precisely the
+    fires-on-normal-mail behavior that gets a detection muted."""
+    for name in ("deploy.yaml", "notes.md", "config.json", "report.xml",
+                 "query.sql", "settings.ini", "server.log", "data.csv"):
+        result = analyze_phishing(_mail([
+            {"name": name, "content_type": "text/plain"},
+        ]))
+        assert "attachment_type_mismatch" not in {
+            s.name for s in result.signals
+        }, name
+
+
+@pytest.mark.parametrize("raw_log_key", ["attachments", "email_attachments", "files"])
+@pytest.mark.parametrize("name_key", ["name", "filename", "file_name", "fileName", "file"])
+def test_every_tolerant_container_and_name_spelling_is_read(raw_log_key, name_key):
+    """The tolerant key tuples are the whole reason _attachments_of exists,
+    and narrowing any of them to a single spelling left the suite green
+    (review catch — raised as a coverage gap rather than a defect, and it
+    is exactly the kind of gap that turns into one on the next edit)."""
+    result = analyze_phishing(_alert(
+        {"From": "IT <it@corp.example>", "Authentication-Results": _ALIGNED_AR},
+        **{raw_log_key: [{name_key: "payload.lnk"}]},
+    ))
+    assert result.attachments_examined == ["payload.lnk"]
+    assert "attachment_shortcut_type" in {s.name for s in result.signals}
+
+
+def test_the_double_extension_split_uses_the_resolved_name():
+    """`parts` must come from the OS-resolved name, not the recorded one.
+    A trailing dot alone does not prove it (the comprehension filters the
+    empty segment either way), so the oracle is a stream suffix, which
+    leaves the raw final segment as 'exe::$DATA' and matches nothing
+    (mutation catch — the raw-name mutant survived the first version)."""
+    names = {
+        s.name for s in
+        analyze_phishing(_mail([{"name": "statement.pdf.exe::$DATA"}])).signals
+    }
+    assert "attachment_double_extension" in names
+
+
+def test_one_signal_per_destination_however_many_attachments_carry_it():
+    """A newsletter link repeated across twelve attached statements is one
+    finding, not twelve. Deduping per DESTINATION (not per record) is what
+    keeps the summary's strong/moderate tally meaningful — and the earlier
+    version of the cap test used distinct URLs throughout, so it never
+    exercised this path (mutation catch)."""
+    shared = "https://one-and-the-same.example/promo"
+    result = analyze_phishing(_mail(
+        [{"name": f"statement{i}.pdf", "urls": [shared]} for i in range(12)]
+    ))
+    embedded = [s for s in result.signals if s.name == "attachment_embedded_url"]
+    assert len(embedded) == 1
+    assert "attachment_embedded_urls_truncated" not in {
+        s.name for s in result.signals
+    }
+
+
+def test_one_qr_signal_per_destination_across_attachments():
+    shared = "https://same-qr.example/go"
+    result = analyze_phishing(_mail(
+        [{"name": f"page{i}.png", "qr_codes": [shared]} for i in range(8)]
+    ))
+    assert len([s for s in result.signals if s.name == "attachment_qr_url"]) == 1

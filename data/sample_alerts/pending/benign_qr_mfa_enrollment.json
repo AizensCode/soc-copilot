@@ -1,0 +1,77 @@
+{
+  "_comment": [
+    "The benign twin of phishing_qr_mfa_lure.json, and the reason the QR",
+    "signal is graded rather than binary. Everything a naive quishing",
+    "detection keys on is present and identical: an unsolicited MFA",
+    "re-enrollment pretext, urgency ('before Friday'), a body with no",
+    "clickable links, and a PNG attachment whose QR code is the only way",
+    "to act on the message. A detection that fires on 'QR code in email'",
+    "calls this malicious, and IT stops using QR codes — or, far more",
+    "likely, the detection gets muted.",
+    "",
+    "What makes it benign is checkable, not asserted. The sender is",
+    "internal and authenticates with SPF, DKIM and DMARC all aligned to",
+    "corp.example; the QR resolves to sso.corp.example, which shares an",
+    "organizational domain with the sender; and the message names the",
+    "helpdesk ticket a recipient can verify independently. The QR signal",
+    "grades itself WEAK on exactly that alignment and carries the",
+    "legitimate pattern with it, so the destination is the discriminator",
+    "rather than the channel.",
+    "",
+    "Note the weak credential_harvest_path signal fires here too (the",
+    "enrollment URL contains /mfa). It is supposed to: that signal is",
+    "documented as meaningless alone, and a benign fixture that trips it",
+    "is what keeps it honest."
+  ],
+  "alert_id": "ALRT-2026-0812-052",
+  "timestamp": "2026-08-12T09:02:35Z",
+  "source": "email_gateway",
+  "severity": "medium",
+  "title": "QR code delivered to user mailbox in MFA enrollment message",
+  "raw_log": {
+    "event_type": "email_delivered",
+    "host": "ops-ws-28.corp.internal",
+    "recipient": "t.lindqvist@corp.example",
+    "delivery_action": "delivered_to_inbox",
+    "body_link_count": 0,
+    "headers": {
+      "From": "\"IT Service Desk\" <servicedesk@corp.example>",
+      "Return-Path": "<servicedesk@corp.example>",
+      "Subject": "Action needed: enroll in the new authenticator before Friday (ticket SD-40712)",
+      "Authentication-Results": "corp-mx.example; spf=pass (sender IP is 10.40.2.31) smtp.mailfrom=corp.example; corp-mx.example; dkim=pass (signature was verified) header.d=corp.example; corp-mx.example; dmarc=pass action=none header.from=corp.example",
+      "Received": [
+        "from corp-mx.example (10.40.2.9) by mbx-05.corp.example with Microsoft SMTP Server id 15.20.7601.22; Wed, 12 Aug 2026 09:02:33 +0000",
+        "from smtp-relay-int.corp.example (smtp-relay-int.corp.example [10.40.2.31]) by corp-mx.example with ESMTPS id 5Yb4Rr1x7m; Wed, 12 Aug 2026 09:02:28 +0000"
+      ]
+    },
+    "body_text": "We are migrating multi-factor authentication to the new authenticator app. Scan the code with your phone to enroll, or open the Service Desk portal and search ticket SD-40712 if you would rather type the address yourself.",
+    "attachments": [
+      {
+        "filename": "sso-enrollment-qr.png",
+        "content_type": "image/png",
+        "size_bytes": 14907,
+        "sha256": "3d5e2a9c7f1b8064e2c4a6d8b0f2e4c6a8d0b2f4e6c8a0d2b4f6e8c0a2d4b6f8",
+        "qr_codes": [
+          "https://sso.corp.example/mfa/enroll?ticket=SD-40712"
+        ]
+      }
+    ],
+    "sender_ip": "10.40.2.31",
+    "sender_asn_description": "internal relay"
+  },
+  "indicators": {
+    "ips": [
+      "10.40.2.31"
+    ],
+    "hashes": [
+      "3d5e2a9c7f1b8064e2c4a6d8b0f2e4c6a8d0b2f4e6c8a0d2b4f6e8c0a2d4b6f8"
+    ],
+    "users": [
+      "t.lindqvist"
+    ],
+    "domains": [
+      "corp.example",
+      "sso.corp.example"
+    ]
+  }
+}

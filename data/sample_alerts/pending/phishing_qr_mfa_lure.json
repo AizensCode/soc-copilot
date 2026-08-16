@@ -1,0 +1,76 @@
+{
+  "_comment": [
+    "Quishing: a credential lure whose entire payload is a QR code. The",
+    "teaching case for the attachment channel, and the reason it exists —",
+    "every URL-based defense in the pipeline has NOTHING to bite on. The",
+    "message body carries no links at all, so there is no href for the",
+    "gateway to rewrite, nothing for URL reputation to score, and nothing",
+    "for a user to hover over. The destination is printed as pixels, and",
+    "the click happens on a phone camera, off the managed endpoint, where",
+    "neither the proxy nor the EDR is watching.",
+    "",
+    "Authentication is not the discriminator here and is deliberately not",
+    "made to fail: the attacker owns ms-authenticator-support.com and",
+    "configured it correctly, so SPF, DKIM and DMARC all pass and align.",
+    "What gives it away is what authentication never covers — a display",
+    "name claiming a brand the sending domain is not authorized to send",
+    "as, and a QR destination that puts the real brand's hostname in the",
+    "SUBDOMAIN of a site the attacker controls, with the recipient's own",
+    "address carried along so the fake portal arrives pre-filled.",
+    "",
+    "Its benign twin is benign_qr_mfa_enrollment.json: the same event",
+    "shape, the same QR-code-in-an-image delivery, the same MFA-enrollment",
+    "pretext, opposite verdict. The discriminator is where the QR points."
+  ],
+  "alert_id": "ALRT-2026-0812-051",
+  "timestamp": "2026-08-12T07:14:22Z",
+  "source": "email_gateway",
+  "severity": "high",
+  "title": "QR code delivered to user mailbox in MFA re-enrollment pretext",
+  "raw_log": {
+    "event_type": "email_delivered",
+    "host": "legal-ws-12.corp.internal",
+    "recipient": "d.okafor@corp.example",
+    "delivery_action": "delivered_to_inbox",
+    "body_link_count": 0,
+    "headers": {
+      "From": "\"Microsoft Authenticator\" <no-reply@ms-authenticator-support.com>",
+      "Return-Path": "<bounce@ms-authenticator-support.com>",
+      "Subject": "Your multi-factor authentication expires in 24 hours - scan to re-enroll",
+      "Authentication-Results": "corp-mx.example; spf=pass (sender IP is 91.219.238.44) smtp.mailfrom=ms-authenticator-support.com; corp-mx.example; dkim=pass (signature was verified) header.d=ms-authenticator-support.com; corp-mx.example; dmarc=pass action=none header.from=ms-authenticator-support.com; compauth=fail reason=001",
+      "Received": [
+        "from corp-mx.example (10.40.2.9) by mbx-02.corp.example with Microsoft SMTP Server id 15.20.7601.22; Wed, 12 Aug 2026 07:14:20 +0000",
+        "from mail-out-3.bulkhost-cheap.example (mail-out-3.bulkhost-cheap.example [91.219.238.44]) by corp-mx.example with ESMTPS id 5Xz2Nq8w1t; Wed, 12 Aug 2026 07:14:12 +0000"
+      ]
+    },
+    "body_text": "Your organization requires all staff to re-enroll in multi-factor authentication before 13 August. Open your phone camera and scan the code below to complete enrollment. Do not reply to this message.",
+    "attachments": [
+      {
+        "filename": "authenticator-enrollment.png",
+        "content_type": "image/png",
+        "size_bytes": 18422,
+        "sha256": "9c1f7b0e5a4d2c8f6b3a1e9d7c5b4a2f8e6d0c9b7a5f3e1d0c8b6a4f2e0d9c7b",
+        "qr_codes": [
+          "https://login.microsoftonline.com.mfa-reverify.top/enroll?tid=8842#d.okafor@corp.example"
+        ]
+      }
+    ],
+    "sender_ip": "91.219.238.44",
+    "sender_asn_description": "bulk hosting"
+  },
+  "indicators": {
+    "ips": [
+      "91.219.238.44"
+    ],
+    "hashes": [
+      "9c1f7b0e5a4d2c8f6b3a1e9d7c5b4a2f8e6d0c9b7a5f3e1d0c8b6a4f2e0d9c7b"
+    ],
+    "users": [
+      "d.okafor"
+    ],
+    "domains": [
+      "ms-authenticator-support.com",
+      "login.microsoftonline.com.mfa-reverify.top"
+    ]
+  }
+}

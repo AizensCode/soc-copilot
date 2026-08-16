@@ -57,9 +57,38 @@ coverage it lacks is worse than one that admits the gap:
   makes it checkable (display name and link subdomain); edit-distance
   guessing against every brand on earth is how these tools start flagging
   legitimate mail.
-- No attachment analysis, QR-code (quishing) extraction, or inspection of
-  links inside PDFs and HTML attachments. Those are real phishing
-  channels this module simply does not see.
+- No extraction from attachment CONTENT. Attachment records are read, not
+  opened: filenames, declared types, and any links or QR payloads the mail
+  gateway already extracted. This module decodes no images, parses no PDFs
+  and detonates nothing, and every summary it writes says so. If your
+  gateway does not record extracted content, the channel signals below
+  will not fire and the gap is real — implied coverage is the worst thing
+  a security tool can offer.
+
+What it DOES do with attachments, and why the channel is the point: a mail
+gateway rewrites and scans links in the message BODY, and almost none
+rewrite a link printed as a QR code or buried in an attachment's content.
+So the same URL is a materially different risk depending on how it reached
+the user — and a QR code additionally moves the click to a phone, off the
+managed endpoint, where neither the proxy nor the EDR is watching. A
+quishing message is the limit case: it carries no body links at all, so
+every URL-based defense in the pipeline has nothing to bite on. Extracted
+destinations therefore go through the ORDINARY url signal machinery (a QR
+target gets punycode, userinfo, brand-in-subdomain and
+recipient-in-fragment exactly as a body link would — otherwise moving a
+link into an image would evade every URL check here), and the attachment
+signals add only what anatomy cannot show: the delivery channel, and the
+file's own type, name and declared type.
+
+The same grading discipline applies as everywhere else. The QR signal is
+WEAK when the destination shares an organizational domain with the sender
+and strong when it does not, because event tickets, MFA enrollment and
+payment links are ordinary QR uses; the destination is the discriminator,
+never the presence of a QR code. Only the RIGHT-TO-LEFT OVERRIDE is
+treated as a filename attack — RLM and the embeddings are ordinary in
+Arabic and Hebrew filenames. Macro-enabled documents, mountable containers
+and password-protected archives each carry the legitimate workflow that
+produces them.
 """
 import json
 import re
@@ -110,6 +139,21 @@ _GENERIC_SLDS = frozenset({
 # enrichment. Real headers are orders of magnitude below these.
 MAX_HEADER_CHARS = 4000
 MAX_URLS = 200
+# Attachment records the gateway wrote. Bounded for the same reason as the
+# rest: a hostile message must not be able to make enrichment expensive.
+MAX_ATTACHMENTS = 25
+MAX_ATTACHMENT_URLS = 25
+# How many distinct channel destinations get their own signal. Beyond this
+# one truncation signal says how many there were: an alert must not be able
+# to bury its real findings under a thousand of the attacker's own, nor
+# inflate the strong/moderate tally the summary reports.
+MAX_REPORTED_CHANNEL_URLS = 5
+# The share of the MAX_URLS analysis budget attachment-borne links may take.
+# They go first (so truncation cannot silently drop the un-rewritten
+# channel), which without a reserve lets attacker-supplied attachment URLs
+# evict every body link from _url_signals — a worse blind spot than the one
+# the ordering fixes (review catch).
+ATTACHMENT_URL_BUDGET = MAX_URLS // 2
 
 # Header names, canonicalized lowercase, that the analyzer reads.
 _H_FROM = "from"
@@ -130,6 +174,116 @@ _CREDENTIAL_PATHS = (
     "/login", "/signin", "/sign-in", "/auth", "/verify", "/owa", "/webmail",
     "/account/secure", "/mfa", "/password", "/session", "/validate",
 )
+
+# raw_log keys that may hold the gateway's attachment records.
+_ATTACHMENT_CONTAINERS = ("attachments", "email_attachments", "files")
+# Tolerant key names for one attachment record. Mail gateways, EDR and
+# SIEM pipelines each spell these differently and the analyzer reads what
+# the infrastructure already wrote rather than dictating a schema.
+_ATT_NAME_KEYS = ("name", "filename", "file_name", "fileName", "file")
+_ATT_MIME_KEYS = ("mime", "mime_type", "content_type", "contentType", "type")
+_ATT_URL_KEYS = (
+    "urls", "extracted_urls", "embedded_urls", "links", "hrefs",
+)
+_ATT_QR_KEYS = (
+    "qr_urls", "qr_codes", "qr", "qrcode", "qr_code", "decoded_qr",
+)
+_ATT_ENCRYPTED_KEYS = (
+    "encrypted", "password_protected", "is_encrypted", "protected",
+)
+
+# U+202E RIGHT-TO-LEFT OVERRIDE is the filename spoof: everything after it
+# renders reversed, so `invoice‮gnp.js` displays as `invoicesj.png`.
+# The other bidi controls are listed because they appear in the same trick,
+# but only the OVERRIDE reorders arbitrary text — RLM/ALM are ordinary in
+# Arabic and Hebrew filenames and must not be called an attack on their own.
+_BIDI_OVERRIDE = "‮"
+_BIDI_CONTROLS = {
+    "‪": "LEFT-TO-RIGHT EMBEDDING",
+    "‫": "RIGHT-TO-LEFT EMBEDDING",
+    "‬": "POP DIRECTIONAL FORMATTING",
+    "‭": "LEFT-TO-RIGHT OVERRIDE",
+    "‮": "RIGHT-TO-LEFT OVERRIDE",
+    "⁦": "LEFT-TO-RIGHT ISOLATE",
+    "⁧": "RIGHT-TO-LEFT ISOLATE",
+    "⁨": "FIRST STRONG ISOLATE",
+    "⁩": "POP DIRECTIONAL ISOLATE",
+    "‎": "LEFT-TO-RIGHT MARK",
+    "‏": "RIGHT-TO-LEFT MARK",
+}
+
+# Extension classes. Deliberately extension-based rather than magic-byte
+# based: this analyzer never opens a file, it reads what the gateway
+# recorded. What the USER double-clicks is decided by the extension anyway.
+_EXEC_EXTS = {
+    "exe", "scr", "com", "pif", "cpl", "msi", "msix", "appx", "dll",
+    "jar", "app", "dmg", "pkg", "deb", "rpm",
+    # .xll is an Excel add-in written as a NATIVE DLL, not a macro
+    # document: Excel loads and runs its compiled code. Grouping it with
+    # the macro formats would understate it.
+    "xll",
+}
+_SCRIPT_EXTS = {
+    "js", "jse", "vbs", "vbe", "wsf", "wsh", "hta", "ps1", "psm1", "bat",
+    "cmd", "sh", "py", "pl", "reg", "scf", "inf",
+}
+# Containers that carry the mark-of-the-web bypass: mounting or opening
+# them strips the zone identifier the OS uses to warn about internet files.
+_MOUNTABLE_EXTS = {"iso", "img", "vhd", "vhdx"}
+# CAB is EXTRACTED, not mounted (expand.exe / the shell's cabinet handler).
+# It belongs to the same mark-of-the-web-bypass family and is reported with
+# the same signal, but the fact string must not tell an analyst it is
+# mounted — a container family and a mount mechanism are different claims
+# (review catch).
+_EXTRACTED_CONTAINER_EXTS = {"cab"}
+_CONTAINER_EXTS = _MOUNTABLE_EXTS | _EXTRACTED_CONTAINER_EXTS
+_SHORTCUT_EXTS = {"lnk", "url", "website", "settingcontent-ms", "library-ms"}
+_MACRO_OFFICE_EXTS = {
+    "docm", "xlsm", "pptm", "dotm", "xltm", "potm", "xlam", "ppam",
+}
+# The macro-enabled format -> the plain-format counterpart that CANNOT
+# carry code, where one exists. An explicit map, not string surgery on the
+# extension: stripping the 'm' and appending 'x' invents .xlax, .ppax and
+# .xlx, none of which are real formats, and a fact string that names a
+# file type that does not exist is exactly the kind of false claim this
+# module is built to avoid. Add-in formats have no plain counterpart and
+# are absent on purpose — the clause is dropped rather than guessed.
+_MACRO_PLAIN_COUNTERPART = {
+    "docm": "docx", "xlsm": "xlsx", "pptm": "pptx",
+    "dotm": "dotx", "xltm": "xltx", "potm": "potx",
+}
+_HTML_EXTS = {"html", "htm", "xhtml", "shtml", "mhtml", "mht", "svg"}
+_ARCHIVE_EXTS = {"zip", "rar", "7z", "tar", "gz", "bz2", "xz", "ace", "arj"}
+# Extensions a lure claims to be, used for the double-extension check: the
+# tell is a DOCUMENT extension followed by an executable one.
+_DOCUMENT_EXTS = {
+    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "rtf", "csv",
+    "jpg", "jpeg", "png", "gif", "odt", "ods", "eml", "msg",
+}
+# Declared MIME -> the extensions that agree with it. Only unambiguous
+# families are listed: a mismatch is only worth reporting when the two
+# claims genuinely contradict, not when the mapping is merely incomplete.
+_MIME_EXPECTED_EXTS = {
+    "application/pdf": {"pdf"},
+    "image/png": {"png"},
+    "image/jpeg": {"jpg", "jpeg"},
+    "image/gif": {"gif"},
+    "text/html": _HTML_EXTS,
+    # text/plain is DELIBERATELY absent. It is the catch-all type gateways
+    # apply to anything textual, so it cannot establish a contradiction:
+    # listing {txt, log, csv} made .yaml, .md, .json, .xml, .ini and .sql
+    # attachments each report that "the declared type and the name disagree
+    # about what this file is", which is false and is exactly the
+    # fires-on-normal-mail behavior that gets a detection muted (review
+    # catch). An incomplete mapping must stay silent, not invent a
+    # discrepancy — the same rule the rest of this table follows.
+    "application/zip": {"zip"},
+    "application/msword": {"doc", "dot"},
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        {"docx"},
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+        {"xlsx"},
+}
 
 _ADDRESS_RE = re.compile(r"<([^<>]+)>")
 _BARE_ADDRESS_RE = re.compile(r"[\w.+-]+@[\w.-]+\.\w+")
@@ -470,6 +624,153 @@ def _urls_in(raw_log: dict) -> list[str]:
 
     walk(raw_log)
     return found
+
+
+def _first_str(rec: dict, keys: tuple[str, ...]) -> str | None:
+    """The first key present whose value is a usable string."""
+    for key in keys:
+        value = rec.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _urls_under(rec: dict, keys: tuple[str, ...]) -> list[str]:
+    """URLs recorded under any of `keys`, from whatever shape the gateway
+    used: a bare string, a list of strings, or a list of objects carrying
+    the URL somewhere inside. Total over hostile input — a dict where a
+    string belongs must never raise out of enrichment (the analyzer has a
+    standing review catch about exactly that)."""
+    found: list[str] = []
+    seen: set[str] = set()
+
+    def add(text: str) -> None:
+        for url in _URL_RE.findall(text[:100_000]):
+            url = url.rstrip(".,;")
+            if url not in seen and len(found) < MAX_ATTACHMENT_URLS:
+                seen.add(url)
+                found.append(url)
+
+    def walk(node: object, depth: int = 0) -> None:
+        if len(found) >= MAX_ATTACHMENT_URLS or depth > 6:
+            return
+        if isinstance(node, str):
+            add(node)
+        elif isinstance(node, dict):
+            for value in node.values():
+                walk(value, depth + 1)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value, depth + 1)
+
+    for key in keys:
+        if key in rec:
+            walk(rec[key])
+    return found
+
+
+def _effective_filename(name: str) -> str:
+    """The filename as the OPERATING SYSTEM will resolve it.
+
+    Classification has to run on this rather than on the literal string,
+    because three cheap tricks otherwise hide an extension in plain sight:
+
+    - A TRAILING DOT or space. Win32 silently strips both, so
+      `invoice.exe.` opens as `invoice.exe` — while a naive rsplit('.')
+      sees an empty final segment and reports no extension at all.
+    - An NTFS alternate-data-stream suffix. `invoice.exe::$DATA` names the
+      file's own default stream.
+    - Zero-width and other format characters (Unicode Cf), which are
+      invisible in a mail client and split the extension for a matcher.
+
+    Path separators are stripped first because gateways record anything
+    from a bare name to a full Windows path.
+    """
+    tail = name.rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+    tail = tail.split("::", 1)[0]
+    tail = "".join(c for c in tail if unicodedata.category(c) != "Cf")
+    return tail.rstrip(". \t\r\n\v\f ")
+
+
+def _extension_of(name: str) -> str:
+    """The final extension of a filename, lowercased, or "".
+
+    Computed on the RAW name, never the rendered one: a bidi override
+    makes `invoice‮gnp.js` DISPLAY as `invoicesj.png`, and the thing
+    that decides what executes is the raw `.js`. Reading the rendered
+    form here would reproduce the exact deception the override exists to
+    create.
+    """
+    tail = _effective_filename(name)
+    if "." not in tail.strip("."):
+        return ""
+    ext = tail.rsplit(".", 1)[-1].strip().lower()
+    return ext if ext.isalnum() or "-" in ext else ""
+
+
+def _rendered_name(name: str) -> str:
+    """Approximately what a filename with a bidi override LOOKS like.
+
+    Enough to show an analyst the deception ("displays as invoicesj.png")
+    without implementing the Unicode bidirectional algorithm: the text
+    after a RIGHT-TO-LEFT OVERRIDE is reversed and the control removed.
+    Reported as an approximation wherever it is used.
+    """
+    if _BIDI_OVERRIDE not in name:
+        return name
+    head, _, tail = name.partition(_BIDI_OVERRIDE)
+    return head + tail[::-1]
+
+
+def _attachments_of(raw_log: dict) -> tuple[list[dict], int]:
+    """The gateway's attachment records, normalized and bounded.
+
+    Reads what the receiving infrastructure already wrote — filenames,
+    declared types, and any URLs or QR payloads IT extracted. This module
+    opens nothing, decodes no images and detonates nothing; extraction is
+    the gateway's job and the docstring says so rather than implying a
+    capability that does not exist.
+
+    Returns (records read, records DELIVERED). The second number exists so
+    the summary can disclose truncation instead of reporting a capped count
+    as though it were the whole message.
+    """
+    out: list[dict] = []
+    delivered = 0
+    for container in _ATTACHMENT_CONTAINERS:
+        records = raw_log.get(container)
+        if isinstance(records, dict):        # a single attachment, unwrapped
+            records = [records]
+        if not isinstance(records, list):
+            continue
+        delivered += len(records)
+        for rec in records:
+            if len(out) >= MAX_ATTACHMENTS:
+                # Keep counting what ARRIVED even once we stop reading, so
+                # the summary can say "read 25 of 40" instead of reporting
+                # the truncated count as if it were complete. Padding a
+                # message with 25 inline images to push the payload past
+                # the cap is otherwise a total bypass of this channel that
+                # nothing in the output discloses (review catch).
+                continue
+            if isinstance(rec, str):         # just a filename
+                rec = {"name": rec}
+            if not isinstance(rec, dict):
+                continue
+            encrypted = any(
+                rec.get(k) is True or
+                (isinstance(rec.get(k), str) and
+                 rec[k].strip().lower() in ("true", "yes", "1"))
+                for k in _ATT_ENCRYPTED_KEYS
+            )
+            out.append({
+                "name": _first_str(rec, _ATT_NAME_KEYS) or "",
+                "mime": (_first_str(rec, _ATT_MIME_KEYS) or "").lower(),
+                "urls": _urls_under(rec, _ATT_URL_KEYS),
+                "qr_urls": _urls_under(rec, _ATT_QR_KEYS),
+                "encrypted": encrypted,
+            })
+    return out, delivered
 
 
 def _authority_of(url: str) -> str:
@@ -835,6 +1136,312 @@ def _url_signals(
     return signals
 
 
+def _qr_destination_verdict(
+    host: str, from_org: str | None, brands: dict
+) -> tuple[str, str, str | None]:
+    """(strength, relation clause, benign cause) for a QR destination.
+
+    THREE states, not two. The first version had only aligned/not-aligned
+    and collapsed "the sender's domain is unknown" into "does not align",
+    emitting a STRONG signal whose fact asserted a comparison that was
+    never made — against `the sender unknown` (review catch, three
+    lenses). An unparseable or absent From: is common enough (a gateway
+    that records only Authentication-Results, a display-name-only header)
+    that this was reachable on ordinary mail.
+
+    The strong branch also carries a benign cause now. Off-domain QR
+    destinations are how ticketing, payment processors, event platforms
+    and every outsourced enrollment flow work; "not the sender's domain"
+    is a reason to look, never a verdict — the same discipline the
+    lookalike and shortener signals already follow.
+    """
+    if not from_org:
+        return (
+            "moderate",
+            "the sender's own domain could not be determined from the "
+            "headers, so whether this destination belongs to the sender is "
+            "UNKNOWN rather than wrong.",
+            "With no From: to compare against, this is an unresolved "
+            "question about an unusual channel, not a finding.",
+        )
+    if org_domain(host) == from_org:
+        return (
+            "weak",
+            f"which shares an organizational domain with the sender "
+            f"({from_org}).",
+            "Event tickets, MFA enrollment and payment links are legitimate "
+            "QR uses — which is exactly why the destination, not the "
+            "presence of a QR code, is the discriminator.",
+        )
+    owner = next(
+        (
+            brand for brand, owners in brands.get("brands", {}).items()
+            if org_domain(host) in {org_domain(o) for o in owners}
+        ),
+        None,
+    )
+    if owner:
+        return (
+            "moderate",
+            f"which is not the sender's domain ({from_org}) but IS a domain "
+            f"the operator's brand list records as authorized to send as "
+            f"'{owner}'.",
+            f"An outsourced or delegated flow for {owner} produces exactly "
+            f"this shape; the brand list is what makes it checkable.",
+        )
+    return (
+        "strong",
+        f"which does NOT share an organizational domain with the sender "
+        f"({from_org}) and is not on the operator's authorized-brand list.",
+        "Third-party ticketing, payment and enrollment platforms are "
+        "legitimately off-domain; add the ones your organization uses to "
+        "data/phishing/brands.json so this grades down rather than "
+        "training analysts to dismiss it.",
+    )
+
+
+def _attachment_signals(
+    attachments: list[dict], from_domain: str | None, brands: dict
+) -> list[PhishingSignal]:
+    """Signals from what the message CARRIED, and from the channel a link
+    arrived through.
+
+    The channel is the point. Every mail gateway rewrites and scans links
+    in the message body; almost none rewrite a link printed as a QR code
+    or buried in an attachment's content. So the same URL is a materially
+    different risk depending on how it reached the user — and a QR code
+    additionally moves the click to a phone, off the managed endpoint,
+    where neither the proxy nor the EDR is watching. The URL's own anatomy
+    is analyzed by _url_signals exactly as a body link's is; these signals
+    add the delivery channel that anatomy cannot show.
+    """
+    signals: list[PhishingSignal] = []
+    from_org = org_domain(from_domain) if from_domain else None
+    reported_qr: set[str] = set()
+    reported_embedded: set[str] = set()
+
+    for att in attachments:
+        name = att["name"]
+        label = name or "(unnamed attachment)"
+        ext = _extension_of(name)
+
+        if _BIDI_OVERRIDE in name:
+            # ONLY the override, never the other bidi controls: RLM and the
+            # embeddings are ordinary in Arabic and Hebrew filenames, and a
+            # tool that calls them an attack is wrong far more often than
+            # right — the same discipline the lookalike scoring follows.
+            signals.append(_signal(
+                "attachment_bidi_filename",
+                "strong",
+                f"The attachment filename contains a RIGHT-TO-LEFT OVERRIDE "
+                f"(U+202E): the raw name is {name!r} and it renders to a "
+                f"reader as approximately "
+                f"{_rendered_name(name)!r}. What opens is decided by the raw "
+                f"extension ({'.' + ext if ext else 'none'}), not the "
+                f"displayed one.",
+                None,
+            ))
+
+        effective = _effective_filename(name)
+        if name and effective and effective != name.rsplit("/", 1)[-1].rsplit(
+            "\\", 1
+        )[-1]:
+            signals.append(_signal(
+                "attachment_filename_obscured",
+                "moderate",
+                f"The recorded filename {name!r} is not what the operating "
+                f"system resolves: it opens as {effective!r}. Trailing dots "
+                f"and spaces are stripped by Win32, an NTFS '::' stream "
+                f"suffix names the file's own data, and zero-width "
+                f"characters are invisible in a mail client — each hides "
+                f"the real extension"
+                + (f" (.{ext})" if ext else "")
+                + " from anything matching on the literal string.",
+                "Filenames genuinely acquire stray trailing spaces from "
+                "copy-paste and export tools; the tell is whether the "
+                "extension it uncovers is one that runs.",
+            ))
+
+        parts = [p.lower() for p in effective.split(".") if p]
+        if (
+            len(parts) >= 3
+            and parts[-1] in (_EXEC_EXTS | _SCRIPT_EXTS | _SHORTCUT_EXTS)
+            and parts[-2] in _DOCUMENT_EXTS
+        ):
+            signals.append(_signal(
+                "attachment_double_extension",
+                "strong",
+                f"{label} claims to be a .{parts[-2]} but its real extension "
+                f"is .{parts[-1]} — the document extension is part of the "
+                f"name, and Windows hides known extensions by default, so "
+                f"the user sees the lie.",
+                None,
+            ))
+
+        if ext in _EXEC_EXTS or ext in _SCRIPT_EXTS:
+            kind = "an executable" if ext in _EXEC_EXTS else "a script"
+            signals.append(_signal(
+                "attachment_executable_type",
+                "strong",
+                f"{label} is {kind} (.{ext}) delivered by mail — it runs on "
+                f"open, with no macro prompt and no protected view.",
+                "Developer and IT workflows do mail these; weigh by whether "
+                "the sender is external and whether the recipient's role "
+                "explains it.",
+            ))
+        elif ext in _SHORTCUT_EXTS:
+            signals.append(_signal(
+                "attachment_shortcut_type",
+                "strong",
+                f"{label} is a shortcut/handler file (.{ext}): opening it "
+                f"runs whatever it points at, which is not visible from the "
+                f"filename.",
+                None,
+            ))
+        elif ext in _CONTAINER_EXTS:
+            signals.append(_signal(
+                "attachment_mark_of_the_web_container",
+                "moderate",
+                f"{label} is a "
+                + (
+                    "mountable disk image" if ext in _MOUNTABLE_EXTS
+                    else "cabinet archive"
+                )
+                + f" (.{ext}). This family is used to break mark-of-the-web "
+                f"propagation: contents "
+                + (
+                    "extracted by mounting the image"
+                    if ext in _MOUNTABLE_EXTS else
+                    "unpacked from the cabinet"
+                )
+                + " historically did NOT inherit the 'downloaded from the "
+                "internet' zone marker, so the operating system's warning "
+                "never fired on what was inside. Patched Windows builds and "
+                "current archivers do propagate it now, so treat this as "
+                "'the technique this format is chosen for', not as a "
+                "guarantee the marker is missing on THIS endpoint.",
+                "Software distribution and disk images are legitimate uses; "
+                "the tell is a container carrying one small document-named "
+                "file.",
+            ))
+        elif ext in _MACRO_OFFICE_EXTS:
+            plain = _MACRO_PLAIN_COUNTERPART.get(ext)
+            signals.append(_signal(
+                "attachment_macro_enabled_document",
+                "moderate",
+                f"{label} is a macro-enabled Office file (.{ext}) — the "
+                f"format exists to carry code"
+                + (
+                    f", and the plain .{plain} format cannot."
+                    if plain else
+                    " (an add-in format, which has no macro-free "
+                    "counterpart)."
+                ),
+                "Finance and engineering teams genuinely circulate macro "
+                "workbooks; an internal, authenticated sender with a known "
+                "template is the common benign case.",
+            ))
+        elif ext in _HTML_EXTS:
+            signals.append(_signal(
+                "attachment_html_document",
+                "strong",
+                f"{label} is an HTML-family attachment (.{ext}). A credential "
+                f"form shipped AS the attachment renders from the local file, "
+                f"so there is no link for the gateway to rewrite, no domain "
+                f"to reputation-check, and the address bar shows a local "
+                f"path rather than a suspicious host.",
+                "Some reporting and ticketing systems mail HTML renders; "
+                "those come from an internal authenticated sender.",
+            ))
+
+        if att["encrypted"] and (ext in _ARCHIVE_EXTS or not ext):
+            signals.append(_signal(
+                "attachment_encrypted_archive",
+                "moderate",
+                f"{label} is password-protected, so the gateway could not "
+                f"open it: whatever it holds arrived unscanned, and the "
+                f"password is typically in the message body for the user.",
+                "Legal, finance and HR routinely send password-protected "
+                "archives; the tell is the password being in the SAME "
+                "message, which defeats the point of encrypting it.",
+            ))
+
+        expected = _MIME_EXPECTED_EXTS.get(att["mime"])
+        if expected and ext and ext not in expected:
+            signals.append(_signal(
+                "attachment_type_mismatch",
+                "moderate",
+                f"{label} is declared as {att['mime']} but its extension is "
+                f".{ext}; the declared type and the name disagree about what "
+                f"this file is.",
+                "Misconfigured senders and re-attached files do produce "
+                "wrong Content-Types; it is a discrepancy, not proof.",
+            ))
+
+        for url in att["qr_urls"]:
+            host = _host_of(url)
+            if not host or url in reported_qr:
+                continue
+            reported_qr.add(url)
+            if len(reported_qr) > MAX_REPORTED_CHANNEL_URLS:
+                continue
+            strength, relation, benign = _qr_destination_verdict(
+                host, from_org, brands
+            )
+            signals.append(_signal(
+                "attachment_qr_url", strength,
+                f"{label} carries a QR code decoding to {url[:200]} "
+                f"(host {host}) — {relation} A QR code is scanned with a "
+                f"phone: the destination was never rewritten or scanned by "
+                f"the mail gateway, the user cannot hover to preview it, and "
+                f"the click lands on a device outside the managed endpoint's "
+                f"monitoring.",
+                benign,
+            ))
+
+        for url in att["urls"]:
+            host = _host_of(url)
+            if not host or url in reported_embedded:
+                continue
+            reported_embedded.add(url)
+            if len(reported_embedded) > MAX_REPORTED_CHANNEL_URLS:
+                continue
+            signals.append(_signal(
+                "attachment_embedded_url",
+                "moderate",
+                f"{label} contains an embedded link to {url[:200]} "
+                f"(host {host}). Links inside attachment CONTENT are not "
+                f"rewritten by the gateway's URL protection the way body "
+                f"links are, so the user clicks the original destination.",
+                "Invoices, statements and newsletters legitimately carry "
+                "links; the channel raises the weight of whatever the link's "
+                "own anatomy shows, it is not a verdict by itself.",
+            ))
+
+    # One signal per distinct channel URL, capped. Without this an alert can
+    # carry MAX_ATTACHMENTS x MAX_ATTACHMENT_URLS = 625 records per kind, and
+    # every one of them lands in the signal list AND in the summary's
+    # strong/moderate tally — an attacker could bury the real findings under
+    # a thousand of their own and inflate the counts the model reads as a
+    # severity proxy (review catch, two lenses).
+    for kind, reported in (("QR code", reported_qr),
+                           ("embedded-link", reported_embedded)):
+        if len(reported) > MAX_REPORTED_CHANNEL_URLS:
+            signals.append(_signal(
+                f"attachment_{'qr' if kind == 'QR code' else 'embedded'}"
+                f"_urls_truncated",
+                "moderate",
+                f"{len(reported)} distinct {kind} destinations were found "
+                f"across the attachments; only the first "
+                f"{MAX_REPORTED_CHANNEL_URLS} are reported individually. A "
+                f"message carrying this many is itself unusual.",
+                "Large statement or catalogue attachments legitimately carry "
+                "many links.",
+            ))
+
+    return signals
+
+
 def _received_signals(headers: dict) -> list[PhishingSignal]:
     """Trace-chain signals. Deliberately narrow: only non-monotonic
     timestamps, because hop count, private IPs, and HELO mismatches are
@@ -1039,13 +1646,47 @@ def analyze_phishing(
         if isinstance(r, str)
     ]
 
-    urls = _urls_in(raw_log)
+    attachments, delivered = _attachments_of(raw_log)
+    # A QR code usually rides in an inline image rather than a named
+    # attachment, so message-level QR records become one synthetic record
+    # and take the identical signal path — one code path, one set of gates.
+    message_qr = _urls_under(raw_log, _ATT_QR_KEYS)
+    if message_qr:
+        attachments.append({
+            "name": "(inline image in the message body)",
+            "mime": "", "urls": [], "qr_urls": message_qr, "encrypted": False,
+        })
+
+    # Attachment-borne links go FIRST into the corpus _url_signals reads:
+    # if anything is truncated away it must not be the link that arrived
+    # through the channel the gateway does not rewrite. But they get only a
+    # RESERVED SHARE of the budget, because the same ordering that protects
+    # them lets 625 attacker-supplied attachment URLs evict every body link
+    # from analysis entirely — trading one blind spot for a worse one
+    # (review catch). Body links keep the rest of the budget.
+    attachment_urls = list(dict.fromkeys(
+        u for att in attachments for u in att["qr_urls"] + att["urls"]
+    ))[:ATTACHMENT_URL_BUDGET]
+    # The body corpus EXCLUDES the attachment containers. Reserving a share
+    # of the budget is not enough on its own: _urls_in walks the whole
+    # raw_log in key order, so 625 attachment URLs exhaust its own MAX_URLS
+    # budget before the walk ever reaches body_text, and the body link
+    # disappears no matter what the concatenation does afterwards (found
+    # when the review's eviction finding failed to reproduce against the
+    # first fix — the flood has two paths in, and closing one left the
+    # other open).
+    body_source = {
+        k: v for k, v in raw_log.items() if k not in _ATTACHMENT_CONTAINERS
+    }
+    urls = list(dict.fromkeys(attachment_urls + _urls_in(body_source)))[:MAX_URLS]
+
     signals: list[PhishingSignal] = []
     signals += _auth_signals(
         auth, arc_claimed, from_domain, spf_aligned, dkim_aligned, aligned_pass
     )
     signals += _header_signals(headers, brands, from_addr, from_domain)
     signals += _url_signals(urls, brands, from_domain, recipients)
+    signals += _attachment_signals(attachments, from_domain, brands)
     signals += _received_signals(headers)
 
     if extra_auth:
@@ -1083,9 +1724,24 @@ def analyze_phishing(
         f" (aligned: {dkim_aligned}) over {len(dkim_sigs)} signature(s), "
         f"DMARC {dmarc.get('result', 'absent')}. "
         f"{strong} strong and {moderate} moderate signal(s) over "
-        f"{len(urls)} link(s) examined. Organizational domains use a "
-        f"committed approximation of the public-suffix rules, not a live "
-        f"list."
+        f"{len(urls)} link(s) examined"
+        + (
+            f" and {len(attachments)} attachment record(s) read"
+            + (
+                f" of {delivered} delivered (the rest were past the "
+                f"{MAX_ATTACHMENTS}-record cap and were NOT analyzed)"
+                if delivered > len(attachments) else ""
+            )
+            if attachments else ""
+        )
+        + ". Organizational domains use a committed approximation of the "
+        "public-suffix rules, not a live list."
+        + (
+            " Attachment content was NOT opened: filenames, declared types "
+            "and any extracted links or QR payloads are read from what the "
+            "mail gateway recorded."
+            if attachments else ""
+        )
     )
 
     return PhishingAnalysis(
@@ -1099,6 +1755,7 @@ def analyze_phishing(
         dkim_aligned=dkim_aligned,
         arc_present=arc_claimed,
         urls_examined=urls,
+        attachments_examined=[a["name"] for a in attachments if a["name"]],
         signals=signals,
         summary=summary,
     )
