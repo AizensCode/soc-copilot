@@ -25,16 +25,23 @@ calibration story is the evidence trail).
 | `data/history/dispositions.jsonl` | analyst rulings synced from TheHive | append-only |
 | `data/history/closures.jsonl` | autonomous closures the desk performed | append-only |
 | `data/history/created_alerts.jsonl` | provenance ledger of TheHive alerts it opened | append-only |
+| `data/history/watch_progress.jsonl` | the watch loop claiming (`started`) and finishing (`completed`) each alert | append-only |
 | Elastic results index | investigation docs, analyst-ruling annotations | remote |
 | Elastic **alerts** index | status updates (acknowledged/closed) on worked alerts | remote |
 | TheHive (with `--case`) | alert objects for escalations | remote |
 | Webhook (with `--notify`, and health pages) | JSON POSTs | remote |
 
-A least-privilege Elastic key therefore needs **write on both
-indices** — results (index docs) and alerts (update status). Granting
-only the results index makes every acknowledgement 403 *after* the paid
-investigation succeeded, which the watchdog will eventually report as a
-systemic outage.
+A least-privilege Elastic key therefore needs **read and write on both
+indices**. Write: results (index docs) and alerts (update status) —
+granting only the results index makes every acknowledgement 403 *after*
+the paid investigation succeeded, which the watchdog will eventually
+report as a systemic outage. Read: the alerts index is searched every
+poll cycle, and the results index is searched twice — by
+`--sync-feedback` to stamp analyst rulings onto the docs it annotates,
+and by the resume path to check whether an interrupted run had already
+indexed its result. Elastic's `write` privilege does not imply `read`,
+so a write-only key fails both, and the resume failure surfaces as a
+failed alert on the first cycle after a crash-restart.
 
 Nothing else. No temp files, no log files on disk — the process's
 streams are the log, and `journalctl`/`docker logs` capture both:
@@ -160,7 +167,44 @@ both values if your alerts are slower than your patience. When the
 grace does run out, SIGKILL lands and the fallback contract holds — the
 store records a closure only after both Elastic writes succeed, so a
 kill can undercount automation but never invent a closure, and the
-interrupted alert is still open next start. Upgrades
+interrupted alert is still open next start.
+
+That still-open alert is picked up on the next start and **finished**,
+not re-investigated: the verdict was recorded before any Elastic write,
+so the loop replays the writes that never landed rather than paying for
+the same conclusion twice (`soc_copilot/resume.py`). You will see one
+WARNING per resumed alert naming the original investigation time and
+verdict.
+
+What makes an alert resumable is the progress ledger, not guesswork: the
+loop writes `started` before it commits to an alert and `completed` once
+every effect has landed, and only a `started` with no `completed` is
+resumed. Two consequences worth knowing:
+
+- **Re-opening an alert in Elastic to demand a second look always
+  works.** A completed alert that comes back is investigated afresh, at
+  any interval — the ledger says it finished, so it is not mistaken for
+  a crash. (This was the review's sharpest catch: an earlier version
+  inferred interruption from "recent record + still open", which silently
+  answered an analyst's re-open with the stale verdict, opened a second
+  TheHive case and paged twice.)
+- **A one-shot `soc-copilot --from-elastic` run never seeds a resume.**
+  It records investigations without touching alert status, and it writes
+  no progress ledger entry, so the watch service will not later commit
+  that dry run's verdicts.
+
+Resuming is additionally bounded to `RESUME_WINDOW_MINUTES` of the
+original investigation (default 30; set `RESUME_WINDOW_MINUTES=0` in
+`.env` to disable it) and never happens once an analyst has ruled on the
+alert. The watch loop's startup line reports which window is in force.
+
+A resume adds no investigation record — it concludes nothing new, so it
+records nothing new, and the cost telemetry is not double-counted. It
+does write the ledger's `completed` line, and (if the resumed verdict
+qualifies under `--auto-close`) a closure record and the case/page the
+interrupted run still owed.
+
+Upgrades
 are: stop, pull/rebuild, start; there are no migrations — the history
 files are append-only JSONL that new code reads as-is (records from
 before a field existed are handled explicitly, see the store's tests).
@@ -172,7 +216,10 @@ supported rotation is offline: stop the service, move
 `data/history/*.jsonl` to an archive, start. Note what rotation costs:
 prior sightings, dedup anchors, and scorecard evidence only see the
 live files — rotate when history is old enough that losing its context
-is acceptable, not on a size threshold. For scale: at 100k records
+is acceptable, not on a size threshold. Rotating `watch_progress.jsonl`
+is safe in the direction that matters: with no ledger entry nothing is
+resumable, so the worst case is paying for a fresh investigation of an
+alert that was mid-flight when you stopped the service. For scale: at 100k records
 (~400 MB) the incremental store parses appends in well under a
 millisecond, and the correlation/memory scans dominate at roughly a
 tenth of a second per alert — noticeable, nowhere near a reason to

@@ -730,6 +730,35 @@ def _prioritize(
     return [(doc_id, alert, why) for _, doc_id, alert, why in scored]
 
 
+async def _already_indexed(source, alert_id: str, since) -> bool:
+    """Did the interrupted run's own push land? Any failure to ask
+    answers "no".
+
+    Every gate in soc_copilot/resume.py fails toward a fresh
+    investigation; this one lives outside that function and used to be
+    the exception — an unreachable or unreadable results index (a 404
+    before anything has ever been pushed, or a least-privilege key with
+    write but not read) turned a RuntimeError loose and failed the alert
+    INSTEAD of completing it. That failure was self-perpetuating: the
+    state that triggers a resume is exactly the state a failed resume
+    preserves, so every resumable alert failed on every cycle for the
+    whole window — worked==0 with failures, which the watchdog scores as
+    sick, pages at 3 cycles and exits(2) at 30 (review catch, two
+    lenses). Degrading to "assume not indexed" costs at worst the one
+    duplicate results row this check exists to avoid, and keeps the
+    alert moving.
+    """
+    try:
+        return await source.has_investigation(alert_id, since.isoformat())
+    except Exception as e:
+        log.warning(
+            "Could not check whether the interrupted run already indexed "
+            "%s (%s); pushing the result rather than risking losing it — "
+            "this may leave a duplicate results row.", alert_id, e,
+        )
+        return False
+
+
 async def _work_alert(
     copilot: SOCCopilot,
     source,
@@ -743,11 +772,16 @@ async def _work_alert(
     notify: bool,
     case: bool,
     dedup_window: int | None,
-) -> bool:
-    """Work ONE alert from the watch queue: investigate (or borrow a
-    dedup-suppressed conclusion), push the result, set the alert's
-    status, and offer the outcome to the case/notify policies. Raises on
-    failure — the cycle catches and retries the alert next poll.
+    resume_window: int = 0,
+) -> str:
+    """Work ONE alert from the watch queue: investigate (or resume an
+    interrupted run, or borrow a dedup-suppressed conclusion), push the
+    result, set the alert's status, and offer the outcome to the
+    case/notify policies. Returns how the conclusion was reached —
+    "worked", "resumed", or "borrowed" — which is what keeps the
+    watchdog from reading a model-free completion as proof the model
+    pipeline is alive. Raises on failure — the cycle catches and retries
+    the alert next poll.
 
     The ORDER of effects is the contract this seam exists to pin, and the
     tests in tests/test_watch.py hold it:
@@ -759,37 +793,92 @@ async def _work_alert(
        push failure leaves no phantom closure (review catch from the
        scorecard increment); a crash between the status write and the
        record undercounts automation instead — the safe direction.
-    4. seen.add            — only a fully-recorded alert is marked done
+    4. seen.add + progress "completed" — only a fully-recorded alert is
+       marked done, in memory for this process and on disk for the next
     5. case/notify         — never for an auto-closed alert (it needs no
        human owner, so it must generate no case noise and no page)
+
+    That order is what makes the resume path (soc_copilot/resume.py)
+    necessary: the history record is written inside the investigate call,
+    BEFORE step 1, so every crash from there to step 2 leaves a paid-for
+    verdict on disk and an alert still open.
+
+    What makes it SAFE is the progress ledger, written either side of that
+    span (step 0 "started", step 4 "completed"). An earlier draft argued
+    instead that steps 3-5 could not have run in a resumable state,
+    "because if step 2 had completed the alert would not be in the open
+    queue" — which inverts the implication. Step 2 completing means the
+    alert LEFT the queue then, not that it cannot be back in it now: any
+    workflow_status reset (an analyst demanding a second look, a Kibana
+    bulk action, a SOAR playbook) puts a fully-worked alert back. Three
+    review lenses found it, and the reproduction showed a resume undoing
+    an analyst's re-open, opening a SECOND TheHive case, paging twice and
+    appending a duplicate closure. The ledger makes the premise true by
+    construction rather than by inference: a "completed" alert is never
+    resumed, so a re-open gets the fresh look it asked for.
     """
     from .closure import should_auto_close
 
-    suppressed_reason = None
-    if dedup_window:
+    outcome = "worked"
+    investigation = None
+    resumed_at = None
+    if resume_window:
+        from .resume import find_resumable
+
+        found = find_resumable(copilot.history, alert, resume_window)
+        if found:
+            investigation, resumed_at = found.investigation, found.investigated_at
+            outcome = "resumed"
+            # WARNING, not INFO: an alert acknowledged with a verdict this
+            # process never computed is the one line an operator must be
+            # able to find when reconstructing what a crash cost them.
+            log.warning("[resume: %s]", found.reason)
+    # Step 0 of the ordering contract: claim the alert BEFORE spending
+    # anything on it, so a crash from here to step 4 is legible as an
+    # interruption rather than inferred from circumstance.
+    copilot.history.record_watch_progress(alert.alert_id, doc_id, "started")
+    if investigation is None and dedup_window:
         from .dedup import try_suppress
 
         result = try_suppress(copilot.history, alert, dedup_window)
         if result:
             investigation, suppressed_reason = result
+            outcome = "borrowed"
             log.info("[dedup: %s — no model call spent]", suppressed_reason)
-    if suppressed_reason is None:
+    if investigation is None:
         investigation = await _investigate(copilot, alert, agentic, tiered)
     close, reason = (
         should_auto_close(investigation) if auto_close else (False, None)
     )
-    result_id = await source.push_investigation(
-        alert,
-        investigation,
-        auto_closed=close,
-        closure_reason=reason,
-    )
+    # A resumed run may already have pushed before it died — the push is
+    # the write immediately before the status write it never reached. /_doc
+    # mints a new id every time, so an unconditional re-push would index a
+    # second row for one investigation and double-count its cost in every
+    # dashboard. One search settles it, scoped to results indexed since
+    # THIS run's investigation so an older row for the same alert cannot
+    # answer for it.
+    if outcome == "resumed" and await _already_indexed(
+        source, alert.alert_id, resumed_at
+    ):
+        result_id = "(already indexed by the interrupted run)"
+        log.info("Result already in the index from the interrupted run; "
+                 "not indexing a second copy.")
+    else:
+        result_id = await source.push_investigation(
+            alert,
+            investigation,
+            auto_closed=close,
+            closure_reason=reason,
+        )
     await source.set_alert_status(
         doc_id, "closed" if close else "acknowledged"
     )
     if close:
         copilot.history.record_closure(alert.alert_id, reason)
     seen.add(doc_id)
+    # The durable twin of seen.add, and the fact that stops this alert
+    # being mistaken for an interrupted one if it is ever re-opened.
+    copilot.history.record_watch_progress(alert.alert_id, doc_id, "completed")
     if not close:
         case_id = await _maybe_open_case(
             alert, investigation, case, copilot.history
@@ -805,10 +894,10 @@ async def _work_alert(
         investigation.verdict, investigation.confidence,
         investigation.escalation_recommended, result_id, disposition,
     )
-    # Whether this completion was a dedup-borrowed conclusion (no model
-    # call) — the watchdog must not count those as proof the
-    # investigation pipeline is alive.
-    return suppressed_reason is not None
+    # Which of the three ways this completed. Both model-free ways
+    # ("resumed", "borrowed") must stay out of the watchdog's `worked`
+    # count: neither is proof the investigation pipeline is alive.
+    return outcome
 
 
 def _die_by_signal(loop: asyncio.AbstractEventLoop, sig: int) -> None:
@@ -924,6 +1013,7 @@ async def _watch_once(
     notify: bool,
     case: bool,
     dedup_window: int | None,
+    resume_window: int = 0,
     stop: asyncio.Event | None = None,
 ) -> CycleReport:
     """One poll cycle: fetch open alerts, work the fresh ones in priority
@@ -973,13 +1063,16 @@ async def _watch_once(
                 alert.alert_id, alert.title, why,
             )
             try:
-                borrowed = await _work_alert(
+                outcome = await _work_alert(
                     copilot, source, doc_id, alert, seen,
                     agentic=agentic, tiered=tiered, auto_close=auto_close,
                     notify=notify, case=case, dedup_window=dedup_window,
+                    resume_window=resume_window,
                 )
-                if borrowed:
+                if outcome == "borrowed":
                     report.borrowed += 1
+                elif outcome == "resumed":
+                    report.resumed += 1
                 else:
                     report.worked += 1
             except Exception as e:
@@ -1089,12 +1182,20 @@ async def _run_watch_cycle(
     loop (review catch: as shell code, a mutant discarding the action
     survived every test).
     """
+    from .config import settings
+
+    # Read OUTSIDE the try: a configuration problem is not a poll-cycle
+    # failure, and laundering it into one would report "retrying in 60s"
+    # about something no retry can fix, while sickening the watchdog
+    # toward an exit(2) restart loop that reruns the same bad config.
+    resume_window = settings.RESUME_WINDOW_MINUTES
     try:
         report = await _watch_once(
             copilot, source, seen,
             agentic=args.agentic, tiered=args.tiered,
             auto_close=args.auto_close, notify=args.notify,
-            case=args.case, dedup_window=args.dedup, stop=stop,
+            case=args.case, dedup_window=args.dedup,
+            resume_window=resume_window, stop=stop,
         )
     except Exception as e:
         report = CycleReport(crashed=True)
@@ -1185,6 +1286,18 @@ async def _run_watch(args: argparse.Namespace) -> None:
     status write hasn't taken effect). A failed alert is logged and
     retried on a later cycle rather than killing the loop.
 
+    Dedupe survives a restart too, but not by remembering doc ids. The
+    loop records its own progress on each alert (started before it
+    commits, completed once every effect has landed — the durable twin
+    of `seen`), so a crash between the model call and the
+    acknowledgement is a recorded fact rather than an inference. The
+    next start FINISHES that run from its own record instead of buying
+    the same conclusion again (soc_copilot/resume.py,
+    RESUME_WINDOW_MINUTES). The alert then leaves the queue the normal
+    way, which is the property a naive "never work this id twice"
+    blacklist would have destroyed — and a COMPLETED alert is never
+    resumed, so re-opening one in Elastic still gets a fresh look.
+
     With --auto-close, investigations that pass the deterministic closure
     policy (soc_copilot/closure.py: high-confidence false positive, no
     escalation/injection/campaign signals) close the alert autonomously,
@@ -1263,13 +1376,15 @@ async def _run_watch(args: argparse.Namespace) -> None:
     # only heartbeat; the logging handler flushes per record, so nothing
     # here needs flush=True anymore.
     log.info(
-        "Watching %s every %ds (%s mode%s%s%s%s%s). Ctrl+C to stop.",
+        "Watching %s every %ds (%s mode%s%s%s%s%s%s). Ctrl+C to stop.",
         source.alerts_index, interval, mode,
         ", tiered on" if args.tiered else "",
         ", auto-close on" if args.auto_close else "",
         ", notifications on" if args.notify else "",
         f", dedup on ({args.dedup}h window)" if args.dedup else "",
         ", analyst-feedback sync on" if feedback else "",
+        f", resume window {settings.RESUME_WINDOW_MINUTES}m"
+        if settings.RESUME_WINDOW_MINUTES > 0 else ", resume off",
     )
     while True:
         if _should_sync_feedback(

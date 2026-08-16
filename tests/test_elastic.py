@@ -258,3 +258,41 @@ def test_normalize_carries_labels_and_tags():
     alert = normalize_hit(hit)
     assert alert.raw_log["labels"] == {"prior_identical_bursts_30d": "9"}
     assert alert.raw_log["tags"] == ["routine-scan-candidate"]
+
+
+async def test_has_investigation_is_bounded_to_this_run(monkeypatch):
+    """The resume path asks "did THIS run already index its result?", and
+    the alert_id alone cannot answer it — a genuinely re-investigated
+    alert is SUPPOSED to have several rows (push_investigation's own
+    docstring says so, and annotate_disposition depends on it). Without
+    the @timestamp bound, an alert re-investigated after an analyst
+    re-open would match its own day-old row, the new push would be
+    skipped, and the NEW verdict would be silently dropped from the
+    system of record while the alert was acknowledged out of the queue —
+    unrecoverable, and strictly worse than the duplicate row the check
+    exists to avoid (review catch)."""
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured["url"] = str(request.url)
+        captured["body"] = json.loads(request.content)
+        return httpx.Response(200, json={"hits": {"hits": []}})
+
+    source = _source_with(handler)
+    found = await source.has_investigation("A1", "2026-06-01T12:00:00+00:00")
+
+    assert found is False
+    assert "/soc-copilot-investigations/_search" in captured["url"]
+    filters = captured["body"]["query"]["bool"]["filter"]
+    assert {"term": {"alert_id.keyword": "A1"}} in filters
+    assert {
+        "range": {"@timestamp": {"gte": "2026-06-01T12:00:00+00:00"}}
+    } in filters
+
+
+async def test_has_investigation_reports_a_hit(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"hits": {"hits": [{"_id": "r1"}]}})
+
+    source = _source_with(handler)
+    assert await source.has_investigation("A1", "2026-06-01T12:00:00+00:00")

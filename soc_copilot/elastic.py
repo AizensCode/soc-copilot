@@ -281,6 +281,52 @@ class ElasticAlertSource:
             )
         return len(hits)
 
+    async def has_investigation(self, alert_id: str, since: str) -> bool:
+        """Whether a results doc for this alert was indexed at or after
+        `since` (an ISO-8601 timestamp).
+
+        Asked only on the resume path (soc_copilot/resume.py), where the
+        interrupted run may or may not have pushed before it died. /_doc
+        auto-generates ids, so pushing again cannot overwrite — it would
+        index a SECOND row, double-counting that one investigation's
+        cost_usd and duration in every dashboard aggregation.
+
+        `since` is what makes the answer mean "THIS run already pushed"
+        rather than "this alert has a results doc from some earlier run",
+        and the two are only the same question for an alert investigated
+        exactly once. Callers pass the resumed record's investigated_at:
+        the interrupted run's own push necessarily carries a later
+        @timestamp, and every earlier attempt an earlier one. Without the
+        bound, an alert re-investigated after a re-open would match its
+        own day-old row, the new push would be skipped, and the NEW
+        verdict would be silently dropped from the system of record while
+        the alert was acknowledged out of the queue — unrecoverable, and
+        strictly worse than the duplicate row this check exists to avoid
+        (review catch).
+
+        Deliberately not used to dedupe re-investigations in general: a
+        genuinely re-investigated alert SHOULD have several rows, which is
+        what lets annotate_disposition show which of the copilot's
+        attempts the analyst agreed with.
+        """
+        data = await self._post(
+            f"/{self.results_index}/_search",
+            {
+                "size": 1,
+                "query": {
+                    "bool": {
+                        "filter": [
+                            {"term": {"alert_id.keyword": alert_id}},
+                            {"range": {"@timestamp": {"gte": since}}},
+                        ]
+                    }
+                },
+                "_source": False,
+            },
+            replayable=True,
+        )
+        return bool(data.get("hits", {}).get("hits", []))
+
     async def push_investigation(
         self,
         alert: Alert,

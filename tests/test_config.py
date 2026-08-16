@@ -20,7 +20,8 @@ _OTHER_VARS = [
     "ELASTIC_URL", "ELASTIC_API_KEY", "ELASTIC_ALERTS_INDEX",
     "ELASTIC_RESULTS_INDEX", "THEHIVE_URL", "THEHIVE_API_KEY",
     "THEHIVE_ORGANISATION", "HISTORY_PATH", "MODEL",
-    "CORRELATION_WINDOW_HOURS", "LOG_FORMAT", "LOG_LEVEL",
+    "CORRELATION_WINDOW_HOURS", "RESUME_WINDOW_MINUTES",
+    "LOG_FORMAT", "LOG_LEVEL",
 ]
 
 
@@ -103,3 +104,25 @@ def test_non_integer_window_fails_loudly(clean_env):
     clean_env.setenv("CORRELATION_WINDOW_HOURS", "not-a-number")
     with pytest.raises(RuntimeError, match="must be an integer"):
         Settings.from_env()
+
+
+def test_resume_window_is_env_overridable(clean_env):
+    """The operator's only control over how long a crashed run stays
+    resumable — and the documented off switch (0)."""
+    assert Settings.from_env().RESUME_WINDOW_MINUTES == 30
+    clean_env.setenv("RESUME_WINDOW_MINUTES", "5")
+    assert Settings.from_env().RESUME_WINDOW_MINUTES == 5
+    clean_env.setenv("RESUME_WINDOW_MINUTES", "0")
+    assert Settings.from_env().RESUME_WINDOW_MINUTES == 0
+
+
+def test_every_integer_setting_fails_loudly_on_a_typo(clean_env):
+    """The loop that generalized this must keep naming the offending
+    variable: a silent fallback to the default would run a DIFFERENT
+    policy than the operator configured, which for a window means
+    resuming (or not) for a length of time nobody chose."""
+    for name in ("CORRELATION_WINDOW_HOURS", "RESUME_WINDOW_MINUTES"):
+        clean_env.setenv(name, "30m")
+        with pytest.raises(RuntimeError, match=f"{name} must be an integer"):
+            Settings.from_env()
+        clean_env.delenv(name)

@@ -156,6 +156,17 @@ def test_borrowed_conclusions_do_not_prove_the_pipeline_alive():
     assert CycleReport(worked=1, borrowed=2, failed=3).sick is False
 
 
+def test_resumed_conclusions_do_not_prove_the_pipeline_alive():
+    """A cross-restart resume (soc_copilot/resume.py) delivers a verdict an
+    EARLIER process paid for, so it proves the Elastic writes work and
+    says nothing about the model pipeline. Counting it as real work would
+    be worst exactly where resumes cluster — the first cycle after a
+    crash-restart, when whatever killed the desk may still be killing it."""
+    assert CycleReport(resumed=2, failed=3).sick is True      # no real work
+    assert CycleReport(resumed=2, failed=0).sick is False     # quiet + resumes
+    assert CycleReport(worked=1, resumed=2, failed=3).sick is False
+
+
 def test_a_quiet_cycle_resets_the_exit_countdown():
     """Only CONSECUTIVE sickness escalates: an outage interrupted by a
     completed cycle is a flaky dependency, not a dead desk."""
@@ -181,7 +192,7 @@ class _CapturingWebhook:
 
 
 def _configure_webhook(monkeypatch, url="https://hook.test/page"):
-    from types import SimpleNamespace
+    import dataclasses
 
     _CapturingWebhook.posted = []
     monkeypatch.setattr(
@@ -189,13 +200,15 @@ def _configure_webhook(monkeypatch, url="https://hook.test/page"):
     )
     import soc_copilot.config as config_mod
 
+    # A REAL Settings with one field swapped, not a SimpleNamespace of the
+    # fields this file happens to need. The stub version broke twice on
+    # settings the watch path newly reads (CORRELATION_WINDOW_HOURS, then
+    # RESUME_WINDOW_MINUTES), each time as a mystery "cycle crashed" that
+    # made every heartbeat test read systemic. Built from the dataclass,
+    # a new setting can never silently turn these tests into outage tests.
     monkeypatch.setattr(
         config_mod, "settings",
-        # CORRELATION_WINDOW_HOURS: cycles that fetch real (fake) hits run
-        # _prioritize, which reads it from settings before any per-alert
-        # try — without it the whole cycle "crashes" and every heartbeat
-        # test would see a systemic streak.
-        SimpleNamespace(WEBHOOK_URL=url, CORRELATION_WINDOW_HOURS=72),
+        dataclasses.replace(config_mod.Settings(), WEBHOOK_URL=url),
     )
 
 
@@ -743,3 +756,54 @@ async def test_a_drained_cycle_failure_promises_no_retry(
     )
     assert "not retried" in caplog.text
     assert "retrying in" not in caplog.text
+
+
+async def test_the_cycle_wires_the_configured_resume_window_into_the_loop(
+    tmp_path, monkeypatch
+):
+    """The seam that joins RESUME_WINDOW_MINUTES to the loop. Everything
+    else about resuming is tested by calling _work_alert/_watch_once with
+    a hand-passed window, and config tests only prove Settings parses the
+    env var — nothing joined the two ends. Both mutations of this line
+    (reading 0 instead of the setting, or dropping the kwarg so
+    _watch_once's default of 0 wins) left the entire free suite green
+    while the feature was DEAD in production, re-investigating every
+    crash-interrupted alert exactly as before and still logging ',
+    resume window 30m' at startup (review catch — the same class of
+    shell-wiring hole this test section exists for)."""
+    import dataclasses
+
+    import soc_copilot.config as config_mod
+    from soc_copilot.main import _run_watch_cycle
+    from tests.test_watch import (
+        _alert,
+        _closing_inv,
+        _FakeSource,
+        _interrupted,
+    )
+
+    _configure_webhook(monkeypatch)
+    alert = _alert("A1")
+    copilot = _interrupted(tmp_path, alert)          # crash-interrupted state
+    source = _FakeSource(hits=[("d1", alert)])
+    dog = Watchdog()
+
+    await _run_watch_cycle(copilot, source, set(), dog, _cycle_args())
+
+    assert copilot.investigated == []                # resumed, not re-bought
+    assert source.status == {"d1": "closed"}
+    assert dog.consecutive_sick == 0
+
+    # ...and with the documented off switch, the SAME state is investigated.
+    monkeypatch.setattr(
+        config_mod, "settings",
+        dataclasses.replace(config_mod.settings, RESUME_WINDOW_MINUTES=0),
+    )
+    alert2 = _alert("A2")
+    copilot2 = _interrupted(tmp_path / "off", alert2)
+    copilot2._invs = {"A2": _closing_inv("A2")}
+    source2 = _FakeSource(hits=[("d2", alert2)])
+
+    await _run_watch_cycle(copilot2, source2, set(), dog, _cycle_args())
+
+    assert copilot2.investigated == ["A2"]           # paid for a fresh look

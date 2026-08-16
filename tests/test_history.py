@@ -534,3 +534,109 @@ def test_cache_handles_file_deletion_as_empty_store(tmp_path):
     # and a recreated file is picked up again (key was reset, not stuck)
     store.record(_alert("A3", {"ips": ["3.3.3.3"]}, when), _inv("A3"))
     assert [r["alert_id"] for r in store._iter_records()] == ["A3"]
+
+
+# --- the watch-loop progress ledger -----------------------------------------
+
+def _brute_progress(store, alert_id):
+    """The obvious implementation: rebuild the whole latest-per-alert map
+    every call. The incremental view must agree with it exactly."""
+    out = {}
+    for line in store.watch_progress_path.read_text().splitlines():
+        rec = json.loads(line)
+        out[rec["alert_id"]] = rec
+    return out.get(alert_id)
+
+
+def test_progress_ledger_records_the_latest_phase_per_alert(tmp_path):
+    store = AlertHistoryStore(tmp_path / "investigations.jsonl")
+    assert store.watch_progress("A1") is None
+
+    store.record_watch_progress("A1", "d1", "started")
+    assert store.watch_progress("A1")["phase"] == "started"
+
+    store.record_watch_progress("A1", "d1", "completed")
+    assert store.watch_progress("A1")["phase"] == "completed"
+    assert store.watch_progress("A1")["doc_id"] == "d1"
+
+    # Append-only and last-wins: a re-opened alert simply starts again.
+    store.record_watch_progress("A1", "d1", "started")
+    assert store.watch_progress("A1")["phase"] == "started"
+
+
+def test_progress_view_matches_a_full_rebuild_while_appending(tmp_path):
+    """The view is folded incrementally (it is read once per alert per
+    cycle, and rebuilding the whole map per call measured 6.9ms over a
+    50k-alert ledger). Incremental means it can drift; this pins it to
+    the brute rebuild across interleaved reads and writes, the same
+    equivalence discipline the record index is held to."""
+    store = AlertHistoryStore(tmp_path / "investigations.jsonl")
+    ids = [f"A{i}" for i in range(25)]
+    for round_no in range(4):
+        for alert_id in ids:
+            phase = "started" if round_no % 2 == 0 else "completed"
+            store.record_watch_progress(alert_id, f"d-{alert_id}", phase)
+            # Read DURING the writes, not only at the end: a fold that
+            # only ever ran once would pass an end-state-only check.
+            assert store.watch_progress(alert_id) == _brute_progress(
+                store, alert_id
+            )
+    for alert_id in ids + ["never-seen"]:
+        assert store.watch_progress(alert_id) == _brute_progress(store, alert_id)
+
+
+def test_progress_view_rebuilds_when_the_ledger_is_rotated(tmp_path):
+    """Rotation (the supported offline history rotation) replaces the
+    file. A view that kept folding onto a stale prefix would report
+    alerts as in-flight that the new file has never heard of — and an
+    alert wrongly believed in-flight is exactly what the resume path
+    must never see."""
+    store = AlertHistoryStore(tmp_path / "investigations.jsonl")
+    store.record_watch_progress("A1", "d1", "started")
+    assert store.watch_progress("A1")["phase"] == "started"
+
+    # Archived away and replaced with a different, shorter ledger.
+    store.watch_progress_path.write_text(
+        json.dumps({"alert_id": "B9", "doc_id": "d9", "phase": "started",
+                    "at": "2026-06-01T12:00:00+00:00"}) + "\n"
+    )
+    assert store.watch_progress("A1") is None
+    assert store.watch_progress("B9")["phase"] == "started"
+
+
+def test_progress_ledger_ignores_malformed_lines(tmp_path):
+    """A hand-edited or truncated ledger must not crash the watch loop:
+    a line without an alert_id is skipped, and the alerts around it
+    still resolve."""
+    store = AlertHistoryStore(tmp_path / "investigations.jsonl")
+    store.record_watch_progress("A1", "d1", "started")
+    with store.watch_progress_path.open("a") as f:
+        f.write(json.dumps({"phase": "started"}) + "\n")       # no alert_id
+        f.write(json.dumps(["not", "a", "dict"]) + "\n")
+    store.record_watch_progress("A2", "d2", "completed")
+
+    assert store.watch_progress("A1")["phase"] == "started"
+    assert store.watch_progress("A2")["phase"] == "completed"
+
+
+def test_progress_fold_advances_its_cursor_and_never_refolds(tmp_path):
+    """The fold's COST, not its answer, is what this pins. Two mutants
+    that make it O(history) per call — restarting the range at 0, or
+    never advancing the cursor — produce byte-identical results, so no
+    correctness test can reach them; the cursor is the only observable
+    difference. Only the second is killable this way, and the first is
+    left honestly unpinned: the fold's correctness is fully tested, its
+    flatness rests on the recorded measurement (6.9ms -> 0.0013ms per
+    read over a 50k-alert ledger) rather than on an assertion."""
+    store = AlertHistoryStore(tmp_path / "investigations.jsonl")
+    for i in range(5):
+        store.record_watch_progress(f"A{i}", "d", "started")
+
+    store.watch_progress("A0")
+    assert store._watch_progress_seen == 5      # folded everything once
+    store.watch_progress("A0")
+    assert store._watch_progress_seen == 5      # and nothing again
+
+    store.record_watch_progress("A5", "d", "started")
+    store.watch_progress("A5")
+    assert store._watch_progress_seen == 6      # only the new line

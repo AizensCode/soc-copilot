@@ -40,7 +40,13 @@ pre-outage conclusion without spending a model call, so counting it as
 `worked` would let a repeating benign family mask a dead investigation
 pipeline for as long as duplicates kept arriving (review catch) — the
 shell counts those separately as `borrowed`, and they neither sicken a
-cycle nor excuse one.
+cycle nor excuse one. A cross-restart RESUME (soc_copilot/resume.py) is
+the same shape for the same reason: it delivers a conclusion an earlier
+process already paid for, so it proves the Elastic writes work and says
+nothing about the model pipeline. It is counted as `resumed`, never as
+`worked` — otherwise the first cycle after a crash-restart, which is
+exactly when resumes cluster, could report health the desk has not yet
+demonstrated.
 """
 from dataclasses import dataclass, field
 
@@ -61,6 +67,8 @@ class CycleReport:
 
     worked: int = 0        # alerts completed with a real investigation
     borrowed: int = 0      # dedup-suppressed: completed WITHOUT a model call
+    resumed: int = 0       # finished from an interrupted run's own record:
+                           # also WITHOUT a model call (soc_copilot/resume.py)
     failed: int = 0        # alerts whose _work_alert raised
     crashed: bool = False  # the cycle itself died before working alerts
     failed_ids: set[str] = field(default_factory=set)

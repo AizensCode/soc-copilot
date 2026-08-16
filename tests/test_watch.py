@@ -9,6 +9,7 @@ the infinite loop, and a sleep.
 
     uv run pytest tests/test_watch.py -v
 """
+import json
 from datetime import datetime, timezone
 
 import httpx
@@ -54,6 +55,10 @@ class _FakeSource:
         self.fail_push_for: set[str] = set()
         self.fail_status_for: set[str] = set()
         self.status: dict[str, str] = {}
+        # Whether the interrupted run had already indexed a results doc
+        # before it died — the one thing a resume cannot know locally.
+        self.already_indexed: set[str] = set()
+        self.fail_has_investigation_for: set[str] = set()
 
     async def fetch_alert_hits(self, limit=10, status="open"):
         self.calls.append(("fetch", status))
@@ -80,6 +85,15 @@ class _FakeSource:
         )
         return f"doc-{alert.alert_id}"
 
+    async def has_investigation(self, alert_id, since):
+        # `since` is what makes the answer mean "THIS run already pushed"
+        # rather than "some earlier run did"; the fake records it so a
+        # caller that drops the bound is visible.
+        self.calls.append(("has_investigation", alert_id, since))
+        if alert_id in self.fail_has_investigation_for:
+            raise RuntimeError("Elastic results search blew up")
+        return alert_id in self.already_indexed
+
     async def set_alert_status(self, doc_id, status):
         if doc_id in self.fail_status_for:
             raise RuntimeError("Elastic status write blew up")
@@ -88,7 +102,17 @@ class _FakeSource:
 
 
 class _FakeCopilot:
-    """A real history store; a canned verdict instead of a model call."""
+    """A real history store; a canned verdict instead of a model call.
+
+    investigate() WRITES the history record before returning, exactly as
+    the real SOCCopilot.investigate does (copilot.py records inside the
+    call, before _work_alert's first Elastic write). That detail is the
+    whole premise of the resume path, and while this fake omitted it a
+    mutant deleting the ledger's "completed" write survived the entire
+    suite: without a record, a re-fetched alert fell out of the resume
+    path on a different gate and the test read green for the wrong
+    reason (mutation catch — the same class of hole as the fake that
+    once hid acknowledgement-is-the-dedupe)."""
 
     def __init__(self, tmp_path, invs: dict[str, Investigation]):
         self.history = AlertHistoryStore(tmp_path / "investigations.jsonl")
@@ -97,7 +121,13 @@ class _FakeCopilot:
 
     async def investigate(self, alert):
         self.investigated.append(alert.alert_id)
-        return self._invs[alert.alert_id]
+        inv = self._invs[alert.alert_id]
+        self.history.record(alert, inv)
+        return inv
+
+
+async def _unreached(*a, **k):
+    raise AssertionError("case/notify must not run: the alert never got past step 1")
 
 
 def _work(copilot, source, doc_id, alert, seen, **overrides):
@@ -680,3 +710,416 @@ def test_the_unit_start_limit_lives_where_systemd_reads_it():
     assert cfg["Unit"]["StartLimitIntervalSec"] == "3600"
     assert cfg["Unit"]["StartLimitBurst"] == "10"
     assert "StartLimitIntervalSec" not in cfg["Service"]
+
+
+# --- cross-restart resume (soc_copilot/resume.py) --------------------------
+
+def _interrupted(tmp_path, alert, inv=None):
+    """The state a crash leaves behind: the verdict recorded on disk (the
+    history write happens inside the investigate call, BEFORE any Elastic
+    write), and the alert still open in Elastic. The fake copilot is given
+    NO canned verdict, so any attempt to investigate afresh raises a
+    KeyError instead of silently passing."""
+    copilot = _FakeCopilot(tmp_path, {})
+    # The watch loop claimed the alert, investigated it, and died before
+    # the Elastic writes: a "started" with no "completed". A bare history
+    # record is NOT this state (that is what a one-shot --from-elastic
+    # leaves) and is deliberately not resumable.
+    copilot.history.record_watch_progress(alert.alert_id, "d1", "started")
+    copilot.history.record(alert, inv or _closing_inv(alert.alert_id))
+    return copilot
+
+
+async def test_a_resumed_alert_is_finished_without_a_second_model_call(
+    tmp_path, caplog
+):
+    """The increment's whole point: a crash between the model call and
+    the acknowledgement used to cost a second full investigation. Now the
+    conclusion already on disk is delivered instead."""
+    alert = _alert("A1")
+    copilot = _interrupted(tmp_path, alert)
+    source = _FakeSource()
+
+    outcome = await _work(
+        copilot, source, "d1", alert, set(), resume_window=30
+    )
+
+    assert outcome == "resumed"
+    assert copilot.investigated == []                  # no model call
+    assert source.status == {"d1": "closed"}           # the alert left the queue
+    assert "resume" in caplog.text
+    # WARNING, not INFO: acknowledging an alert with a verdict this
+    # process never computed is the line an operator must be able to find.
+    assert any(
+        r.levelname == "WARNING" and "resume" in r.message
+        for r in caplog.records
+    )
+
+
+async def test_a_resume_writes_no_second_history_record(tmp_path):
+    """The record already exists — the interrupted run wrote it. Appending
+    another would double-count that investigation's cost and duration in
+    the digest, the scorecard, and every eval that reads the store."""
+    alert = _alert("A1")
+    copilot = _interrupted(tmp_path, alert)
+    before = copilot.history.path.read_text()
+
+    await _work(copilot, source := _FakeSource(), "d1", alert, set(),
+                resume_window=30)
+
+    assert copilot.history.path.read_text() == before
+    assert source.status == {"d1": "closed"}
+
+
+async def test_a_resume_skips_the_push_when_the_run_already_indexed(tmp_path):
+    """/_doc mints a new id per call, so re-pushing would index a SECOND
+    row for one investigation and double its cost in every dashboard
+    aggregation. The status write still happens — that is the write the
+    interrupted run never reached."""
+    alert = _alert("A1")
+    copilot = _interrupted(tmp_path, alert)
+    source = _FakeSource()
+    source.already_indexed = {"A1"}
+
+    await _work(copilot, source, "d1", alert, set(), resume_window=30)
+
+    kinds = [c[0] for c in source.calls]
+    assert "push" not in kinds
+    assert kinds == ["has_investigation", "status"]
+    # Scoped to results indexed since THIS run's investigation: an older
+    # row for the same alert must not answer for it (review catch).
+    assert source.calls[0][2] is not None
+
+
+async def test_a_resume_pushes_when_the_run_died_before_indexing(tmp_path):
+    """The other half of the same ambiguity: nothing was indexed, so the
+    result must still reach Elastic — with the closure decision the
+    current flags produce."""
+    alert = _alert("A1")
+    copilot = _interrupted(tmp_path, alert)
+    source = _FakeSource()
+
+    await _work(copilot, source, "d1", alert, set(), resume_window=30)
+
+    assert [c[0] for c in source.calls] == [
+        "has_investigation", "push", "status",
+    ]
+    assert source.calls[1][1] == "A1"
+    assert source.calls[1][2] is True                   # auto-closed
+
+
+async def test_the_normal_path_never_asks_elastic_about_prior_pushes(
+    tmp_path, caplog
+):
+    """The existence search is a resume-only cost. Running it per alert
+    would add a round trip to every investigation to answer a question
+    only an interrupted run can raise — and would silently dedupe genuine
+    re-investigations, which are SUPPOSED to produce several rows."""
+    copilot = _FakeCopilot(tmp_path, {"A1": _closing_inv("A1")})
+    source = _FakeSource()
+
+    await _work(copilot, source, "d1", _alert("A1"), set(), resume_window=30)
+
+    assert "has_investigation" not in [c[0] for c in source.calls]
+    assert copilot.investigated == ["A1"]
+    # ...and no degraded-probe warning either. Without this line the
+    # mutant that drops the `outcome == "resumed"` guard survives: the
+    # probe is then attempted on every alert, fails on the absent
+    # timestamp, and _already_indexed swallows it into a warning while
+    # still pushing — behaviourally identical, operationally noise
+    # (mutation catch).
+    assert "Could not check whether" not in caplog.text
+
+
+async def test_a_resume_is_preferred_over_a_dedup_borrow(tmp_path):
+    """This alert's OWN paid-for conclusion beats borrowing a neighbour's:
+    it is about exactly this alert, and the borrow would additionally
+    append a suppressed record the interrupted run never meant to write."""
+    alert = _alert("A1")
+    copilot = _interrupted(tmp_path, alert)
+    called = []
+
+    def _never(*a, **k):
+        called.append(a)
+        return None
+
+    import soc_copilot.dedup as dedup_mod
+    original, dedup_mod.try_suppress = dedup_mod.try_suppress, _never
+    try:
+        outcome = await _work(
+            copilot, _FakeSource(), "d1", alert, set(),
+            resume_window=30, dedup_window=24,
+        )
+    finally:
+        dedup_mod.try_suppress = original
+
+    assert outcome == "resumed"
+    assert called == []                       # dedup never consulted
+
+
+async def test_a_resumed_closure_still_records_after_both_elastic_writes(
+    tmp_path
+):
+    """The ordering contract is the resume path's too: record_closure and
+    seen.add land only after the alert is really closed in Elastic."""
+    alert = _alert("A1")
+    copilot = _interrupted(tmp_path, alert)
+    source = _FakeSource()
+    source.fail_status_for = {"d1"}
+    seen: set[str] = set()
+
+    with pytest.raises(RuntimeError):
+        await _work(copilot, source, "d1", alert, seen, resume_window=30)
+
+    assert copilot.history.closures() == {}    # no phantom closure
+    assert seen == set()                       # retried next cycle
+
+
+async def test_a_stale_record_is_reinvestigated_not_resumed(tmp_path):
+    """Past the window the alert is treated as a genuine re-open, which
+    is the behavior an analyst re-opening an alert is entitled to."""
+    alert = _alert("A1")
+    copilot = _interrupted(tmp_path, alert)
+    copilot._invs = {"A1": _escalating_inv("A1")}
+    source = _FakeSource()
+
+    outcome = await _work(
+        copilot, source, "d1", alert, set(), resume_window=0
+    )
+
+    assert outcome == "worked"
+    assert copilot.investigated == ["A1"]
+    assert "has_investigation" not in [c[0] for c in source.calls]
+
+
+async def test_watch_once_counts_a_resume_apart_from_real_work(tmp_path):
+    """A resume proves the Elastic writes work and says nothing about the
+    model pipeline — so it must not land in `worked`, which is the
+    watchdog's evidence that investigations still complete. Resumes
+    cluster in exactly the first cycle after a crash-restart, which is
+    the worst possible moment to fake health."""
+    alert = _alert("A1")
+    copilot = _interrupted(tmp_path, alert)
+    source = _FakeSource(hits=[("d1", alert)])
+
+    report = await _watch_once(
+        copilot, source, set(),
+        agentic=False, tiered=False, auto_close=True,
+        notify=False, case=False, dedup_window=None, resume_window=30,
+    )
+
+    assert (report.worked, report.resumed, report.borrowed) == (0, 1, 0)
+    assert report.sick is False
+
+
+async def test_a_resumed_investigation_still_faces_the_closure_policy(tmp_path):
+    """The resumed object is the ORIGINAL Investigation, not a summary of
+    it — so every closure gate still runs on the evidence that produced
+    it. Pinned with the blind-lookup gate specifically: `success=False`
+    survives the JSONL round trip, so an investigation that could not
+    reach its enrichment is no more closable after a crash than before
+    one. A lossy round trip here would have silently re-enabled the
+    exact blind-fire closure the closure increment removed."""
+    from soc_copilot.models import Evidence
+
+    alert = _alert("A1")
+    blind = Investigation(
+        alert_id="A1", verdict="false_positive", confidence="high",
+        hypothesis="benign, probably", escalation_recommended=False,
+        evidence=[Evidence(
+            claim="Failed to retrieve reputation: HTTP 429",
+            source_tool="abuseipdb", raw_data={}, confidence="low",
+            success=False,
+        )],
+    )
+    copilot = _interrupted(tmp_path, alert, blind)
+    source = _FakeSource()
+
+    outcome = await _work(
+        copilot, source, "d1", alert, set(), resume_window=30
+    )
+
+    assert outcome == "resumed"
+    assert source.status == {"d1": "acknowledged"}      # NOT closed
+    assert copilot.history.closures() == {}
+    assert source.calls[1][2] is False                  # pushed as not-closed
+
+
+async def test_a_resumed_escalation_is_acknowledged_and_reaches_a_human(
+    tmp_path, monkeypatch
+):
+    """A crash does not downgrade an escalation. The resumed verdict goes
+    through the same disposition routing as a fresh one, so the alert is
+    acknowledged (never auto-closed) and the case/notify channels are
+    offered it — the interrupted run owed a human this alert and, by the
+    progress ledger, never reached step 5, so nobody has been told yet.
+    (The docstring here originally justified that with "steps 3-5
+    provably never ran because the alert would not be in the queue" — a
+    false premise three review lenses broke; the ledger is what makes it
+    true now.)"""
+    cases, pages = [], []
+
+    async def fake_case(alert, investigation, case, store=None):
+        cases.append(alert.alert_id)
+        return "case-1"
+
+    async def fake_notify(alert, investigation, notify, case_id=None):
+        pages.append((alert.alert_id, case_id))
+
+    monkeypatch.setattr(main, "_maybe_open_case", fake_case)
+    monkeypatch.setattr(main, "_maybe_notify", fake_notify)
+    alert = _alert("A1")
+    copilot = _interrupted(tmp_path, alert, _escalating_inv("A1"))
+    source = _FakeSource()
+
+    outcome = await _work(
+        copilot, source, "d1", alert, set(), resume_window=30,
+        case=True, notify=True,
+    )
+
+    assert outcome == "resumed"
+    assert source.status == {"d1": "acknowledged"}
+    assert cases == ["A1"] and pages == [("A1", "case-1")]
+
+
+async def test_the_real_investigate_records_before_anything_reaches_elastic(
+    tmp_path, monkeypatch
+):
+    """The PREMISE the whole resume path rests on, pinned against the real
+    SOCCopilot rather than a fake: history.record() happens inside
+    investigate(), so by the time _work_alert makes its first Elastic
+    call the verdict is already durable. That is exactly why a crash in
+    the push/status window leaves a paid-for conclusion on disk with the
+    alert still open — the state resume exists to finish.
+
+    _FakeCopilot cannot show this: its investigate() writes no record, so
+    every other test in this file would stay green even if the real one
+    recorded LAST, which would make the resume path unreachable in
+    production while looking perfectly tested."""
+    from types import SimpleNamespace
+
+    from soc_copilot.copilot import SOCCopilot
+
+    class _FakeMessages:
+        async def create(self, **kwargs):
+            return SimpleNamespace(
+                content=[SimpleNamespace(type="text", text=json.dumps({
+                    "alert_id": "A1", "verdict": "false_positive",
+                    "confidence": "high", "hypothesis": "h",
+                    "attack_techniques": [], "suggested_pivots": [],
+                    "escalation_recommended": False, "escalation_draft": None,
+                    "reasoning_transcript": "r",
+                }))],
+                stop_reason="end_turn",
+                usage=SimpleNamespace(input_tokens=10, output_tokens=5),
+            )
+
+    copilot = SOCCopilot(
+        history_store=AlertHistoryStore(tmp_path / "investigations.jsonl")
+    )
+    copilot.client = SimpleNamespace(messages=_FakeMessages())
+    monkeypatch.setattr(main, "_maybe_open_case", _unreached)
+    monkeypatch.setattr(main, "_maybe_notify", _unreached)
+
+    alert = _alert("A1")
+    # The crash: die the instant the FIRST Elastic write is attempted.
+    class _CrashingSource:
+        async def push_investigation(self, *a, **k):
+            raise RuntimeError("SIGKILL-equivalent: nothing reached Elastic")
+
+    with pytest.raises(RuntimeError):
+        await _work(copilot, _CrashingSource(), "d1", alert, set())
+
+    # The verdict survived the crash, on disk, un-acknowledged in Elastic.
+    from soc_copilot.resume import find_resumable
+
+    found = find_resumable(copilot.history, alert)
+    assert found is not None
+    assert found[0].verdict == "false_positive"
+
+
+async def test_a_failed_existence_check_still_completes_the_alert(tmp_path, caplog):
+    """Every gate in resume.py fails toward a fresh investigation; this
+    one lives outside it and used to be the exception. A results index
+    that does not exist yet (404 — /_doc auto-creates it, so a desk whose
+    first pushes all failed has never created it) or a least-privilege
+    key with write but not read (403) raised straight out of _work_alert,
+    failing the alert INSTEAD of completing it. That failure was self-
+    perpetuating: the state that triggers a resume is exactly the state a
+    failed resume preserves, so every resumable alert failed on every
+    cycle for the whole window — worked==0 with failures, which the
+    watchdog scores as sick, pages at 3 cycles and exits(2) at 30 (review
+    catch, two lenses). It now degrades to "assume not indexed"."""
+    alert = _alert("A1")
+    copilot = _interrupted(tmp_path, alert)
+    source = _FakeSource()
+    source.fail_has_investigation_for = {"A1"}
+
+    outcome = await _work(
+        copilot, source, "d1", alert, set(), resume_window=30
+    )
+
+    assert outcome == "resumed"
+    assert [c[0] for c in source.calls] == [
+        "has_investigation", "push", "status",
+    ]
+    assert source.status == {"d1": "closed"}       # the alert MOVED
+    assert "pushing the result rather than risking losing it" in caplog.text
+
+
+async def test_a_completed_alert_that_reopens_gets_a_fresh_look(tmp_path):
+    """The review's sharpest catch, end to end. An alert is worked to
+    completion; an analyst re-opens it in Elastic to demand a second
+    look; the process restarts so `seen` is empty. The alert must be
+    INVESTIGATED again — not silently re-acknowledged with the verdict
+    the analyst just rejected, which is what the earlier premise ("if
+    step 2 completed the alert cannot be in the queue") produced."""
+    alert = _alert("A1")
+    copilot = _FakeCopilot(tmp_path, {"A1": _closing_inv("A1")})
+    source = _FakeSource()
+
+    await _work(copilot, source, "d1", alert, set(), resume_window=30)
+    assert copilot.investigated == ["A1"]
+
+    # The analyst re-opens it; a restart empties `seen`.
+    source.status.clear()
+    source.calls.clear()
+    copilot._invs = {"A1": _escalating_inv("A1")}
+
+    outcome = await _work(
+        copilot, source, "d1", alert, set(), resume_window=30
+    )
+
+    assert outcome == "worked"                       # not "resumed"
+    assert copilot.investigated == ["A1", "A1"]      # really looked again
+    assert "has_investigation" not in [c[0] for c in source.calls]
+    assert source.status == {"d1": "acknowledged"}   # the new verdict routed
+
+
+async def test_a_completed_alert_is_marked_completed_in_the_ledger(tmp_path):
+    """Step 4's durable half. Without this line an alert that is ever
+    re-opened looks interrupted forever, and the resume path answers a
+    human's re-open with the stale verdict — the review's sharpest
+    finding, whose fix is only as good as this write."""
+    alert = _alert("A1")
+    copilot = _FakeCopilot(tmp_path, {"A1": _closing_inv("A1")})
+
+    await _work(copilot, _FakeSource(), "d1", alert, set(), resume_window=30)
+
+    progress = copilot.history.watch_progress("A1")
+    assert progress["phase"] == "completed"
+    assert progress["doc_id"] == "d1"
+
+
+async def test_an_interrupted_alert_is_left_marked_started(tmp_path):
+    """The other half: a run that dies before step 4 leaves `started`,
+    which is exactly what makes it resumable."""
+    alert = _alert("A1")
+    copilot = _FakeCopilot(tmp_path, {"A1": _closing_inv("A1")})
+    source = _FakeSource()
+    source.fail_push_for.add("A1")
+
+    with pytest.raises(RuntimeError):
+        await _work(copilot, source, "d1", alert, set(), resume_window=30)
+
+    assert copilot.history.watch_progress("A1")["phase"] == "started"

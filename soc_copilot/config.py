@@ -42,6 +42,11 @@ class Settings:
     HISTORY_PATH: str = "data/history/investigations.jsonl"
     # Temporal window (hours) for clustering alerts into a campaign.
     CORRELATION_WINDOW_HOURS: int = 72
+    # How long after an investigation the watch loop may still FINISH it
+    # from the record on disk rather than re-running it, when a crash or
+    # kill left the alert un-acknowledged in Elastic (soc_copilot/resume.py).
+    # 0 disables resuming: every re-opened alert then gets a fresh look.
+    RESUME_WINDOW_MINUTES: int = 30
     # Elastic SIEM integration — optional; the copilot runs fine without it.
     ELASTIC_URL: str | None = None
     ELASTIC_API_KEY: str | None = None
@@ -102,13 +107,17 @@ class Settings:
                      "TIER_CHEAP_MODEL", "LOG_FORMAT", "LOG_LEVEL"):
             if (val := os.environ.get(name)) is not None:
                 overrides[name] = val
-        if (raw := os.environ.get("CORRELATION_WINDOW_HOURS")) is not None:
-            try:
-                overrides["CORRELATION_WINDOW_HOURS"] = int(raw)
-            except ValueError:
-                raise RuntimeError(
-                    f"CORRELATION_WINDOW_HOURS must be an integer, got {raw!r}"
-                )
+        # Integer settings: a typo must fail loudly at startup rather than
+        # silently falling back to the default (which for a WINDOW would
+        # mean quietly using a different policy than the operator set).
+        for name in ("CORRELATION_WINDOW_HOURS", "RESUME_WINDOW_MINUTES"):
+            if (raw := os.environ.get(name)) is not None:
+                try:
+                    overrides[name] = int(raw)
+                except ValueError:
+                    raise RuntimeError(
+                        f"{name} must be an integer, got {raw!r}"
+                    )
         return cls(**overrides)
 
 
