@@ -644,3 +644,102 @@ async def test_the_cycle_wires_systemic_into_the_page_text(
     [payload] = _CapturingWebhook.posted
     assert "stuck" in payload["text"] and "A1" in payload["text"]
     assert "will exit for a supervisor restart" not in payload["text"]
+
+
+async def test_a_drained_cycle_is_not_evidence_for_the_watchdog(
+    tmp_path, monkeypatch, caplog
+):
+    """A shutdown drain cuts a cycle short on purpose. Feeding that
+    cycle to the watchdog would fake a recovery mid-outage (a drained
+    quiet cycle reads as healthy, resetting the sick streak under a
+    'recovered' line while nothing recovered) — or worse, let a sick
+    drained cycle page or raise the exit(2) during an operator stop
+    that is about to exit 0. The drain bypasses the judgment entirely."""
+    import asyncio
+
+    from soc_copilot.main import _run_watch_cycle
+    from tests.test_watch import _FakeCopilot, _FakeSource
+
+    _configure_webhook(monkeypatch)
+    copilot = _FakeCopilot(tmp_path, {})
+    dog = Watchdog(page_after=10, exit_after=30)
+
+    for _ in range(2):
+        await _run_watch_cycle(copilot, _DeadSource(), set(), dog, _cycle_args())
+    assert dog.consecutive_sick == 2
+
+    stop = asyncio.Event()
+    stop.set()
+    caplog.clear()
+    # A quiet (healthy-looking) cycle under drain: streak must survive.
+    await _run_watch_cycle(
+        copilot, _FakeSource(), set(), dog, _cycle_args(), stop=stop
+    )
+    assert dog.consecutive_sick == 2            # not reset by the drain
+    assert "recovered" not in caplog.text
+    # And a sick cycle under drain must not act either.
+    await _run_watch_cycle(
+        copilot, _DeadSource(), set(), dog, _cycle_args(), stop=stop
+    )
+    assert dog.consecutive_sick == 2            # not incremented
+    assert _CapturingWebhook.posted == []
+
+
+async def test_an_undrained_cycle_is_still_evidence_with_a_live_stop_event(
+    tmp_path, monkeypatch
+):
+    """The production shape: _run_watch always passes a real (UNSET)
+    Event, so the bypass must turn on `stop.is_set()`, not on the event
+    merely existing. Mutating the guard to `if stop is not None: return`
+    silently disarms the ENTIRE dead-man's switch — no heartbeat, no
+    page, no exit(2) — and survived the whole suite, because every other
+    wiring test passed stop=None, a shape production never runs (review
+    catch)."""
+    import asyncio
+
+    from soc_copilot.main import _run_watch_cycle
+    from tests.test_watch import _FakeCopilot
+
+    _configure_webhook(monkeypatch)
+    copilot = _FakeCopilot(tmp_path, {})
+    dog = Watchdog(page_after=2, exit_after=30)
+    stop = asyncio.Event()                      # live, but NOT set
+
+    await _run_watch_cycle(
+        copilot, _DeadSource(), set(), dog, _cycle_args(), stop=stop
+    )
+    assert dog.consecutive_sick == 1            # the switch still counts
+
+    await _run_watch_cycle(
+        copilot, _DeadSource(), set(), dog, _cycle_args(), stop=stop
+    )
+    assert dog.consecutive_sick == 2
+    assert len(_CapturingWebhook.posted) == 1   # and still pages
+
+
+async def test_a_drained_cycle_failure_promises_no_retry(
+    tmp_path, monkeypatch, caplog
+):
+    """A fetch failure during the drain must not log 'retrying in 60s'
+    one line before 'stopped cleanly' — the retry never comes (review
+    catch). The reachable shape is a stop landing DURING the fetch: a
+    stop already set on entry skips the fetch entirely."""
+    import asyncio
+
+    from soc_copilot.main import _run_watch_cycle
+    from tests.test_watch import _FakeCopilot
+
+    _configure_webhook(monkeypatch)
+    stop = asyncio.Event()
+
+    class _DyingSource:
+        async def fetch_alert_hits(self, limit=10, status="open"):
+            stop.set()                      # the operator stops mid-fetch
+            raise RuntimeError("connection refused")
+
+    await _run_watch_cycle(
+        _FakeCopilot(tmp_path, {}), _DyingSource(), set(), Watchdog(),
+        _cycle_args(), stop=stop,
+    )
+    assert "not retried" in caplog.text
+    assert "retrying in" not in caplog.text

@@ -20,6 +20,20 @@ Documentation=https://github.com/AizensCode/soc-copilot
 After=network-online.target
 Wants=network-online.target
 
+# The start limit belongs HERE, not in [Service]: systemd parses
+# StartLimitIntervalSec only in [Unit] and silently IGNORES it in
+# [Service] (`systemd-analyze verify` says so; StartLimitBurst is still
+# accepted there for backward compatibility, which is what made the
+# mistake invisible). Ignored, the interval fell back to the 10s default
+# — and since RestartSec=60 spaces restarts a minute apart, ten starts
+# inside ten seconds is impossible, so the limit could NEVER trip and a
+# hard-broken config would flap forever: the precise opposite of what
+# this unit and the runbook promise. Ten failures in an hour now really
+# does stop the unit, so a bad config becomes a visibly failed unit
+# systemd alerting can see.
+StartLimitIntervalSec=3600
+StartLimitBurst=10
+
 [Service]
 Type=exec
 # Adjust to your checkout; `uv sync` there first so .venv exists.
@@ -29,13 +43,11 @@ User=soc-copilot
 Group=soc-copilot
 
 # The watchdog's exit 2 (and any crash) lands here: wait a minute, then
-# restart with freshly-read config. The start limit turns a tight crash
-# loop (bad config that fails instantly) into a stopped unit systemd
-# alerting can see, instead of an infinite flap.
+# restart with freshly-read config. The start limit that turns a tight
+# crash loop into a stopped unit lives in [Unit] above — see the note
+# there for why putting it here did nothing.
 Restart=on-failure
 RestartSec=60
-StartLimitIntervalSec=3600
-StartLimitBurst=10
 
 # The process may write exactly one thing: its data/ directory (the
 # append-only history store). Everything else is read-only to it.
@@ -45,9 +57,26 @@ ProtectHome=read-only
 ReadWritePaths=/opt/soc-copilot/data
 PrivateTmp=true
 
-# No graceful shutdown yet (roadmap): stop kills mid-cycle work. The
-# store's write ordering makes that safe — see deploy/RUNBOOK.md.
-TimeoutStopSec=10
+# `systemctl stop` drains: SIGTERM lets the alert in flight finish,
+# nothing new starts, exit 0. 120s covers a TYPICAL alert with room to
+# spare (this repo's recorded agentic telemetry is ~48s end to end); it
+# is deliberately NOT claimed to cover the worst case, because there
+# isn't a bounded one — the Anthropic client runs on the SDK defaults
+# (600s read timeout, 2 retries) and the agentic loop allows 15
+# iterations, so a single stalled call can outlast any sane grace
+# (review catch: this comment used to claim worst-case coverage and was
+# off by 5-15x). When the grace expires systemd SIGKILLs and the
+# original fallback holds: safe by write ordering — a closure is
+# recorded only after both Elastic writes, so a kill undercounts
+# automation, never invents it. Raise this if your alerts are slower
+# than your patience. See deploy/RUNBOOK.md.
+TimeoutStopSec=120
+
+# NOTE: no SuccessExitStatus= is needed. The second-SIGTERM path dies BY
+# the signal (main.py's _die_by_signal), which systemd already counts as
+# a clean stop; an exit CODE of 143 would NOT be, and would leave the
+# unit failed or, outside a stop job, restart what the operator just
+# force-stopped. tests/test_watch.py pins the mechanism.
 
 [Install]
 WantedBy=multi-user.target

@@ -54,6 +54,8 @@ import argparse
 import asyncio
 import json
 import logging
+import os
+import signal
 import sys
 from pathlib import Path
 
@@ -215,7 +217,9 @@ async def _run_scorecard() -> None:
     print(render_scorecard(build_scorecard(store)))
 
 
-async def _annotate_elastic(changed: list[dict]) -> None:
+async def _annotate_elastic(
+    changed: list[dict], stop: asyncio.Event | None = None
+) -> None:
     """Stamp new rulings onto the investigations index, when Elastic is
     configured — this is what puts the human's verdict next to the
     copilot's on the dashboard. Never fatal: the ruling is already safe
@@ -229,6 +233,18 @@ async def _annotate_elastic(changed: list[dict]) -> None:
     except RuntimeError:
         return  # no Elastic configured — memory still has the rulings
     for d in changed:
+        if stop is not None and stop.is_set():
+            # A stop landing mid-sync must not chain another ruling's
+            # 20s-plus-retry write: with enough rulings this loop alone
+            # could outlast the supervisor's grace and turn a drain into
+            # a SIGKILL (review catch). The rulings are already safe in
+            # the history store; the stamp is retried next start.
+            log.warning(
+                "Draining for shutdown: %d Elastic annotation(s) "
+                "deferred to the next start.",
+                len(changed) - changed.index(d),
+            )
+            return
         try:
             n = await source.annotate_disposition(
                 d["alert_id"], d["human_verdict"], d.get("summary")
@@ -795,6 +811,108 @@ async def _work_alert(
     return suppressed_reason is not None
 
 
+def _die_by_signal(loop: asyncio.AbstractEventLoop, sig: int) -> None:
+    """Terminate the way the signal itself would have, had nothing been
+    listening: restore the default disposition and re-raise on ourselves,
+    so the wait status is WIFSIGNALED — what a supervisor calls a clean
+    stop — rather than an exit CODE of 143, which systemd classifies as
+    a failure (review catch).
+
+    A module-level seam so tests can observe the death without dying:
+    patching os._exit is not enough once the process really does die by
+    signal, and a handler bug then takes the whole test runner with it —
+    which is exactly what happened when this fix first landed.
+    """
+    loop.remove_signal_handler(sig)
+    os.kill(os.getpid(), sig)
+
+
+def _install_stop_handler(
+    stop: asyncio.Event, sig: int = signal.SIGTERM
+) -> None:
+    """Make SIGTERM a DRAIN, not a kill: `systemctl stop` and
+    `docker stop` both deliver it, and until now it cut down whatever
+    alert was mid-investigation — safe by write ordering, but paid for
+    (the model call was spent and the verdict discarded). The handler
+    sets the stop event; the watch loop finishes the alert in flight,
+    starts nothing new, and exits 0.
+
+    A SECOND signal is the operator saying "now": the process dies BY
+    that signal rather than exiting with its number. Both report 143 to
+    a shell, but only death-by-signal is what supervisors call a clean
+    stop — an exit CODE of 143 is a failure to systemd, which with
+    `Restart=on-failure` would leave the unit failed or, outside a stop
+    job, restart the process the operator just force-stopped (review
+    catch: the docstring claimed dashboards read both shapes alike, and
+    systemd is exactly the supervisor that does not).
+
+    Unix-only (loop.add_signal_handler), like the deployment itself; a
+    loop without signal support says so plainly instead of surfacing an
+    empty configuration error."""
+    loop = asyncio.get_running_loop()
+
+    def _on_signal() -> None:
+        if stop.is_set():
+            log.error(
+                "Second stop signal — exiting immediately. Mid-alert "
+                "work is discarded (safe by write ordering)."
+            )
+            # Nothing runs after this: the signal is unblocked and
+            # delivered to this thread immediately.
+            _die_by_signal(loop, sig)
+            return
+        log.warning(
+            "Stop signal received — finishing the alert in flight, then "
+            "exiting cleanly. Send the signal again to exit immediately "
+            "(`systemctl kill`, or repeat `docker stop`)."
+        )
+        stop.set()
+
+    try:
+        loop.add_signal_handler(sig, _on_signal)
+    except NotImplementedError as e:
+        # Only reachable on an event loop without Unix signal support
+        # (native Windows). Left as a RuntimeError so cli() prints one
+        # line, but WITH a message: NotImplementedError subclasses
+        # RuntimeError and arrives empty, so the operator got a bare
+        # "Configuration error:" blaming a config that is fine.
+        raise RuntimeError(
+            "--watch needs a Unix event loop for its graceful stop "
+            "(SIGTERM drain); this platform's loop has no signal support"
+        ) from e
+
+
+def _should_sync_feedback(
+    feedback: bool, stop: asyncio.Event, last_sync: float, now: float
+) -> bool:
+    """Whether this cycle should pull analyst rulings from TheHive.
+
+    A predicate rather than an inline condition so the STOP clause is
+    pinned by a test: starting a full TheHive sync after a stop signal
+    can spend a chunk of the supervisor's grace on work no one is
+    waiting for, and as shell code inside the loop nothing executed it
+    (review catch)."""
+    if not feedback or stop.is_set():
+        return False
+    return now - last_sync >= FEEDBACK_SYNC_INTERVAL
+
+
+async def _sleep_or_stop(stop: asyncio.Event, interval: float) -> bool:
+    """The poll-cycle sleep, interruptible by the stop event. Returns
+    True to keep looping, False when the shutdown drain should begin —
+    immediately if the stop already happened during the cycle, mid-sleep
+    if the signal lands there (a stop must never wait out the interval;
+    at the default 60s that would eat most of a supervisor's grace
+    period doing nothing)."""
+    if stop.is_set():
+        return False
+    try:
+        await asyncio.wait_for(stop.wait(), timeout=interval)
+    except TimeoutError:
+        return True
+    return False
+
+
 async def _watch_once(
     copilot: SOCCopilot,
     source,
@@ -806,6 +924,7 @@ async def _watch_once(
     notify: bool,
     case: bool,
     dedup_window: int | None,
+    stop: asyncio.Event | None = None,
 ) -> CycleReport:
     """One poll cycle: fetch open alerts, work the fresh ones in priority
     order. A single alert's failure is contained to that alert — logged,
@@ -821,9 +940,30 @@ async def _watch_once(
     only these counts can surface it.
     """
     report = CycleReport()
+    if stop is not None and stop.is_set():
+        # The stop landed before this cycle began (during the previous
+        # sleep or the feedback sync). Fetching now would spend up to
+        # ~41s of the supervisor's grace — a 20s timeout plus a
+        # replayable retry — to build a queue we are about to abandon
+        # (review catch).
+        log.warning("Draining for shutdown: skipping this poll cycle.")
+        return report
     hits = await source.fetch_alert_hits(limit=10, status="open")
     fresh = [(d, a) for d, a in hits if d not in seen]
-    for doc_id, alert, why in _prioritize(copilot, fresh):
+    prioritized = _prioritize(copilot, fresh)
+    for worked_ahead, (doc_id, alert, why) in enumerate(prioritized):
+        # The drain point: a stop landing mid-alert lets THAT alert
+        # finish (its model call is already paid for; the write ordering
+        # completes it honestly), and everything behind it stays open in
+        # Elastic for the next start. Checked between alerts only —
+        # in-flight work is never cancelled.
+        if stop is not None and stop.is_set():
+            log.warning(
+                "Draining for shutdown: leaving %d fresh alert(s) "
+                "unstarted — they stay open in Elastic for the next "
+                "start.", len(prioritized) - worked_ahead,
+            )
+            break
         # The correlation id: every line logged while THIS alert is being
         # worked — the mode line, tool chatter, the failure — carries its
         # id in JSON mode, so one alert's story greps out of the night.
@@ -939,6 +1079,7 @@ async def _run_watch_cycle(
     seen: set[str],
     watchdog: Watchdog,
     args: argparse.Namespace,
+    stop: asyncio.Event | None = None,
 ) -> None:
     """One SUPERVISED cycle: work the queue, report to the watchdog, act.
 
@@ -953,11 +1094,30 @@ async def _run_watch_cycle(
             copilot, source, seen,
             agentic=args.agentic, tiered=args.tiered,
             auto_close=args.auto_close, notify=args.notify,
-            case=args.case, dedup_window=args.dedup,
+            case=args.case, dedup_window=args.dedup, stop=stop,
         )
     except Exception as e:
         report = CycleReport(crashed=True)
-        log.error("Poll cycle failed (retrying in %ds): %s", args.interval, e)
+        if stop is not None and stop.is_set():
+            # Promising a retry here would be a lie the very next line
+            # contradicts: the drain exits without another cycle (review
+            # catch).
+            log.error(
+                "Poll cycle failed during shutdown drain (not retried; "
+                "open alerts stay open in Elastic): %s", e,
+            )
+        else:
+            log.error(
+                "Poll cycle failed (retrying in %ds): %s", args.interval, e
+            )
+    if stop is not None and stop.is_set():
+        # A drained cycle is NOT evidence: it was cut short on purpose.
+        # Observing it would let a partially-quiet drain fake a recovery
+        # mid-outage (resetting the sick streak with a "recovered" line
+        # while nothing recovered), and a sick drained cycle could page
+        # — or raise the watchdog's exit(2) — during an operator stop
+        # that is about to exit 0. The watchdog judges full cycles only.
+        return
     prev_sick = watchdog.consecutive_sick
     action = watchdog.observe(report)
     _log_watch_health(watchdog, action, prev_sick)
@@ -1045,13 +1205,21 @@ async def _run_watch(args: argparse.Namespace) -> None:
     non-zero so a supervisor can restart it. Before this, that state was
     an endless per-cycle FAILED line printed to nobody.
 
+    Stopping is a DRAIN, not a kill: SIGTERM (systemctl stop, docker
+    stop) lets the alert in flight finish — its model call is already
+    paid for — starts nothing new, and exits 0; a second SIGTERM exits
+    immediately. The drain point sits between alerts in _watch_once and
+    inside the interruptible sleep, both tested seams; in-flight work is
+    never cancelled, so the write-ordering contract needs no new cases.
+
     This shell owns only what cannot run under a test: real construction,
-    the infinite loop, the sleep, and the feedback-sync timer. Everything
-    the loop DOES is _watch_once/_work_alert — the seam
-    tests/test_watch.py pins, so the ordering contract above is held by
-    tests rather than by careful reading — and everything the watchdog
-    DECIDES and the health actions DO is pinned the same way
-    (tests/test_watchdog.py).
+    the infinite loop, and the feedback-sync timer. Everything the loop
+    DOES is _watch_once/_work_alert — the seam tests/test_watch.py pins,
+    so the ordering contract above is held by tests rather than by
+    careful reading — everything the watchdog DECIDES and the health
+    actions DO is pinned the same way (tests/test_watchdog.py), and the
+    stop path (drain point, signal handler, interruptible sleep) is
+    pinned beside them.
     """
     import time
 
@@ -1086,6 +1254,8 @@ async def _run_watch(args: argparse.Namespace) -> None:
     copilot = SOCCopilot()
     seen: set[str] = set()
     watchdog = Watchdog()
+    stop = asyncio.Event()
+    _install_stop_handler(stop)
     mode = "agentic" if args.agentic else "phase one"
     feedback = bool(settings.THEHIVE_URL and settings.THEHIVE_API_KEY)
     last_feedback_sync = float("-inf")
@@ -1102,7 +1272,9 @@ async def _run_watch(args: argparse.Namespace) -> None:
         ", analyst-feedback sync on" if feedback else "",
     )
     while True:
-        if feedback and time.monotonic() - last_feedback_sync >= FEEDBACK_SYNC_INTERVAL:
+        if _should_sync_feedback(
+            feedback, stop, last_feedback_sync, time.monotonic()
+        ):
             last_feedback_sync = time.monotonic()
             try:
                 from .casemgmt import TheHiveClient, sync_dispositions
@@ -1119,11 +1291,19 @@ async def _run_watch(args: argparse.Namespace) -> None:
                         for r in copilot.history._iter_records()
                     }
                     _print_rulings(changed, known)
-                    await _annotate_elastic(changed)
+                    await _annotate_elastic(changed, stop=stop)
             except Exception as e:
                 log.warning("Feedback sync failed (will retry): %s", e)
-        await _run_watch_cycle(copilot, source, seen, watchdog, args)
-        await asyncio.sleep(interval)
+        await _run_watch_cycle(copilot, source, seen, watchdog, args, stop=stop)
+        if not await _sleep_or_stop(stop, interval):
+            # The drain's clean end: in-flight work finished, nothing
+            # started since the signal, exit 0 — a supervisor reads it
+            # as a stop, not a failure to restart.
+            log.info(
+                "Stopped cleanly: drained in-flight work; unstarted "
+                "alerts stay open in Elastic for the next start."
+            )
+            return
 
 
 async def _dispatch(command: str, args: argparse.Namespace) -> None:

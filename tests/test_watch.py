@@ -398,3 +398,285 @@ async def test_narration_carries_the_alert_id_end_to_end(tmp_path, capsys):
     assert failed and failed[0]["alert_id"] == "A1"
     header = [d for d in lines if "priority:" in d["msg"]]
     assert header and header[0]["alert_id"] == "A1"
+
+
+# --- graceful shutdown: the drain -------------------------------------------
+
+
+async def test_drain_finishes_the_inflight_alert_and_leaves_the_rest(
+    tmp_path, caplog
+):
+    """SIGTERM mid-alert: the alert being worked FINISHES (its model
+    call is already paid for, and the write ordering completes it
+    honestly — push, status, seen), everything queued behind it is left
+    unstarted for the next start, and a drained cycle is a healthy one."""
+    import asyncio
+
+    copilot = _FakeCopilot(tmp_path, {
+        "A1": _closing_inv("A1"), "A2": _closing_inv("A2"),
+        "A3": _closing_inv("A3"),
+    })
+    source = _FakeSource(hits=[
+        ("d1", _alert("A1")), ("d2", _alert("A2", ip="8.8.8.8")),
+        ("d3", _alert("A3", ip="9.9.9.8")),
+    ])
+    stop = asyncio.Event()
+    orig = copilot.investigate
+
+    async def investigate_and_signal(alert):
+        stop.set()                          # the signal lands MID-alert
+        return await orig(alert)
+
+    copilot.investigate = investigate_and_signal
+    seen: set[str] = set()
+
+    report = await _watch_once(
+        copilot, source, seen,
+        agentic=False, tiered=False, auto_close=True,
+        notify=False, case=False, dedup_window=None, stop=stop,
+    )
+
+    assert seen == {"d1"}                   # the in-flight alert completed
+    assert [c[0] for c in source.calls if c[0] != "fetch"] == [
+        "push", "status",
+    ]
+    assert (report.worked, report.failed) == (1, 0)
+    assert report.sick is False             # a drained cycle is healthy
+    # Announced ONCE, with the true remaining count — a drain that fell
+    # through the queue instead of breaking would repeat the line with a
+    # different number each time (mutation catch).
+    drain_lines = [
+        r.getMessage() for r in caplog.records
+        if "Draining for shutdown" in r.getMessage()
+    ]
+    assert len(drain_lines) == 1
+    assert "2 fresh alert(s)" in drain_lines[0]
+
+
+async def test_a_stop_before_the_cycle_touches_elastic_at_all(
+    tmp_path, caplog
+):
+    """A stop that landed before the cycle (during the sleep or the
+    feedback sync) must not even FETCH: that call can burn ~41s of the
+    supervisor's grace — a 20s timeout plus a replayable retry — to
+    build a queue about to be abandoned (review catch)."""
+    import asyncio
+
+    copilot = _FakeCopilot(tmp_path, {"A1": _closing_inv("A1")})
+    source = _FakeSource(hits=[("d1", _alert("A1"))])
+    stop = asyncio.Event()
+    stop.set()
+
+    report = await _watch_once(
+        copilot, source, set(),
+        agentic=False, tiered=False, auto_close=True,
+        notify=False, case=False, dedup_window=None, stop=stop,
+    )
+
+    assert copilot.investigated == []
+    assert source.calls == []                    # not even the fetch
+    assert (report.worked, report.failed) == (0, 0)
+    assert "skipping this poll cycle" in caplog.text
+
+
+async def test_stop_handler_drains_first_then_dies_by_the_second_signal(
+    monkeypatch, caplog
+):
+    """First signal: set the event, keep running (the drain). Second:
+    die BY the signal — WIFSIGNALED, which a supervisor reads as a clean
+    stop, where an exit CODE of 143 is a failure to systemd.
+
+    The safety scaffolding is the point (review catch: the previous
+    version claimed 'a bug can never kill the test runner' and was
+    false). Everything fatal is neutralized BEFORE the first signal —
+    the death seam is patched, and SIGUSR1 gets a benign disposition so
+    a handler that never installs cannot terminate pytest either — so a
+    branch-swap or missing-install mutant fails as an assertion, not as
+    a dead runner."""
+    import asyncio
+    import signal
+
+    import soc_copilot.main as main
+
+    deaths: list[tuple] = []
+    monkeypatch.setattr(
+        main, "_die_by_signal", lambda loop, sig: deaths.append(("die", sig))
+    )
+    # A signal that would otherwise TERMINATE this process by default.
+    previous = signal.signal(signal.SIGUSR1, lambda *a: None)
+
+    stop = asyncio.Event()
+    main._install_stop_handler(stop, sig=signal.SIGUSR1)
+    try:
+        signal.raise_signal(signal.SIGUSR1)
+        await asyncio.wait_for(stop.wait(), timeout=2)
+        assert deaths == []                  # the FIRST signal drains
+        assert "finishing the alert in flight" in caplog.text
+
+        signal.raise_signal(signal.SIGUSR1)
+        for _ in range(200):                 # let the loop run the callback
+            if deaths:
+                break
+            await asyncio.sleep(0.01)
+        assert deaths == [("die", signal.SIGUSR1)]
+        assert "Second stop signal" in caplog.text
+    finally:
+        try:
+            asyncio.get_running_loop().remove_signal_handler(signal.SIGUSR1)
+        finally:
+            signal.signal(signal.SIGUSR1, previous)
+
+
+def test_die_by_signal_restores_the_default_then_reraises(monkeypatch):
+    """The death seam itself: the handler must be REMOVED before the
+    re-raise (otherwise asyncio catches it again and the process never
+    dies), and the process must be signalled, not exited."""
+    import signal
+    from types import SimpleNamespace
+
+    import soc_copilot.main as main
+
+    order: list[str] = []
+    loop = SimpleNamespace(
+        remove_signal_handler=lambda s: order.append(f"remove:{s}")
+    )
+    monkeypatch.setattr(
+        main.os, "kill", lambda pid, s: order.append(f"kill:{s}")
+    )
+    main._die_by_signal(loop, signal.SIGTERM)
+    assert order == [f"remove:{signal.SIGTERM}", f"kill:{signal.SIGTERM}"]
+
+
+async def test_sleep_or_stop_is_a_real_sleep_until_the_signal():
+    import asyncio
+    import time
+
+    from soc_copilot.main import _sleep_or_stop
+
+    quiet = asyncio.Event()
+    assert await _sleep_or_stop(quiet, 0.01) is True       # keep looping
+
+    stopped = asyncio.Event()
+    stopped.set()
+    t0 = time.monotonic()
+    assert await _sleep_or_stop(stopped, 60) is False      # no waiting-out
+    assert time.monotonic() - t0 < 1
+
+    mid = asyncio.Event()
+    asyncio.get_running_loop().call_later(0.02, mid.set)
+    t0 = time.monotonic()
+    assert await _sleep_or_stop(mid, 60) is False          # woken mid-sleep
+    assert time.monotonic() - t0 < 5
+
+
+def test_should_sync_feedback_never_starts_a_sync_after_a_stop():
+    """A full TheHive sync started after the stop signal spends the
+    supervisor's grace on work nobody is waiting for. The clause lived
+    inline in the loop shell, where no test executed it (review
+    catch) — it is a predicate now, and this is the pin."""
+    import asyncio
+
+    from soc_copilot.main import FEEDBACK_SYNC_INTERVAL, _should_sync_feedback
+
+    quiet = asyncio.Event()
+    due = FEEDBACK_SYNC_INTERVAL + 1
+    assert _should_sync_feedback(True, quiet, 0.0, due) is True
+    assert _should_sync_feedback(True, quiet, 0.0, 1.0) is False   # not due
+    assert _should_sync_feedback(False, quiet, 0.0, due) is False  # no TheHive
+
+    stopping = asyncio.Event()
+    stopping.set()
+    assert _should_sync_feedback(True, stopping, 0.0, due) is False
+
+
+def test_the_shipped_grace_periods_cover_the_drain():
+    """The drain's operational half: both supervisors must give the
+    in-flight alert real time. A revert to the old 10s (a plausible
+    copy-paste) would silently reinstate SIGKILL-mid-alert with every
+    test green — the same drift risk the watchdog thresholds are pinned
+    against."""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    unit = (root / "deploy" / "soc-copilot-watch.service").read_text()
+    compose = (root / "docker-compose.yml").read_text()
+
+    [systemd_secs] = re.findall(r"TimeoutStopSec=(\d+)", unit)
+    [docker_secs] = re.findall(r"stop_grace_period:\s*(\d+)s", compose)
+    assert int(systemd_secs) >= 120
+    assert int(docker_secs) == int(systemd_secs)      # one promise, two files
+
+
+async def test_a_loop_without_signal_support_says_so_plainly(monkeypatch):
+    """NotImplementedError subclasses RuntimeError, so cli()'s
+    configuration-error handler caught it and printed a bare
+    'Configuration error:' with no message — blaming a config that was
+    fine (review catch). The failure must name the real reason."""
+    import asyncio
+    import signal
+
+    import soc_copilot.main as main
+
+    loop = asyncio.get_running_loop()
+
+    def unsupported(sig, handler):
+        raise NotImplementedError
+
+    monkeypatch.setattr(loop, "add_signal_handler", unsupported)
+    with pytest.raises(RuntimeError, match="Unix event loop"):
+        main._install_stop_handler(asyncio.Event(), sig=signal.SIGUSR1)
+
+
+async def test_annotation_stops_chaining_writes_once_draining(
+    monkeypatch, caplog
+):
+    """A stop landing mid-sync must not chain another ruling's write:
+    each is a 20s-timeout call with a retry, so a long ruling list could
+    outlast the supervisor's grace and turn the drain into a SIGKILL
+    (review catch). The rulings are already safe in the history store."""
+    import asyncio
+
+    stamped: list[str] = []
+    stop = asyncio.Event()
+
+    class _FakeElastic:
+        def __init__(self, *a, **k):
+            pass
+
+        async def annotate_disposition(self, alert_id, verdict, summary):
+            stamped.append(alert_id)
+            stop.set()                       # the operator stops mid-sync
+            return 1
+
+    monkeypatch.setattr("soc_copilot.elastic.ElasticAlertSource", _FakeElastic)
+    changed = [
+        {"alert_id": f"A{i}", "human_verdict": "true_positive", "summary": ""}
+        for i in range(4)
+    ]
+
+    await main._annotate_elastic(changed, stop=stop)
+
+    assert stamped == ["A0"]                 # the rest deferred, not chained
+    assert "3 Elastic annotation(s) deferred" in caplog.text
+
+
+def test_the_unit_start_limit_lives_where_systemd_reads_it():
+    """systemd parses StartLimitIntervalSec only in [Unit] and silently
+    ignores it in [Service] — where this unit had it. Ignored, the
+    interval fell back to the 10s default, and with RestartSec=60 ten
+    starts in ten seconds is impossible, so the documented 'ten failures
+    in an hour stops the unit' protection could never trigger and a
+    hard-broken config would flap forever (`systemd-analyze verify`
+    catch)."""
+    import configparser
+    from pathlib import Path
+
+    unit = Path(__file__).resolve().parent.parent / "deploy" / (
+        "soc-copilot-watch.service"
+    )
+    cfg = configparser.ConfigParser(strict=False)
+    cfg.read(unit)
+    assert cfg["Unit"]["StartLimitIntervalSec"] == "3600"
+    assert cfg["Unit"]["StartLimitBurst"] == "10"
+    assert "StartLimitIntervalSec" not in cfg["Service"]

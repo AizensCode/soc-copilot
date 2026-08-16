@@ -82,11 +82,11 @@ secrets, not with the data).
 
 | Code | Meaning | Right response |
 |---|---|---|
-| 0 | clean end (one-shot commands) | none |
+| 0 | clean end: one-shot commands, and a **drained stop** of `--watch` (SIGTERM finished the in-flight alert and exited) | none |
 | 1 | configuration error (missing/invalid key, bad `WEBHOOK_URL`) — printed as one line, at startup | fix `.env`, start again |
 | 2 | two distinct causes, easy to tell apart: an **instant** exit 2 with a usage message is argparse rejecting a flag (fix the command); an exit 2 after ~30 minutes is **the watchdog giving up** on systemic failure (fetch crashing, or 2+ distinct alerts all failing) | typo: fix the flag. Watchdog: the supervisor restarts it; if it exits 2 again, read the log (stderr — `journalctl`/`docker logs` capture it): the cause is printed every cycle |
 | 130 | operator Ctrl+C | none |
-| 143 | SIGTERM (`docker stop` / `systemctl stop`) | none — this is what stopping looks like |
+| 143 | SIGTERM outside a drain: a **second** signal during a watch drain (immediate stop on request), a signal arriving during watch *startup* before the drain handler is installed, or a signal to a one-shot command. In each case the process dies **by** the signal, which systemd counts as a clean stop (no `SuccessExitStatus=` needed) | none — this is what an impatient (or non-watch) stop looks like |
 
 Both shipped supervisors (`restart: unless-stopped` in compose,
 `Restart=on-failure` in the unit) catch exit 2. Only the systemd path
@@ -133,11 +133,34 @@ view that saw the outage start also sees it end.
 ## Stopping, restarting, upgrading
 
 Stopping is `docker compose down` / `systemctl stop soc-copilot-watch`.
-There is no graceful drain yet (roadmap): a stop mid-alert kills that
-alert's work. This is SAFE by construction — the store records a
-closure only after both Elastic writes succeed, so an interrupt can
-undercount automation but never invent a closure, and the interrupted
-alert is still open in Elastic and gets worked on next start. Upgrades
+Both deliver SIGTERM, and SIGTERM is a **drain**: the loop finishes the
+alert in flight (its model call is already paid for; the verdict is
+pushed, the alert acknowledged/closed, the record written), starts
+nothing new, and exits 0. Unstarted alerts stay open in Elastic for the
+next start.
+
+A **second SIGTERM** stops immediately — the operator saying "now".
+How to send it depends on the supervisor, and the obvious move is not
+always right:
+
+- **Docker**: run `docker stop` (or `docker compose down`) again; the
+  second invocation delivers a second SIGTERM.
+- **systemd**: `systemctl kill soc-copilot-watch`. Re-running
+  `systemctl stop` does **not** send a second signal — the request
+  merges into the pending stop job and you simply wait out the grace.
+
+Both shipped supervisors give the drain 120 seconds
+(`stop_grace_period` / `TimeoutStopSec`). That comfortably covers a
+*typical* alert (this repo's recorded agentic telemetry is ~48s end to
+end) — it is deliberately **not** claimed to cover the worst case,
+because there is no bounded one: the Anthropic client uses the SDK
+defaults (600s read timeout, 2 retries) and the agentic loop allows 15
+iterations, so one stalled model call can outlast any sane grace. Raise
+both values if your alerts are slower than your patience. When the
+grace does run out, SIGKILL lands and the fallback contract holds — the
+store records a closure only after both Elastic writes succeed, so a
+kill can undercount automation but never invent a closure, and the
+interrupted alert is still open next start. Upgrades
 are: stop, pull/rebuild, start; there are no migrations — the history
 files are append-only JSONL that new code reads as-is (records from
 before a field existed are handled explicitly, see the store's tests).

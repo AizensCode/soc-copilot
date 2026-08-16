@@ -30,15 +30,24 @@ services:
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     # unless-stopped, not on-failure: only it survives a daemon restart
     # or host reboot — and this host's snap Docker bounces the daemon on
-    # auto-refresh. The watch service never exits 0, so the two behave
-    # identically otherwise; on-failure would just add a way for the
-    # desk to be silently down after a reboot with no process left to
-    # page about it (review catch).
+    # auto-refresh. That reboot survival is the WHOLE reason; on-failure
+    # would add a way for the desk to be silently down after a reboot
+    # with no process left to page about it (review catch). A drained
+    # SIGTERM stop now exits 0, and `docker stop`/`down` disarm the
+    # policy anyway, so an operator stop stays stopped either way
+    # (review catch: this comment used to say the service never exits 0,
+    # which the graceful-shutdown increment made false).
     restart: unless-stopped
-    # No graceful shutdown yet (roadmap): SIGTERM kills mid-cycle work.
-    # The store's write ordering makes that SAFE (a closure is recorded
-    # only after both Elastic writes, so a kill can undercount
-    # automation, never invent it) — the alert stays open and is worked
-    # next start.
-    stop_grace_period: 10s
+    # `docker stop` drains: the loop finishes the alert in flight (its
+    # model call is already paid for), starts nothing new, and exits 0.
+    # 120s (not Docker's 10s default) covers a TYPICAL alert with room
+    # to spare — NOT the worst case, which is unbounded: the Anthropic
+    # SDK defaults to a 600s read timeout with 2 retries and the agentic
+    # loop allows 15 iterations (review catch: this claimed worst-case
+    # coverage and was off by 5-15x). When the grace runs out SIGKILL
+    # lands and the old story holds: safe by write ordering — a closure
+    # is recorded only after both Elastic writes, so a kill can
+    # undercount automation, never invent it, and the alert stays open
+    # for the next start. Send `docker stop` again to exit immediately.
+    stop_grace_period: 120s
     init: true
