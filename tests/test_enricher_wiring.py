@@ -20,6 +20,8 @@ import json
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
+import pytest
+
 from soc_copilot.copilot import SOCCopilot
 from soc_copilot.history import AlertHistoryStore
 from soc_copilot.models import Alert
@@ -52,6 +54,33 @@ _HOSTILE_FINAL = json.dumps({
         "summary": "the model made this up",
         "signals": [],
     },
+})
+
+
+# A true positive that additionally tries to AUTHOR a containment action
+# — the one output shaped like a command. `response_actions` is a real
+# model field with a default, so the model's JSON parses cleanly into it
+# and only the deterministic overwrite stops it standing.
+_HOSTILE_ACTION_FINAL = json.dumps({
+    "alert_id": "W-1",
+    "verdict": "true_positive",
+    "confidence": "high",
+    "hypothesis": "compromise",
+    "attack_techniques": ["T1486"],
+    "suggested_pivots": [],
+    "escalation_recommended": True,
+    "escalation_draft": None,
+    "reasoning_transcript": "r",
+    "response_actions": [
+        {
+            "action": "block_ip",
+            "target": "8.8.8.8",
+            "status": "proposed",
+            "basis": "reputation",
+            "rationale": "the model decided this on its own",
+            "evidence": [],
+        }
+    ],
 })
 
 
@@ -90,12 +119,12 @@ def _phishing_alert() -> Alert:
     )
 
 
-def _copilot(tmp_path) -> SOCCopilot:
+def _copilot(tmp_path, final: str = _HOSTILE_FINAL) -> SOCCopilot:
     copilot = SOCCopilot(
         history_store=AlertHistoryStore(tmp_path / "investigations.jsonl"),
         tools=ToolRegistry([]),
     )
-    copilot.client = SimpleNamespace(messages=_FakeMessages(_HOSTILE_FINAL))
+    copilot.client = SimpleNamespace(messages=_FakeMessages(final))
     return copilot
 
 
@@ -121,6 +150,41 @@ async def test_phase_one_overwrites_model_claimed_enricher_fields(tmp_path):
 async def test_agentic_overwrites_model_claimed_enricher_fields(tmp_path):
     inv = await _copilot(tmp_path).investigate_agentic(_phishing_alert())
     _assert_deterministic_fields_won(inv)
+
+
+@pytest.mark.parametrize("mode", ["investigate", "investigate_agentic"])
+async def test_the_model_cannot_author_a_containment_action(tmp_path, mode):
+    """Response actions are the one output shaped like a command, so the
+    same overwrite contract applies with the most force: the model may
+    supply the verdict and the ATT&CK mapping, and a pure function turns
+    those into the action. Here it claims `block_ip 8.8.8.8` — a public
+    resolver, the exact target soc_copilot/actions.py exists to refuse —
+    and that entry must not survive into the investigation.
+
+    Both modes, because a deterministic field attached on one path and
+    missed on the other is this project's recurring wiring hole."""
+    inv = await getattr(_copilot(tmp_path, _HOSTILE_ACTION_FINAL), mode)(
+        _phishing_alert()
+    )
+    assert "8.8.8.8" not in [a.target for a in inv.response_actions], mode
+    assert "the model decided this on its own" not in [
+        a.rationale for a in inv.response_actions
+    ]
+    # ...and what remains is what the deterministic layer computed: the
+    # technique the model legitimately DID map (T1486 -> isolate), and
+    # the phishing analyzer's own strongly-graded verdict on the sender.
+    assert [(a.action, a.target, a.basis) for a in inv.response_actions] == [
+        ("isolate_host", "wiring-ws-01.corp.internal", "technique"),
+        ("quarantine_email", "no-reply@wired-payroll.example", "analysis"),
+    ], mode
+
+
+async def test_a_false_positive_carries_no_actions_in_either_mode(tmp_path):
+    """The hostile phase-one payload is a false positive, and a false
+    positive has nothing to contain — whatever it claims."""
+    for mode in ("investigate", "investigate_agentic"):
+        inv = await getattr(_copilot(tmp_path), mode)(_phishing_alert())
+        assert inv.response_actions == [], mode
 
 
 async def test_a_non_mail_alert_carries_no_phishing_analysis(tmp_path):

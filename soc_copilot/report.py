@@ -273,6 +273,25 @@ def _render_sections(alert: Alert, inv: Investigation) -> str:
         )
         s.append(_section("Suggested Pivots", f'<div class="stack">{cards}</div>'))
 
+    if inv.response_actions:
+        # Deterministic, from soc_copilot/actions.py — and rendered with the
+        # status visible, because "needs owner approval" and "withheld"
+        # are the whole point of the list being safe to read quickly.
+        cards = "".join(
+            f'<div class="card pivot">'
+            f'<span class="src mono">{escape(a.status.replace("_", " "))}</span>'
+            f'<div class="act mono">{escape(a.action)} {escape(a.target)}</div>'
+            f'<div class="rat">{escape(a.rationale)}'
+            f' <em>[{escape(a.basis)}]</em>'
+            + (f' — owner: {escape(a.owner)}' if a.owner else "")
+            + "</div></div>"
+            for a in inv.response_actions
+        )
+        s.append(_section(
+            "Response Actions (proposals — nothing is executed)",
+            f'<div class="stack">{cards}</div>',
+        ))
+
     if inv.injection_flags:
         rows = "".join(
             f'<div class="card"><div class="top">'

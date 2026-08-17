@@ -273,6 +273,40 @@ nothing: every file's size is re-checked before any of them is replaced,
 so a loop appending mid-rotation is detected rather than silently losing
 those records. Detection is not avoidance — stop the service.
 
+## Response actions in the output
+
+Every true-positive investigation carries a `response_actions` list —
+typed containment steps derived deterministically from its own findings
+(`soc_copilot/actions.py`). They appear in the JSON, in the HTML report,
+in the TheHive case description, and as a narration block on stderr.
+
+**Nothing in this repo executes them.** They are proposals. Read the
+status before acting:
+
+| Status | Means |
+|---|---|
+| `proposed` | Nothing the desk knows argues against it. |
+| `needs_approval` | The target is operator-inventoried infrastructure (owner named), or shared infrastructure such as a widely-scanned domain. Get the owner's agreement first. |
+| `withheld` | The desk considered it and refused. The rationale says why — read these, or you will make the same call by hand without the reason. |
+
+The `basis` field is not cosmetic. `reputation` means external ground
+truth about the target itself and holds whatever this alert turns out to
+be. `technique` means the investigation's ATT&CK mapping — a model
+judgment about *this* alert. `analysis` means a deterministic analyzer's
+finding. Weigh a `technique`-grounded `disable_account` differently from
+a `reputation`-grounded `block_ip`.
+
+Two limits worth knowing before you work the list in bulk:
+
+- **The inventory gate reaches only what the asset matcher matched** —
+  IPs, hosts, service accounts and SaaS apps, from *this* alert. An
+  entity your inventory documents but the matcher did not match on this
+  alert cannot be gated by it. Keeping `data/asset_context.json` current
+  is what makes `needs_approval` fire.
+- **A `block_ip` is a perimeter change and the desk does not know your
+  topology.** It refuses non-routable addresses and AbuseIPDB-whitelisted
+  ones; it cannot know that a given address is your own egress NAT.
+
 ## Tuning the detections
 
     soc-copilot --tuning-report [DAYS]

@@ -274,6 +274,59 @@ class PhishingAnalysis(BaseModel):
     summary: str = ""
 
 
+class ResponseAction(BaseModel):
+    """A containment step this investigation's own findings justify.
+
+    Filled deterministically by soc_copilot/actions.py, never by the LLM:
+    the model supplies the verdict and the technique mapping, and a pure
+    function turns those plus the enrichment payloads into a typed,
+    targeted action. The model cannot invent an action, choose a target,
+    or write a rationale — which matters more here than anywhere else in
+    this project, because this is the one output shaped like a command.
+
+    Nothing in this repo executes any of these. They are proposals for a
+    human, and the boundary is stated rather than blurred.
+    """
+
+    action: Literal[
+        "block_ip", "block_domain", "block_hash", "disable_account",
+        "reset_credentials", "isolate_host", "quarantine_email",
+        "revoke_oauth_grant",
+    ]
+    target: str = Field(description="The entity to act on, as observed")
+    status: Literal["proposed", "needs_approval", "withheld"] = Field(
+        description=(
+            "proposed: nothing known argues against it. needs_approval: the "
+            "target is operator-inventoried infrastructure, so an owner has "
+            "to agree before it is touched. withheld: the desk considered "
+            "it and refused — the rationale says why, because a refusal an "
+            "operator cannot see is one they will make by hand."
+        )
+    )
+    basis: Literal["reputation", "technique", "analysis"] = Field(
+        description=(
+            "What grounds it. 'reputation' is external ground truth about "
+            "the target itself; 'technique' is the investigation's mapped "
+            "ATT&CK techniques, which are a model judgment; 'analysis' is a "
+            "deterministic analyzer's finding. The distinction is not "
+            "cosmetic: only the first says anything about the target "
+            "independent of this alert."
+        )
+    )
+    rationale: str = Field(
+        description="The fact that justifies it, with its identifier — or, "
+        "when withheld, the reason it was not proposed"
+    )
+    evidence: list[str] = Field(
+        default_factory=list,
+        description="source_tool names of the Evidence entries behind it",
+    )
+    owner: str | None = Field(
+        default=None, description="Inventory owner, when the target is one"
+    )
+    inventory_role: str | None = None
+
+
 class Telemetry(BaseModel):
     """Cost and performance of PRODUCING an investigation — distinct from
     its content.
@@ -370,6 +423,14 @@ class Investigation(BaseModel):
         description=(
             "Suspected prompt-injection attempts in the alert content. "
             "Detected deterministically by scanning, not by the LLM."
+        ),
+    )
+    response_actions: list[ResponseAction] = Field(
+        default_factory=list,
+        description=(
+            "Typed containment steps derived from this investigation by "
+            "soc_copilot/actions.py, never by the LLM. Empty is the normal "
+            "case: a false positive has nothing to contain."
         ),
     )
     escalation_recommended: bool

@@ -723,6 +723,13 @@ async def _investigate(
             if agentic
             else await copilot.investigate(alert)
         )
+    from .actions import render_actions
+
+    actions = render_actions(inv.response_actions)
+    if actions:
+        # Narration, not the product: the JSON on stdout carries the same
+        # actions in full, so a piped run loses nothing.
+        log.info("%s", actions)
     line = _telemetry_line(inv)
     if line:
         log.info("%s", line)

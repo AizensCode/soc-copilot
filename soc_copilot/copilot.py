@@ -4,6 +4,7 @@ import time
 
 from anthropic import AsyncAnthropic
 
+from .actions import propose_actions
 from .assets import match_assets
 from .config import settings
 from .history import AlertHistoryStore
@@ -598,6 +599,11 @@ class SOCCopilot:
         investigation.sigma_matches = sigma_matches
         investigation.asset_matches = asset_matches
         investigation.phishing = phishing
+        # Last of the deterministic fields on purpose: containment is a
+        # function of the finished investigation — its verdict, its
+        # techniques, its injection flags and the inventory entries just
+        # attached above (soc_copilot/actions.py). Never the model's.
+        investigation.response_actions = propose_actions(alert, investigation)
         # duplicate_of is dedup-policy-owned, never the model's to set — a
         # real investigation is by definition not a suppressed duplicate.
         investigation.duplicate_of = None
@@ -764,6 +770,13 @@ class SOCCopilot:
                 investigation.sigma_matches = sigma_matches
                 investigation.asset_matches = asset_matches
                 investigation.phishing = phishing
+                # Same last-of-the-deterministic-fields placement as the
+                # phase-one path. Both paths must attach this or the
+                # feature is silently mode-dependent, which is why
+                # tests/test_actions.py asserts it for each of them.
+                investigation.response_actions = propose_actions(
+                    alert, investigation
+                )
                 # dedup-policy-owned; a real investigation is never a
                 # suppressed duplicate, whatever the model emitted.
                 investigation.duplicate_of = None

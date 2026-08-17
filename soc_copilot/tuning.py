@@ -77,12 +77,12 @@ inventory in this repo to diff against, so nothing here is an ATT&CK
 coverage map — the technique table at the end is a record of what this
 desk confirmed, which is a different claim.
 """
-import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from .history import AlertHistoryStore
 from .scorecard import build_scorecard
+from .textsafe import one_line, sanitize_lines
 
 # Below this many firings a rate is noise about noise: 2-for-2 is not a
 # 100% false-positive rule, it is two alerts. Groups under the floor are
@@ -104,28 +104,8 @@ NOISE_THRESHOLD = 0.8
 # Severities at which a confirmed true positive is under-ranked.
 _ROUTINE_SEVERITIES = ("low", "medium")
 
-# Anything that is not printable-on-one-line. C0/C1 controls (which
-# includes ESC, so an alert title cannot drive the operator's terminal)
-# plus every flavour of whitespace.
-_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
-_RUNS = re.compile(r"\s+")
-
 # Enough for a Kibana rule name; short enough that one row stays one row.
 _MAX_NAME = 120
-
-
-def one_line(value: str) -> str:
-    """Collapse a string to a single printable line.
-
-    Detection names, IOCs, hostnames and alert ids all reach this report
-    from alert content, which this project treats as hostile everywhere
-    else. Unescaped, a title carrying newlines emits extra lines that
-    are indistinguishable from the report's own — the review reproduced
-    one alert forging a whole "NOISY DETECTIONS" section, complete with
-    a fabricated count, a fabricated analyst basis and a fabricated
-    exception recommendation for the attacker's own address.
-    """
-    return _RUNS.sub(" ", _CONTROL.sub(" ", value)).strip()
 
 # Where a source records the identity of the rule that fired, most
 # specific first. An explicit allowlist, like assets.py's host keys and
@@ -775,20 +755,6 @@ def _short(name: str) -> str:
     return name if len(name) <= _MAX_NAME else name[: _MAX_NAME - 1] + "…"
 
 
-def _sanitize(lines: list[str]) -> list[str]:
-    """Apply one_line to every emitted line, preserving indentation.
-
-    Done at the single point of emission rather than at each of the
-    dozen interpolation sites: a field added to this report later cannot
-    reopen the hole by forgetting to escape itself.
-    """
-    out = []
-    for line in lines:
-        indent = len(line) - len(line.lstrip(" "))
-        out.append(" " * indent + one_line(line))
-    return out
-
-
 def render_tuning_report(report: TuningReport) -> str:
     """Human-readable tuning advice for the CLI."""
     window = (
@@ -827,7 +793,7 @@ def render_tuning_report(report: TuningReport) -> str:
     if not report.detections:
         lines.append("")
         lines.append("Nothing investigated yet — no detection has a record.")
-        return "\n".join(_sanitize(lines))
+        return "\n".join(sanitize_lines(lines))
 
     bar = (
         f"{_pct(NOISE_THRESHOLD)}+ false positive, over {MIN_FIRINGS}+ "
@@ -882,7 +848,7 @@ def render_tuning_report(report: TuningReport) -> str:
                 f"{', '.join(_short(s) for s in sources)}"
             )
 
-    return "\n".join(_sanitize(lines))
+    return "\n".join(sanitize_lines(lines))
 
 
 def _render_noisy(det: Detection) -> list[str]:

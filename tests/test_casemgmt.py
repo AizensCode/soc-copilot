@@ -229,6 +229,39 @@ def test_description_carries_the_analyst_writeup():
         assert expected in desc
 
 
+def test_the_case_carries_the_containment_list_with_its_statuses():
+    """The case is where an analyst actually works, so the actions have to
+    reach it — and carrying the STATUS is the whole point: "proposed",
+    "needs approval" and "withheld" are the safety content of the list."""
+    from soc_copilot.models import ResponseAction
+
+    desc = investigation_to_alert(ALERT, _inv(response_actions=[
+        ResponseAction(
+            action="block_ip", target="185.220.101.47", status="proposed",
+            basis="reputation", rationale="abuse confidence 88/100",
+        ),
+        ResponseAction(
+            action="isolate_host", target="scanner-01", status="needs_approval",
+            basis="technique", rationale="mapped T1059",
+            owner="secops@corp", inventory_role="vulnerability scanner",
+        ),
+        ResponseAction(
+            action="block_ip", target="1.1.1.1", status="withheld",
+            basis="reputation", rationale="on AbuseIPDB's whitelist",
+        ),
+    ]))["description"]
+    assert "block_ip 185.220.101.47" in desc and "**proposed**" in desc
+    assert "**needs approval**" in desc and "secops@corp" in desc
+    assert "**withheld**" in desc and "whitelist" in desc
+    assert "nothing was executed" in desc
+
+
+def test_an_investigation_with_no_actions_adds_no_section():
+    assert "Response actions" not in investigation_to_alert(
+        ALERT, _inv()
+    )["description"]
+
+
 def test_payload_is_json_serializable():
     # It goes over the wire as JSON; datetimes or models would break it.
     json.dumps(investigation_to_alert(ALERT, _inv()))

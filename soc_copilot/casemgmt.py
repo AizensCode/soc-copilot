@@ -190,6 +190,21 @@ def _description(alert: Alert, investigation: Investigation) -> str:
                 for i, pv in enumerate(investigation.suggested_pivots, 1)
             )
         )
+    if investigation.response_actions:
+        # The case is where an analyst actually works, so the containment
+        # list has to reach it — and it has to carry its STATUS, because
+        # the difference between "proposed", "needs the owner's agreement"
+        # and "the desk refused this and here is why" is the entire safety
+        # content of the list (soc_copilot/actions.py).
+        p.append(
+            "**Response actions** — proposals, nothing was executed\n\n"
+            + "\n".join(
+                f"- `{a.action} {a.target}` — **{a.status.replace('_', ' ')}**"
+                f" ({a.basis}): {a.rationale}"
+                + (f" _Owner: {a.owner}._" if a.owner else "")
+                for a in investigation.response_actions
+            )
+        )
     if investigation.escalation_draft:
         p.append(f"**Escalation draft**\n\n{investigation.escalation_draft}")
     p.append(
