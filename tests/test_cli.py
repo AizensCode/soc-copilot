@@ -263,3 +263,47 @@ def test_config_errors_after_the_bootstrap_speak_through_the_logger(
     [rec] = [r for r in caplog.records if "Configuration error" in r.getMessage()]
     assert rec.levelno == logging.ERROR
     assert "Missing required" in rec.getMessage()
+
+
+def test_rotate_history_parses_its_days_and_flags():
+    from soc_copilot.rotate import DEFAULT_RETENTION_DAYS
+
+    command, args = _parse_args(["--rotate-history"])
+    assert command == "rotate-history"
+    assert args.days == DEFAULT_RETENTION_DAYS
+    assert args.dry_run is False and args.include_human_records is False
+
+    _, explicit = _parse_args(
+        ["--rotate-history", "30", "--dry-run", "--include-human-records"]
+    )
+    assert explicit.days == 30
+    assert explicit.dry_run and explicit.include_human_records
+
+
+def test_rotate_history_rejects_a_nonpositive_retention(capsys):
+    """A retention of 0 or -1 would archive the entire store, including
+    records written seconds ago. argparse's own validation, same as the
+    other windowed commands."""
+    for bad in ("0", "-1"):
+        with pytest.raises(SystemExit) as exc:
+            _parse_args(["--rotate-history", bad])
+        assert exc.value.code == 2
+    assert "positive integer" in capsys.readouterr().err
+
+
+def test_rotate_history_rejects_an_abbreviated_flag():
+    """allow_abbrev=False is load-bearing across every command: `--dry`
+    silently expanding to `--dry-run` would make the difference between a
+    report and a data move a typo away."""
+    with pytest.raises(SystemExit):
+        _parse_args(["--rotate-history", "--dry"])
+    with pytest.raises(SystemExit):
+        _parse_args(["--rotate-history", "--include-human"])
+
+
+def test_rotate_history_is_in_the_usage_text():
+    """Every command this CLI accepts is listed, or an operator cannot
+    discover the one that applies their retention policy."""
+    from soc_copilot.main import USAGE
+
+    assert "--rotate-history" in USAGE

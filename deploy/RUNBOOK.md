@@ -26,6 +26,7 @@ calibration story is the evidence trail).
 | `data/history/closures.jsonl` | autonomous closures the desk performed | append-only |
 | `data/history/created_alerts.jsonl` | provenance ledger of TheHive alerts it opened | append-only |
 | `data/history/watch_progress.jsonl` | the watch loop claiming (`started`) and finishing (`completed`) each alert | append-only |
+| `data/history/archive/<stamp>/` | records aged out by `--rotate-history` | written only by that command |
 | Elastic results index | investigation docs, analyst-ruling annotations | remote |
 | Elastic **alerts** index | status updates (acknowledged/closed) on worked alerts | remote |
 | TheHive (with `--case`) | alert objects for escalations | remote |
@@ -211,19 +212,65 @@ before a field existed are handled explicitly, see the store's tests).
 
 ## Rotating the history
 
-The store reads incrementally and tolerates file replacement, but the
-supported rotation is offline: stop the service, move
-`data/history/*.jsonl` to an archive, start. Note what rotation costs:
-prior sightings, dedup anchors, and scorecard evidence only see the
-live files — rotate when history is old enough that losing its context
-is acceptable, not on a size threshold. Rotating `watch_progress.jsonl`
-is safe in the direction that matters: with no ledger entry nothing is
-resumable, so the worst case is paying for a fresh investigation of an
-alert that was mid-flight when you stopped the service. For scale: at 100k records
-(~400 MB) the incremental store parses appends in well under a
-millisecond, and the correlation/memory scans dominate at roughly a
-tenth of a second per alert — noticeable, nowhere near a reason to
-throw away context.
+Retention, not size. After the index work the store parses appends in
+well under a millisecond at 100k records and the memory scans run in
+fractions of one, so nothing here is a performance fix. What forces the
+issue is that an investigation record contains usernames, mailbox
+addresses, hostnames and source IPs, and a retention policy needs a way
+to age that out on a schedule.
+
+    soc-copilot --rotate-history [DAYS] [--dry-run] [--include-human-records]
+
+Default 90 days. **Stop the service first.** Records older than the
+cutoff are moved to `data/history/archive/<UTC-timestamp>/`; nothing is
+deleted, so a rotation you regret is a `cat` away from being undone.
+Start with `--dry-run`, which plans through exactly the same code path
+and changes nothing.
+
+**Two files are held back on purpose, and the investigation rows their
+rulings point at are pinned with them.** The command says so every time
+it runs, and reports the pinned count:
+
+- `dispositions.jsonl` — analyst rulings. `closure.py` reads these to
+  REFUSE an autonomous close when a human has overturned the copilot on
+  a related indicator. Archive them and the desk becomes *more* willing
+  to close what a human already called real.
+- `created_alerts.jsonl` — the provenance ledger that lets a synced
+  TheHive ruling be trusted at all. Archive it and later rulings on
+  those cases arrive un-provenanced and are rejected.
+
+Both grow at human speed rather than alert speed, so there is no
+operational reason to trim them. `--include-human-records` rotates them
+anyway if a retention obligation leaves you no choice — take the safety
+cost knowingly.
+
+Holding those two files back is not enough on its own, which is worth
+knowing if you ever reason about this yourself: the auto-close gate does
+not read `dispositions.jsonl`. It reads the *prior sightings* attached to
+an investigation, and those are built by walking the **investigations**
+index and only then joining the ruling on. Archive the investigation row
+and the retained ruling has nothing to attach to. So any investigation
+row whose alert has a ruling is **pinned** — retained regardless of age —
+and the report counts them separately from the unclassifiable ones.
+
+What rotating the rest costs, all in the safe direction: prior sightings
+and dedup anchors for *unruled* alerts older than the cutoff disappear,
+so a repeat that would have been suppressed is investigated afresh (you
+pay for a look you could have skipped); the scorecard's automation rate
+stops counting the archived closures, and note the scorecard reads the
+whole store with no window of its own, so its historical numbers shrink
+with the retention you choose; and `watch_progress.jsonl` entries going
+away simply means nothing from before the cutoff is resumable.
+
+Records whose age cannot be established — malformed lines, or records
+from before `investigated_at` existed — are **kept**, never archived,
+and the report counts them. Aging a record out requires knowing it is
+old.
+
+If the watch loop is running, rotation aborts with exit 1 and changes
+nothing: every file's size is re-checked before any of them is replaced,
+so a loop appending mid-rotation is detected rather than silently losing
+those records. Detection is not avoidance — stop the service.
 
 ## Docker specifics
 

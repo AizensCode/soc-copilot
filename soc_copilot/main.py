@@ -49,6 +49,12 @@
     # data/evals/cases/, replayed by tests/test_regression_cases.py.
     # Without an ID, exports everything eligible.
     uv run soc-copilot --export-case [ALERT_ID]
+
+    # Age old records out of the history store into a timestamped
+    # archive (retention, not performance). Nothing is deleted, and the
+    # two files that are SAFETY inputs — analyst rulings and the TheHive
+    # provenance ledger — are held back unless asked for explicitly.
+    uv run soc-copilot --rotate-history [DAYS] [--dry-run] [--include-human-records]
 """
 import argparse
 import asyncio
@@ -63,6 +69,7 @@ from .copilot import SOCCopilot
 from .dedup import DEFAULT_WINDOW_HOURS as DEDUP_WINDOW_HOURS
 from .logsetup import alert_context, configure_logging
 from .models import Alert, Investigation
+from .rotate import DEFAULT_RETENTION_DAYS as ROTATE_RETENTION_DAYS
 from .watchdog import CycleReport, Watchdog
 
 # The CLI's voice (configured in cli() via logsetup.configure_logging —
@@ -90,7 +97,8 @@ USAGE = (
     "  soc-copilot --scorecard\n"
     "  soc-copilot --ask ALERT_ID [\"question\"]\n"
     "  soc-copilot --digest [hours]\n"
-    "  soc-copilot --export-case [ALERT_ID]"
+    "  soc-copilot --export-case [ALERT_ID]\n"
+    "  soc-copilot --rotate-history [DAYS] [--dry-run] [--include-human-records]"
 )
 
 
@@ -136,6 +144,89 @@ async def _run_export_case(args: argparse.Namespace) -> None:
         log.info(
             "Nothing to export: no analyst-ruled investigations on "
             "record. Sync feedback after analysts work the queue."
+        )
+
+
+async def _run_rotate_history(args: argparse.Namespace) -> None:
+    """Age old records out of the history store into a timestamped archive.
+
+    Retention, not performance — see soc_copilot/rotate.py. The report is
+    the PRODUCT (stdout, pipeable); the warnings around it are narration.
+    Nothing is deleted: rotation splits each file and moves the old part.
+    """
+    from .config import settings
+    from .history import AlertHistoryStore
+    from .rotate import (
+        ConcurrentWriteError,
+        apply_rotation,
+        plan_rotation,
+    )
+
+    store = AlertHistoryStore(settings.HISTORY_PATH)
+    plan = plan_rotation(
+        store, args.days,
+        include_human_records=args.include_human_records,
+    )
+
+    print(f"Retention: {args.days} days (records before "
+          f"{plan.cutoff.isoformat()} are archived)")
+    if not plan.files:
+        print("Nothing to rotate: no record is older than the cutoff.")
+        _warn_held_back(plan)
+        return
+
+    for fp in plan.files:
+        notes = []
+        if fp.pinned:
+            notes.append(f"{fp.pinned} pinned by an analyst ruling")
+        if fp.unclassifiable:
+            notes.append(f"{fp.unclassifiable} unclassifiable")
+        print(f"  {fp.name}: {len(fp.archived)} archived, "
+              f"{len(fp.retained)} retained"
+              + (f" ({', '.join(notes)}, all kept)" if notes else ""))
+    _warn_held_back(plan)
+
+    if args.dry_run:
+        print(f"\nDry run — nothing was changed. Archive would be written "
+              f"to {plan.archive_dir}")
+        return
+
+    log.warning(
+        "Rotating with the watch loop RUNNING would lose records written "
+        "between the read and the replace. That race is detected and "
+        "aborted, but detection is not avoidance — stop the service first."
+    )
+    try:
+        archive = apply_rotation(plan)
+    except ConcurrentWriteError as e:
+        log.error("%s", e)
+        sys.exit(1)
+    except OSError as e:
+        # Deliberately does NOT claim the live files are untouched. The
+        # replaces run in sequence, so a failure on the second of three
+        # leaves the first already rotated — and an earlier version of
+        # this message told the operator otherwise, which would have
+        # steered them to delete the archive holding the only surviving
+        # copy of those records (review catch).
+        log.error(
+            "Rotation failed partway (%s). Some live files may ALREADY be "
+            "rotated and others not. Do not delete %s — it holds the only "
+            "copy of anything that was archived. Compare each live file "
+            "against its archived counterpart before re-running.",
+            e, plan.archive_dir,
+        )
+        sys.exit(1)
+    print(f"\nArchived {plan.archived_total} record(s) to {archive}")
+
+
+def _warn_held_back(plan) -> None:
+    """Name what was deliberately NOT rotated, and what rotating it would
+    cost. Silence here would let an operator believe a retention policy
+    had been applied to files this command left alone."""
+    for note in plan.held_back:
+        log.warning(
+            "HELD BACK (pass --include-human-records to rotate it too) — %s",
+            note,
         )
 
 
@@ -534,6 +625,25 @@ def _parse_args(argv: list[str]) -> tuple[str, argparse.Namespace]:
         p = _p("--export-case")
         p.add_argument("alert_id", nargs="?", default=None)
         return "export-case", p.parse_args(rest)
+
+    if cmd == "--rotate-history":
+        p = _p("--rotate-history")
+        p.add_argument(
+            "days", nargs="?", type=positive_int("retention days"),
+            default=ROTATE_RETENTION_DAYS,
+            help="archive records older than this many days",
+        )
+        p.add_argument(
+            "--dry-run", action="store_true",
+            help="report what would move, change nothing",
+        )
+        p.add_argument(
+            "--include-human-records", action="store_true",
+            help="ALSO rotate analyst rulings and the TheHive provenance "
+                 "ledger; both are safety inputs and are held back by "
+                 "default (the command explains what each one costs)",
+        )
+        return "rotate-history", p.parse_args(rest)
 
     if cmd in ("--sync-feedback", "--scorecard"):
         _p(cmd).parse_args(rest)  # accepts nothing; rejects stray args
@@ -1432,6 +1542,8 @@ async def _dispatch(command: str, args: argparse.Namespace) -> None:
         await _run_digest(args)
     elif command == "export-case":
         await _run_export_case(args)
+    elif command == "rotate-history":
+        await _run_rotate_history(args)
     elif command == "from-elastic":
         await _run_elastic(args)
     elif command == "watch":
