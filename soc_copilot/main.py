@@ -95,6 +95,7 @@ USAGE = (
     "  soc-copilot --watch [interval_seconds] [--agentic] [--tiered] [--auto-close] [--case] [--notify] [--dedup [WINDOW_H]]\n"
     "  soc-copilot --sync-feedback\n"
     "  soc-copilot --scorecard\n"
+    "  soc-copilot --tuning-report [DAYS]\n"
     "  soc-copilot --ask ALERT_ID [\"question\"]\n"
     "  soc-copilot --digest [hours]\n"
     "  soc-copilot --export-case [ALERT_ID]\n"
@@ -306,6 +307,18 @@ async def _run_scorecard() -> None:
 
     store = AlertHistoryStore(settings.HISTORY_PATH)
     print(render_scorecard(build_scorecard(store)))
+
+
+async def _run_tuning_report(args: argparse.Namespace) -> None:
+    """Print what the desk learned about the DETECTIONS: which rules
+    spend analyst attention on nothing, which confirmed compromises
+    arrived ranked as routine, and where an exception can safely go."""
+    from .config import settings
+    from .history import AlertHistoryStore
+    from .tuning import build_tuning_report, render_tuning_report
+
+    store = AlertHistoryStore(settings.HISTORY_PATH)
+    print(render_tuning_report(build_tuning_report(store, days=args.days)))
 
 
 async def _annotate_elastic(
@@ -620,6 +633,15 @@ def _parse_args(argv: list[str]) -> tuple[str, argparse.Namespace]:
         p.add_argument("hours", nargs="?", type=positive_int("window hours"),
                        default=24)
         return "digest", p.parse_args(rest)
+
+    if cmd == "--tuning-report":
+        p = _p("--tuning-report")
+        p.add_argument(
+            "days", nargs="?", type=positive_int("window days"), default=None,
+            help="only consider alerts investigated in the last DAYS days "
+                 "(default: all recorded history)",
+        )
+        return "tuning-report", p.parse_args(rest)
 
     if cmd == "--export-case":
         p = _p("--export-case")
@@ -1536,6 +1558,8 @@ async def _dispatch(command: str, args: argparse.Namespace) -> None:
         await _run_sync_feedback()
     elif command == "scorecard":
         await _run_scorecard()
+    elif command == "tuning-report":
+        await _run_tuning_report(args)
     elif command == "ask":
         await _run_ask(args)
     elif command == "digest":

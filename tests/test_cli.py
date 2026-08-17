@@ -307,3 +307,26 @@ def test_rotate_history_is_in_the_usage_text():
     from soc_copilot.main import USAGE
 
     assert "--rotate-history" in USAGE
+
+
+def test_tuning_report_parses_its_optional_window():
+    command, args = _parse_args(["--tuning-report"])
+    assert command == "tuning-report"
+    assert args.days is None            # all recorded history by default
+
+    _, windowed = _parse_args(["--tuning-report", "30"])
+    assert windowed.days == 30
+
+
+def test_tuning_report_rejects_a_nonpositive_window(capsys):
+    for bad in ("0", "-1"):
+        with pytest.raises(SystemExit) as exc:
+            _parse_args(["--tuning-report", bad])
+        assert exc.value.code == 2
+    assert "positive integer" in capsys.readouterr().err
+
+
+def test_tuning_report_is_in_the_usage_text():
+    from soc_copilot.main import USAGE
+
+    assert "--tuning-report" in USAGE

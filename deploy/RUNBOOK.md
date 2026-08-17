@@ -3,7 +3,8 @@
 What the unattended deployment does, what it touches, and what to do
 when it makes noise. This document covers the `--watch` service; the
 one-shot CLI commands (`--scorecard`, `--digest`, `--sync-feedback`,
-single-alert runs) need nothing beyond a shell in the same directory.
+`--tuning-report`, single-alert runs) need nothing beyond a shell in the
+same directory.
 
 ## What the process is
 
@@ -271,6 +272,68 @@ If the watch loop is running, rotation aborts with exit 1 and changes
 nothing: every file's size is re-checked before any of them is replaced,
 so a loop appending mid-rotation is detected rather than silently losing
 those records. Detection is not avoidance — stop the service.
+
+## Tuning the detections
+
+    soc-copilot --tuning-report [DAYS]
+
+Read-only, no API calls, safe to run while the watch loop is running.
+Without `DAYS` it reads all recorded history; with it, the window bounds
+which detections appear and their volume figures — **not** the safety
+checks, which always read the whole store (see below).
+
+What it prints, and what each part is worth:
+
+- **NOISY DETECTIONS** — 80%+ false positive over at least 5 firings and
+  at least 2 judged alerts. Both floors matter: firings count every
+  alert the rule raised including near-duplicates the desk suppressed
+  without judging, so without the second floor a rule with 39 suppressed
+  repeats of one investigated alert reads as "100% false over 40
+  firings" on the strength of a single verdict.
+- The rate line says how much of it a **human** confirmed. The rest is
+  the copilot's opinion. Do not tune a production sensor on an unruled
+  rate without reading the alerts.
+- Lines beginning `!` are **blockers** — this rule has caught
+  analyst-confirmed true positives, or its false-positive calls have
+  been overturned. They are printed beside the rate, never averaged in.
+- `->` is the actionable half: the entity present in **every** one of
+  that rule's false positives, preferring one your asset inventory
+  documents. **Scope an exception to that entity — do not disable the
+  rule.** If the report says NO SAFE EXCEPTION, the entity you would
+  have excepted is one this same rule already caught something on, and
+  it names the alert.
+- **ALSO CONSIDERED AND REFUSED** appears when a safe candidate exists
+  alongside refused ones. Read it. The alias map only links identifiers
+  your inventory linked, so a host and its own address are unrelated
+  strings to it: "safe" can mean "we could not tell it was the same
+  box". Confirm before you write the exception.
+- **UNDER-RANKED** is the opposite direction and has no volume
+  threshold — one analyst-confirmed true positive that arrived as
+  `low`/`medium` is a finding. Raising a detection costs attention;
+  quieting one can cost you an attack.
+
+Two scoping rules worth knowing before you act on it:
+
+- **The window never scopes the safety.** Blockers, the true positives
+  an exception is checked against, the alias map and the technique table
+  all read the whole store regardless of `DAYS`. An exception is a
+  permanent change to a sensor and must not get easier to recommend
+  because you typed a smaller number.
+- **Rotation shrinks the evidence.** `--rotate-history` archives
+  investigation rows, and this report reads them. After a rotation a
+  rule's firing counts and its true-positive blockers both cover only
+  what remains — rulings are pinned, but an old true positive on an
+  unruled alert is not. Run the tuning report *before* a rotation if you
+  are about to act on it.
+
+Detections are keyed by the rule name the source recorded
+(`kibana.alert.rule.name` and the other shapes in `_RULE_PATHS`), and by
+the alert title when the source named no rule. Title-keyed rows are
+marked `[key derived from title]` and never share a row with a
+rule-keyed one. A templated title (Kibana's `reason`) splits one rule
+across many rows, so each lands under the floor and nothing is
+recommended — noise hidden rather than invented, which is the direction
+to fail in.
 
 ## Docker specifics
 
