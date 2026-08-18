@@ -33,8 +33,28 @@ The policy, deliberately small:
 
 Callers keep their own error translation: this module raises the same
 httpx exceptions single-shot code did, just after the policy is spent.
+
+There are two transports, async and sync, because the copilot has two
+kinds of caller: the investigation path is async, and the history store
+(soc_copilot/memory.py) is synchronous — every one of its readers is
+called from sync report commands as well as from inside the async loop,
+and making the store async would have meant an await at ~40 call sites.
+The sync transport therefore BLOCKS the event loop while a shared-memory
+read is in flight. That costs nothing in throughput — the watch loop
+works one alert at a time and starts no concurrent tasks — but it is not
+free: the graceful-shutdown handler runs on that loop, so a SIGTERM
+arriving mid-read waits for the request (bounded by the 20s timeout plus
+one backoff) before the drain begins. Stated rather than implied,
+because "nothing else runs" was not quite true.
+
+What must NOT fork is the POLICY, so the retry decision lives in one
+pure function, `should_retry`, that both transports call. Tests table
+the whole decision space three ways — against the function itself, and
+through each transport — so "the sync path forgot the 429 case" is not a
+bug this module can have.
 """
 import asyncio
+import time
 
 import httpx
 
@@ -44,6 +64,28 @@ BACKOFF_SECONDS = 1.0
 # The transient trio (gateway hiccups) plus explicit throttling. 500 is
 # deliberately absent: an unhandled server error is not known-transient.
 RETRYABLE_STATUS = frozenset({429, 502, 503, 504})
+
+
+def should_retry(exc: Exception, replayable: bool) -> bool:
+    """The whole policy, as one pure decision: given the failure that just
+    happened and whether the caller declared the request replayable, may
+    it be sent again?
+
+    Both transports call this and nothing else decides. Extracted when the
+    sync transport arrived: the branch structure had to exist twice, and
+    two copies of a retry policy is how a channel quietly stops honoring
+    the documented one.
+    """
+    if isinstance(exc, (httpx.ConnectError, httpx.ConnectTimeout)):
+        # Never reached the server: always safe to replay.
+        return True
+    if isinstance(exc, httpx.HTTPStatusError):
+        return replayable and exc.response.status_code in RETRYABLE_STATUS
+    if isinstance(exc, httpx.HTTPError):
+        # Read timeout, dropped connection mid-response, protocol error:
+        # the server may have processed the request.
+        return replayable
+    return False
 
 
 async def request(
@@ -71,21 +113,8 @@ async def request(
                 resp = await c.request(method, url, **kwargs)
                 resp.raise_for_status()
                 return resp
-            except (httpx.ConnectError, httpx.ConnectTimeout):
-                # Never reached the server: always safe to replay.
-                if not tries_left:
-                    raise
-            except httpx.HTTPStatusError as e:
-                if (
-                    not tries_left
-                    or not replayable
-                    or e.response.status_code not in RETRYABLE_STATUS
-                ):
-                    raise
-            except httpx.HTTPError:
-                # Read timeout, dropped connection mid-response, protocol
-                # error: the server may have processed the request.
-                if not tries_left or not replayable:
+            except httpx.HTTPError as e:
+                if not tries_left or not should_retry(e, replayable):
                     raise
             await asyncio.sleep(BACKOFF_SECONDS)
         raise AssertionError("unreachable: loop returns or raises")
@@ -94,3 +123,37 @@ async def request(
         return await attempt(client)
     async with httpx.AsyncClient(timeout=timeout) as owned:
         return await attempt(owned)
+
+
+def request_sync(
+    method: str,
+    url: str,
+    *,
+    client: httpx.Client | None = None,
+    timeout: float = 20.0,
+    replayable: bool = False,
+    **kwargs,
+) -> httpx.Response:
+    """The synchronous twin of `request`, under the identical policy.
+
+    Exists for the shared-memory history backend, whose readers are
+    called from synchronous code paths (report commands, the store's own
+    accessors). Same signature, same exceptions, same `should_retry`.
+    """
+
+    def attempt(c: httpx.Client) -> httpx.Response:
+        for tries_left in range(RETRIES, -1, -1):
+            try:
+                resp = c.request(method, url, **kwargs)
+                resp.raise_for_status()
+                return resp
+            except httpx.HTTPError as e:
+                if not tries_left or not should_retry(e, replayable):
+                    raise
+            time.sleep(BACKOFF_SECONDS)
+        raise AssertionError("unreachable: loop returns or raises")
+
+    if client is not None:
+        return attempt(client)
+    with httpx.Client(timeout=timeout) as owned:
+        return attempt(owned)

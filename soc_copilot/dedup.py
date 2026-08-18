@@ -189,8 +189,13 @@ def _fingerprint_overturned(
     ruling is NOT a false positive — a documented correction on exactly
     this detection, wherever in its history it landed (on the original
     anchor OR on a suppressed duplicate the analyst happened to work).
-    Blocks suppression from either direction."""
-    rulings = store.dispositions()
+    Blocks suppression from either direction.
+
+    `blocking_rulings` rather than `dispositions` because the ruling
+    ledger can be shared: latest-wins would let a second writer's later
+    `false_positive` cancel the correction that blocks this suppression,
+    which is the quiet direction. Identical on a single writer."""
+    rulings = store.blocking_rulings()
     if not rulings:
         return None
     # Walk the RULED alerts' rows (via the id index) instead of all of
@@ -199,9 +204,7 @@ def _fingerprint_overturned(
     # reach the same fingerprint check as the full scan — only the
     # iteration order differs, and the caller uses existence alone.
     index = store._index()
-    for alert_id, ruling in rulings.items():
-        if ruling.get("human_verdict") == "false_positive":
-            continue
+    for alert_id in rulings:
         for row in index.id_rows.get(alert_id, ()):
             if _row_fingerprint(index, row) == fp:
                 return alert_id
@@ -239,6 +242,19 @@ def find_anchor(
         if rec["alert_id"] == alert.alert_id:
             continue
         if rec.get("duplicate_of"):
+            continue
+        if not store.wrote(rec):
+            # Shared memory shares EVIDENCE; it does not share the right
+            # to decide not to look. Borrowing another writer's verdict
+            # here means acknowledging an alert with no model call on the
+            # strength of a record whose provenance is a self-asserted
+            # field in an index — one document, and a detection is off.
+            # The permissive half of precedent-aware closure was cut for
+            # the same reason (soc_copilot/closure.py records the cut);
+            # cross-instance suppression is that same bet with a cheaper
+            # forgery. What is lost is real — two instances on one queue
+            # each pay for the first copy of a noisy detection — and it is
+            # a cost in money, against a risk of silence.
             continue
         investigated_at = rec.get("investigated_at")
         if not investigated_at:

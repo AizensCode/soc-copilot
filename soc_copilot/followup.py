@@ -18,7 +18,7 @@ import json
 from anthropic import AsyncAnthropic
 
 from .config import settings
-from .history import AlertHistoryStore
+from .history import AlertHistoryStore, open_store
 from .injection import scan_for_injection
 from .models import Alert
 from .prompts.followup import FOLLOWUP_SYSTEM_PROMPT
@@ -127,7 +127,7 @@ class FollowUpSession:
         client: AsyncAnthropic | None = None,
     ) -> None:
         self.alert_id = alert_id
-        self.history = history_store or AlertHistoryStore(settings.HISTORY_PATH)
+        self.history = history_store or open_store()
         self.client = client or AsyncAnthropic(api_key=settings.ANTHROPIC_KEY)
         grounding = build_grounding(self.history, alert_id)
         if grounding is None:

@@ -554,7 +554,7 @@ def build_tuning_report(
     # window.
     latest: dict[str, dict] = {}
     aliases = _AliasMap()
-    for rec in store._iter_records():
+    for rec in store.iter_records():
         # rec["alert_id"], not rec.get(): every other reader of this store
         # does the same, so a malformed line fails the same loud way here
         # as in the scorecard and the digest rather than being quietly

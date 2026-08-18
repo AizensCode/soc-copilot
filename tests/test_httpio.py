@@ -108,3 +108,92 @@ async def test_final_failure_raises_the_status_error():
         await _get(script, replayable=True)
     assert exc.value.response.status_code == 503
     assert script.attempts == 2
+
+
+# --- the sync twin ----------------------------------------------------------
+
+
+def _get_sync(script: "_Script", **kwargs) -> httpx.Response:
+    client = httpx.Client(transport=httpx.MockTransport(script))
+    return httpio.request_sync("GET", "https://x.test/thing",
+                               client=client, **kwargs)
+
+
+# Every case the async tests above pin, as a table, run through BOTH
+# transports. The sync transport exists because the history store is
+# synchronous, and the failure this table exists to prevent is the
+# ordinary one: two copies of a retry policy, one of which quietly stops
+# honoring the documented rules. `should_retry` is the single decision
+# both call, and this is the proof that neither wrapper reinterprets it.
+_POLICY = [
+    (httpx.ConnectError("refused"), False, 2),   # never reached the server
+    (httpx.ConnectError("refused"), True, 2),
+    (httpx.ConnectTimeout("slow"), False, 2),
+    (httpx.ReadTimeout("slow"), False, 1),       # may have been processed
+    (httpx.ReadTimeout("slow"), True, 2),
+    (429, False, 1),
+    (429, True, 2),
+    (502, True, 2),
+    (503, True, 2),
+    (504, True, 2),
+    (500, True, 1),          # not known-transient
+    (400, True, 1),
+    (403, True, 1),
+]
+
+
+@pytest.mark.parametrize("failure,replayable,attempts", _POLICY)
+async def test_the_async_transport_follows_the_policy(
+    failure, replayable, attempts
+):
+    script = _Script(failure, 200)
+    try:
+        await _get(script, replayable=replayable)
+    except httpx.HTTPError:
+        pass
+    assert script.attempts == attempts
+
+
+@pytest.mark.parametrize("failure,replayable,attempts", _POLICY)
+def test_the_sync_transport_follows_the_same_policy(
+    failure, replayable, attempts
+):
+    script = _Script(failure, 200)
+    try:
+        _get_sync(script, replayable=replayable)
+    except httpx.HTTPError:
+        pass
+    assert script.attempts == attempts
+
+
+def test_the_sync_transport_returns_the_response_it_got():
+    assert _get_sync(_Script(200)).status_code == 200
+
+
+def test_the_sync_transport_raises_the_status_error_it_ended_on():
+    script = _Script(503, 503)
+    with pytest.raises(httpx.HTTPStatusError) as exc:
+        _get_sync(script, replayable=True)
+    assert exc.value.response.status_code == 503
+    assert script.attempts == 2
+
+
+@pytest.mark.parametrize("failure,replayable,attempts", _POLICY)
+def test_the_decision_itself_is_the_policy(failure, replayable, attempts):
+    """The same table against `should_retry` directly. Both transports
+    are thin wrappers over this one call, so the function is where the
+    policy is, and pinning it here is what makes the two wrappers
+    interchangeable rather than merely similar."""
+    exc = (
+        failure if isinstance(failure, Exception)
+        else httpx.HTTPStatusError(
+            "boom",
+            request=httpx.Request("GET", "https://x.test/thing"),
+            response=httpx.Response(failure),
+        )
+    )
+    assert httpio.should_retry(exc, replayable) is (attempts == 2)
+
+
+def test_an_unrelated_exception_is_never_retried():
+    assert httpio.should_retry(ValueError("not http"), True) is False

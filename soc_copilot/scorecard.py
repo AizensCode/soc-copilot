@@ -187,7 +187,7 @@ def build_scorecard(store: AlertHistoryStore) -> Scorecard:
     latest_any: dict[str, dict] = {}
     first_real: dict[str, dict] = {}
     last_real_at: dict[str, str] = {}
-    for rec in store._iter_records():
+    for rec in store.iter_records():
         latest_any[rec["alert_id"]] = rec  # file order: last line wins
         if not rec.get("duplicate_of"):
             # First REAL record per alert (an alert suppressed first and

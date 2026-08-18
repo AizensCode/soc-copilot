@@ -303,8 +303,8 @@ def test_cache_serves_parsed_records_without_reparsing_unchanged_file(tmp_path):
     when = datetime(2026, 1, 1, tzinfo=timezone.utc)
     store.record(_alert("A1", {"ips": ["1.1.1.1"]}, when), _inv("A1"))
 
-    first = store._records_cache.records()
-    second = store._records_cache.records()
+    first = store.log("investigations").records()
+    second = store.log("investigations").records()
     assert first is second                       # cached, not re-parsed
     assert [r["alert_id"] for r in first] == ["A1"]
 
@@ -313,10 +313,10 @@ def test_cache_invalidates_on_append_from_same_store(tmp_path):
     store = AlertHistoryStore(tmp_path / "investigations.jsonl")
     when = datetime(2026, 1, 1, tzinfo=timezone.utc)
     store.record(_alert("A1", {"ips": ["1.1.1.1"]}, when), _inv("A1"))
-    assert len(list(store._iter_records())) == 1
+    assert len(list(store.iter_records())) == 1
 
     store.record(_alert("A2", {"ips": ["2.2.2.2"]}, when), _inv("A2"))
-    assert [r["alert_id"] for r in store._iter_records()] == ["A1", "A2"]
+    assert [r["alert_id"] for r in store.iter_records()] == ["A1", "A2"]
 
 
 def test_cache_sees_writes_from_another_store_instance(tmp_path):
@@ -326,11 +326,11 @@ def test_cache_sees_writes_from_another_store_instance(tmp_path):
     path = tmp_path / "investigations.jsonl"
     reader = AlertHistoryStore(path)
     writer = AlertHistoryStore(path)
-    assert list(reader._iter_records()) == []    # caches emptiness
+    assert list(reader.iter_records()) == []    # caches emptiness
 
     when = datetime(2026, 1, 1, tzinfo=timezone.utc)
     writer.record(_alert("A1", {"ips": ["1.1.1.1"]}, when), _inv("A1"))
-    assert [r["alert_id"] for r in reader._iter_records()] == ["A1"]
+    assert [r["alert_id"] for r in reader.iter_records()] == ["A1"]
 
     writer.record_disposition("A1", "false_positive", "thehive:case-1")
     assert reader.dispositions()["A1"]["human_verdict"] == "false_positive"
@@ -343,10 +343,10 @@ def test_cache_reparse_rebinds_so_inflight_iterators_keep_their_snapshot(tmp_pat
     when = datetime(2026, 1, 1, tzinfo=timezone.utc)
     store.record(_alert("A1", {"ips": ["1.1.1.1"]}, when), _inv("A1"))
 
-    it = store._iter_records()
+    it = store.iter_records()
     assert next(it)["alert_id"] == "A1"
     store.record(_alert("A2", {"ips": ["2.2.2.2"]}, when), _inv("A2"))
-    store._records_cache.records()               # force the re-parse
+    store.log("investigations").records()               # force the re-parse
     assert list(it) == []                        # old snapshot: exhausted
 
 
@@ -362,7 +362,7 @@ def test_appending_reparses_only_the_new_lines(tmp_path):
     when = datetime(2026, 1, 1, tzinfo=timezone.utc)
     for i in range(50):
         store.record(_alert(f"A{i}", {"ips": [f"10.0.0.{i}"]}, when), _inv(f"A{i}"))
-    assert len(list(store._iter_records())) == 50   # warm: full parse done
+    assert len(list(store.iter_records())) == 50   # warm: full parse done
 
     calls = 0
     real_loads = _json.loads
@@ -372,14 +372,14 @@ def test_appending_reparses_only_the_new_lines(tmp_path):
         calls += 1
         return real_loads(s, *a, **k)
 
-    import soc_copilot.history as hist
+    import soc_copilot.memory as mem  # where the parsing lives
 
-    hist.json.loads = counting_loads
+    mem.json.loads = counting_loads
     try:
         store.record(_alert("NEW", {"ips": ["9.9.9.9"]}, when), _inv("NEW"))
-        records = list(store._iter_records())
+        records = list(store.iter_records())
     finally:
-        hist.json.loads = real_loads
+        mem.json.loads = real_loads
 
     assert len(records) == 51
     assert records[-1]["alert_id"] == "NEW"
@@ -397,11 +397,11 @@ def test_a_truncated_or_rewritten_file_is_never_served_from_a_stale_prefix(
     there. Every writer here appends, but if a file is truncated or
     rewritten the cache must start over rather than splice new bytes onto
     a prefix that no longer exists."""
-    from soc_copilot.history import _CachedJsonl
+    from soc_copilot.memory import JsonlLog
 
     path = tmp_path / "records.jsonl"
     _write_lines(path, ["A1", "A2", "A3"])
-    cache = _CachedJsonl(path)
+    cache = JsonlLog(path)
     assert [r["alert_id"] for r in cache.records()] == ["A1", "A2", "A3"]
 
     # Rewritten shorter: the old prefix is gone.
@@ -428,7 +428,7 @@ def test_a_replaced_file_is_not_spliced_onto_the_old_one(tmp_path):
     when = datetime(2026, 1, 1, tzinfo=timezone.utc)
     store.record(_alert("OLD1", {"ips": ["1.1.1.1"]}, when), _inv("OLD1"))
     store.record(_alert("OLD2", {"ips": ["2.2.2.2"]}, when), _inv("OLD2"))
-    assert len(list(store._iter_records())) == 2
+    assert len(list(store.iter_records())) == 2
 
     replacement = tmp_path / "other.jsonl"
     other = AlertHistoryStore(replacement)
@@ -437,7 +437,7 @@ def test_a_replaced_file_is_not_spliced_onto_the_old_one(tmp_path):
     other.record(_alert("NEW3", {"ips": ["5.5.5.5"]}, when), _inv("NEW3"))
     replacement.replace(path)
 
-    assert [r["alert_id"] for r in store._iter_records()] == [
+    assert [r["alert_id"] for r in store.iter_records()] == [
         "NEW1", "NEW2", "NEW3",
     ]
 
@@ -452,11 +452,11 @@ def test_a_corrupt_line_fails_the_same_way_on_every_call(tmp_path):
     losing an analyst ruling makes an overturned verdict read as
     unchallenged, which is exactly what this store promises can't happen.
     """
-    from soc_copilot.history import _CachedJsonl
+    from soc_copilot.memory import JsonlLog
 
     path = tmp_path / "records.jsonl"
     _write_lines(path, ["A1", "A2"])
-    cache = _CachedJsonl(path)
+    cache = JsonlLog(path)
     assert [r["alert_id"] for r in cache.records()] == ["A1", "A2"]
 
     with path.open("a") as f:                    # a torn write, then a clean one
@@ -476,11 +476,11 @@ def test_a_corrupt_line_never_reports_an_empty_history(tmp_path):
     """The reset branch is the nastier half: it clears the cache before
     parsing, so a failed whole-file re-parse could leave the store
     reporting NO history at all — with no error on the second call."""
-    from soc_copilot.history import _CachedJsonl
+    from soc_copilot.memory import JsonlLog
 
     path = tmp_path / "records.jsonl"
     _write_lines(path, ["A1", "A2", "A3"])
-    cache = _CachedJsonl(path)
+    cache = JsonlLog(path)
     assert len(cache.records()) == 3
 
     path.write_text('{"alert_id": "B1"}\n{"alert_id": OOPS}\n')   # rewritten badly
@@ -496,16 +496,16 @@ def test_a_half_written_line_is_never_parsed(tmp_path):
     store = AlertHistoryStore(tmp_path / "investigations.jsonl")
     when = datetime(2026, 1, 1, tzinfo=timezone.utc)
     store.record(_alert("A1", {"ips": ["1.1.1.1"]}, when), _inv("A1"))
-    assert len(list(store._iter_records())) == 1
+    assert len(list(store.iter_records())) == 1
 
     torn = '{"alert_id": "A2", "verdict": "false_p'
     with store.path.open("a") as f:
         f.write(torn)
-    assert [r["alert_id"] for r in store._iter_records()] == ["A1"]  # no crash
+    assert [r["alert_id"] for r in store.iter_records()] == ["A1"]  # no crash
 
     with store.path.open("a") as f:                # writer completes it
         f.write('ositive", "timestamp": "x", "iocs": [], "duplicate_of": null}\n')
-    assert [r["alert_id"] for r in store._iter_records()] == ["A1", "A2"]
+    assert [r["alert_id"] for r in store.iter_records()] == ["A1", "A2"]
 
 
 def test_appending_rebinds_so_inflight_iterators_keep_their_snapshot(tmp_path):
@@ -516,10 +516,10 @@ def test_appending_rebinds_so_inflight_iterators_keep_their_snapshot(tmp_path):
     when = datetime(2026, 1, 1, tzinfo=timezone.utc)
     store.record(_alert("A1", {"ips": ["1.1.1.1"]}, when), _inv("A1"))
 
-    it = store._iter_records()
+    it = store.iter_records()
     assert next(it)["alert_id"] == "A1"
     store.record(_alert("A2", {"ips": ["2.2.2.2"]}, when), _inv("A2"))
-    store._records_cache.records()               # force the incremental parse
+    store.log("investigations").records()               # force the incremental parse
     assert list(it) == []                        # old snapshot: exhausted
 
 
@@ -527,13 +527,13 @@ def test_cache_handles_file_deletion_as_empty_store(tmp_path):
     store = AlertHistoryStore(tmp_path / "investigations.jsonl")
     when = datetime(2026, 1, 1, tzinfo=timezone.utc)
     store.record(_alert("A1", {"ips": ["1.1.1.1"]}, when), _inv("A1"))
-    assert len(list(store._iter_records())) == 1
+    assert len(list(store.iter_records())) == 1
 
     store.path.unlink()
-    assert list(store._iter_records()) == []
+    assert list(store.iter_records()) == []
     # and a recreated file is picked up again (key was reset, not stuck)
     store.record(_alert("A3", {"ips": ["3.3.3.3"]}, when), _inv("A3"))
-    assert [r["alert_id"] for r in store._iter_records()] == ["A3"]
+    assert [r["alert_id"] for r in store.iter_records()] == ["A3"]
 
 
 # --- the watch-loop progress ledger -----------------------------------------

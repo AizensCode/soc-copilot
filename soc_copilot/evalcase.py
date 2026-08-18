@@ -89,7 +89,7 @@ def exportable_alert_ids(store: AlertHistoryStore) -> list[str]:
     ids: list[str] = []
     rulings = store.dispositions()
     latest: dict[str, dict] = {}
-    for rec in store._iter_records():
+    for rec in store.iter_records():
         latest[rec["alert_id"]] = rec
     for alert_id, rec in latest.items():
         if alert_id in rulings and "alert" in rec and not rec.get("duplicate_of"):

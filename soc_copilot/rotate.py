@@ -213,21 +213,48 @@ def plan_rotation(
     the real run plan identically and the report an operator approves is
     the report of what then happens.
     """
+    from .memory import CLOSURES, INVESTIGATIONS
+
     now = now or datetime.now(timezone.utc)
     cutoff = now - timedelta(days=retention_days)
-    root = Path(store.path).parent
+    # Which ledgers this store keeps in a FILE. With shared memory the
+    # investigations and rulings are in a cluster index and there is
+    # nothing here to split — rotating the leftover local copies of them
+    # would be worse than doing nothing, because the report would name
+    # files nothing reads any more while the real memory grew.
+    local_files = dict(getattr(store.backend, "paths", {}))
+    root = (local_files.get(INVESTIGATIONS) or local_files[CLOSURES]).parent
+    local_names = {p.name for p in local_files.values()}
     stamp = now.strftime("%Y%m%dT%H%M%SZ")
     plan = RotationPlan(cutoff=cutoff, archive_dir=root / "archive" / stamp)
 
-    targets = {store.path.name: INVESTIGATIONS_FIELD}
-    targets.update(SIDECAR_ROTATABLE)
+    targets = {}
+    if INVESTIGATIONS in local_files:
+        targets[local_files[INVESTIGATIONS].name] = INVESTIGATIONS_FIELD
+    targets.update({
+        name: field for name, field in SIDECAR_ROTATABLE.items()
+        if name in local_names
+    })
+    human = {
+        name: field for name, field in HUMAN_RECORD.items()
+        if name in local_names
+    }
     if include_human_records:
-        targets.update(HUMAN_RECORD)
+        targets.update(human)
     else:
         plan.held_back = [
             f"{name}: {HELD_BACK_REASON[name]}"
-            for name in HUMAN_RECORD
+            for name in human
             if (root / name).exists()
+        ]
+    if getattr(store, "shared", False):
+        plan.held_back = plan.held_back + [
+            f"the shared ledgers: {store.backend.describe()}. Retention "
+            f"there belongs to the cluster (an ILM policy or a scoped "
+            f"delete-by-query), and it must PIN the same rows this "
+            f"command pins — the investigation a ruling points at, or "
+            f"the documented block on autonomous closure silently "
+            f"becomes an auto-close. See deploy/RUNBOOK.md."
         ]
 
     # The rows an analyst ruling POINTS AT. This is what makes holding
@@ -243,7 +270,11 @@ def plan_rotation(
     # to "high-confidence false positive"). dedup._fingerprint_overturned
     # resolves rulings through the same index and is restored by the same
     # pin.
-    ruled_ids = set(store.dispositions()) if not include_human_records else set()
+    ruled_ids = (
+        set(store.dispositions())
+        if INVESTIGATIONS in local_files and not include_human_records
+        else set()
+    )
 
     for name, field_name in targets.items():
         path = root / name
@@ -260,7 +291,10 @@ def plan_rotation(
         # it here would turn that self-healing state into a permanent
         # JSONDecodeError for the whole store (review catch, two lenses).
         fp.torn_tail = lines.pop()
-        is_investigations = name == store.path.name
+        is_investigations = (
+            INVESTIGATIONS in local_files
+            and name == local_files[INVESTIGATIONS].name
+        )
         for line in lines:
             if not line.strip():
                 continue

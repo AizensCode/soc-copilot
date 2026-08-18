@@ -20,13 +20,13 @@ from soc_copilot.dedup import _record_fingerprint, find_anchor, fingerprint
 from soc_copilot.history import (
     DEFAULT_WINDOW_HOURS,
     AlertHistoryStore,
-    _CachedJsonl,
     _ipv4s,
     _parent_tcodes,
     _same_24,
     alert_host,
     alert_iocs,
 )
+from soc_copilot.memory import JsonlLog
 from soc_copilot.models import Alert, Investigation
 
 _BASE = datetime(2026, 7, 1, 12, 0, tzinfo=timezone.utc)
@@ -125,20 +125,27 @@ def _rewrite_last(store: AlertHistoryStore, inv_at: datetime) -> None:
 
 
 def _brute_prior_sightings(store, alert):
+    """The reference: full scan, LAST matching record per alert_id.
+
+    "Last" rather than "first" is the semantics, not an implementation
+    detail — a re-arrival or a re-opened alert leaves two records, and a
+    sighting carrying the stale one reports a verdict the desk has since
+    revised, which is what closure.py's overturn gate compares the
+    analyst ruling against."""
     current = set(alert_iocs(alert))
     if not current:
         return []
-    out, seen = [], set()
-    for rec in store._iter_records():
-        if rec["alert_id"] == alert.alert_id or rec["alert_id"] in seen:
+    chosen = {}
+    for rec in store.iter_records():
+        if rec["alert_id"] == alert.alert_id:
             continue
         matched = sorted(current & set(rec.get("iocs", [])))
         if not matched:
             continue
-        seen.add(rec["alert_id"])
-        out.append(
-            (rec["alert_id"], datetime.fromisoformat(rec["timestamp"]), matched)
+        chosen[rec["alert_id"]] = (
+            rec["alert_id"], datetime.fromisoformat(rec["timestamp"]), matched
         )
+    out = list(chosen.values())
     out.sort(key=lambda s: s[1], reverse=True)
     return out
 
@@ -150,7 +157,7 @@ def _brute_correlate_ids(store, alert, techniques, window_hours):
     current_techs = _parent_tcodes(techniques or [])
     window = timedelta(hours=window_hours)
     related, seen = [], set()
-    for rec in store._iter_records():
+    for rec in store.iter_records():
         if rec["alert_id"] == alert.alert_id or rec["alert_id"] in seen:
             continue
         rec_time = datetime.fromisoformat(rec["timestamp"])
@@ -182,7 +189,7 @@ def _brute_find_anchor(store, alert, window_hours, now):
     cutoff = now - timedelta(hours=window_hours)
     fp = fingerprint(alert)
     anchor, anchor_at = None, None
-    for rec in store._iter_records():
+    for rec in store.iter_records():
         if rec["alert_id"] == alert.alert_id or rec.get("duplicate_of"):
             continue
         investigated_at = rec.get("investigated_at")
@@ -197,7 +204,7 @@ def _brute_find_anchor(store, alert, window_hours, now):
     if anchor is None:
         return None, 0
     suppressions = 0
-    for rec in store._iter_records():
+    for rec in store.iter_records():
         if not rec.get("duplicate_of"):
             continue
         investigated_at = rec.get("investigated_at")
@@ -280,7 +287,7 @@ def test_find_anchor_equals_the_full_scan(tmp_path):
     # to a single probe), and the tallies prove both outcomes occurred.
     compared = anchored = empty = 0
     now = _BASE + timedelta(minutes=400)
-    for rec in list(store._iter_records())[-60:]:
+    for rec in list(store.iter_records())[-60:]:
         raw = rec.get("alert")
         if not raw:
             continue
@@ -328,7 +335,7 @@ def test_equivalence_survives_appends_replacement_and_truncation(tmp_path):
 
 def test_generation_bumps_on_reset_never_on_append(tmp_path):
     path = tmp_path / "x.jsonl"
-    cache = _CachedJsonl(path)
+    cache = JsonlLog(path)
     assert cache.records() == []
     path.write_text('{"alert_id": "A"}\n')
     cache.records()

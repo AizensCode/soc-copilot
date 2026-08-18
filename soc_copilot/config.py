@@ -40,6 +40,22 @@ class Settings:
     TIER_CHEAP_MODEL: str = "claude-haiku-4-5"
     # Case-history store (cross-alert memory). Not a secret; overridable per env.
     HISTORY_PATH: str = "data/history/investigations.jsonl"
+    # Where that memory LIVES: "jsonl" (the zero-dependency default, one
+    # process, one directory) or "elastic" (a shared index, so a whole
+    # desk works from one memory). See soc_copilot/memory.py, and note
+    # that "elastic" shares only the investigations and dispositions
+    # ledgers — the rest stay local by design, not by omission.
+    HISTORY_BACKEND: str = "jsonl"
+    # The index shared memory tails. Separate from the results index on
+    # purpose: that one is a dashboard surface whose documents Kibana and
+    # anything else may map and mutate, this one is the desk's memory and
+    # its mapping is load-bearing.
+    ELASTIC_MEMORY_INDEX: str = "soc-copilot-memory"
+    # This instance's identity in shared memory, recorded on every record
+    # it writes. Defaults to the hostname. It is what separates "a record
+    # this desk wrote" from "a record I wrote", which is the difference
+    # between sharing evidence and sharing the right to skip work.
+    INSTANCE_ID: str | None = None
     # Temporal window (hours) for clustering alerts into a campaign.
     CORRELATION_WINDOW_HOURS: int = 72
     # How long after an investigation the watch loop may still FINISH it
@@ -103,8 +119,9 @@ class Settings:
         # These two carry non-None defaults and were previously documented
         # as env-overridable but silently weren't — only override when set.
         for name in ("ELASTIC_ALERTS_INDEX", "ELASTIC_RESULTS_INDEX",
-                     "ELASTIC_EVENTS_INDEX", "HISTORY_PATH", "MODEL",
-                     "TIER_CHEAP_MODEL", "LOG_FORMAT", "LOG_LEVEL"):
+                     "ELASTIC_EVENTS_INDEX", "ELASTIC_MEMORY_INDEX",
+                     "HISTORY_PATH", "HISTORY_BACKEND", "INSTANCE_ID",
+                     "MODEL", "TIER_CHEAP_MODEL", "LOG_FORMAT", "LOG_LEVEL"):
             if (val := os.environ.get(name)) is not None:
                 overrides[name] = val
         # Integer settings: a typo must fail loudly at startup rather than
@@ -118,6 +135,15 @@ class Settings:
                     raise RuntimeError(
                         f"{name} must be an integer, got {raw!r}"
                     )
+        backend = overrides.get("HISTORY_BACKEND", cls.HISTORY_BACKEND)
+        if backend not in ("jsonl", "elastic"):
+            # A typo here would silently give a desk that believes it
+            # shares one memory a private one instead — the quiet
+            # direction, from a misspelling in a unit file.
+            raise RuntimeError(
+                f"HISTORY_BACKEND must be 'jsonl' or 'elastic', "
+                f"got {backend!r}"
+            )
         return cls(**overrides)
 
 

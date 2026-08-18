@@ -7,7 +7,7 @@ from anthropic import AsyncAnthropic
 from .actions import propose_actions
 from .assets import match_assets
 from .config import settings
-from .history import AlertHistoryStore
+from .history import AlertHistoryStore, open_store
 from .injection import scan_for_injection, scan_untrusted
 from .mitre_groups import match_groups
 from .models import (
@@ -85,7 +85,7 @@ class SOCCopilot:
             self.tools.get("check_domain_reputation") or URLScanTool()
         )
         # Cross-alert memory. Injectable so tests can isolate it.
-        self.history = history_store or AlertHistoryStore(settings.HISTORY_PATH)
+        self.history = history_store or open_store()
 
     @staticmethod
     def _format_memory_context(

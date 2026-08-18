@@ -3,7 +3,8 @@
 What the unattended deployment does, what it touches, and what to do
 when it makes noise. This document covers the `--watch` service; the
 one-shot CLI commands (`--scorecard`, `--digest`, `--sync-feedback`,
-`--tuning-report`, `--propose-inventory`, single-alert runs) need nothing beyond a shell in the
+`--tuning-report`, `--propose-inventory`, `--memory-status`,
+`--migrate-memory`, single-alert runs) need nothing beyond a shell in the
 same directory.
 
 ## What the process is
@@ -28,6 +29,7 @@ calibration story is the evidence trail).
 | `data/history/created_alerts.jsonl` | provenance ledger of TheHive alerts it opened | append-only |
 | `data/history/watch_progress.jsonl` | the watch loop claiming (`started`) and finishing (`completed`) each alert | append-only |
 | `data/history/archive/<stamp>/` | records aged out by `--rotate-history` | written only by that command |
+| Elastic memory index (shared memory only) | investigation records and analyst rulings, when `HISTORY_BACKEND=elastic` | remote; replaces the first two rows above |
 | Elastic results index | investigation docs, analyst-ruling annotations | remote |
 | Elastic **alerts** index | status updates (acknowledged/closed) on worked alerts | remote |
 | TheHive (with `--case`) | alert objects for escalations | remote |
@@ -51,6 +53,204 @@ narration (progress, failures, health) goes to **stderr** with a level;
 a command's product (an investigation JSON, the scorecard) goes to
 **stdout**, pipeable. No writes outside `data/`. The systemd unit
 enforces that with `ProtectSystem=strict`.
+
+## Sharing one memory across the desk
+
+By default the desk's memory is a directory of JSONL files: one process,
+one machine, filesystem permissions as the whole access-control story.
+That is also strictly single-writer — two processes appending to one file
+interleave partial lines — so a second analyst running `--ask`, or a
+second watcher, gets a *different* memory rather than a shared one. The
+same IP is ruled a false positive on one host and re-investigated from
+scratch on the next, and the analyst ruling that would have blocked an
+autonomous closure is invisible to the instance about to make it.
+
+`HISTORY_BACKEND=elastic` puts the two ledgers that are facts about the
+world into one Elasticsearch index instead.
+
+```bash
+# .env
+HISTORY_BACKEND=elastic
+ELASTIC_URL=https://elastic.internal:9200
+ELASTIC_API_KEY=...
+ELASTIC_MEMORY_INDEX=soc-copilot-memory      # default
+INSTANCE_ID=soc-desk-01                      # default: this host's name
+```
+
+**Set `INSTANCE_ID` explicitly.** It defaults to the hostname, which is
+right on bare metal and wrong in a container: Docker assigns a fresh
+random hostname on every recreate, so a redeploy makes the desk a
+stranger to its own history — the guard below refuses to start, and once
+past it, dedup and resume stop recognising records the same deployment
+wrote yesterday. The shipped compose file pins `hostname:` for the same
+reason. Two instances on ONE host need two values here *and* two
+`HISTORY_PATH` directories, because the three local ledgers are
+single-writer files.
+
+```bash
+soc-copilot --memory-status          # provisions the index, reports what it finds
+soc-copilot --migrate-memory --dry-run
+soc-copilot --migrate-memory         # idempotent; re-run it after any failure
+soc-copilot --memory-status          # confirm the counts before moving the local files aside
+```
+
+`--memory-status` is the command that answers "am I actually sharing?",
+which the configuration cannot: it says what was *asked for*. The status
+names the index really reached, the ledgers really shared, this
+instance's writer id, and every other instance writing to the same
+memory, with counts. It also reports two things that are invisible
+everywhere else:
+
+- **Clock skew.** Records are ordered by wall-clock timestamps from
+  writers nobody sequences, and each instance re-reads only a window
+  behind its own position (5 minutes). Two instances whose clocks are
+  further apart than that window **cannot see each other's writes at
+  all**, and nothing else notices: both desks look healthy and both
+  report full counts. The status prints how far the newest shared record
+  is from this host's clock and warns past the window. Run NTP.
+- **A half-finished import.** The start-up guard below asks only whether
+  this instance is represented at all, so a migration that died a third
+  of the way through disarms it with its first record. The status
+  compares the local ledgers against what this instance actually put in
+  shared memory and says so. Re-run `--migrate-memory`; it imports
+  nothing twice.
+
+Migrating while an instance is already running does **not** reach it:
+imported records keep their original write times, which are older than
+any running tail's window. `--migrate-memory` says so; restart the
+watchers.
+
+**Turning it on while a local ledger holds records shared memory has
+never seen from this instance is refused**, by ledger, naming the file.
+The test is "shared memory holds nothing this instance wrote", not "the
+shared index is empty" — emptiness only protects the first desk to join,
+and the second analyst to flip the switch would find someone else's
+records, sail past, and abandon their own rulings. Starting anyway would discard
+every prior sighting and every analyst ruling the safety gates read —
+the quiet direction, from one line in a unit file. Either run
+`--migrate-memory` or move the local file aside to join without it.
+
+**Going back is guarded too**, and it is the easier accident: `jsonl` is
+the DEFAULT, so losing a line of a unit file — or starting the process
+from a shell that never read it — would silently swap the desk's memory
+for whatever stale local files are still sitting there. A desk that has
+run on shared memory leaves a `data/history/.shared-memory` marker;
+delete it to go back to local memory on purpose. The rulings ledger is checked separately from the
+investigations ledger for a reason: a desk whose investigations migrated
+but whose rulings did not looks completely healthy — full history,
+sensible reports — while the one gate that lets a human overrule
+autonomous closure quietly matches nothing.
+
+### What is shared, and what deliberately is not
+
+| Ledger | Where | Why |
+|---|---|---|
+| `investigations` | **shared** | evidence; every reader that consumes it can only make the desk louder |
+| `dispositions` | **shared** | ground truth, and the thing a second analyst most needs to see |
+| `created_alerts` | local | a *trust* ledger — the alert ids whose synced rulings this copilot believes |
+| `closures` | local | what *this* instance did autonomously; not evidence about the world |
+| `watch_progress` | local | one loop's cursor through its own cycle |
+
+Sharing `watch_progress` would let one instance resume — and re-push, and
+re-acknowledge — an alert another instance is working right now. Sharing
+`created_alerts` would hand back the property the ruling-provenance work
+bought, since it exists precisely because a self-asserted label is not
+provenance. Sharing `closures` would let one instance's record make an
+alert look already handled in another's morning digest, which is why it
+stays local even though it costs a metric: **in shared mode the
+scorecard's automation rate understates automation**, counting the whole
+desk's investigations against this instance's closures. Read it per
+instance, or sum them.
+
+### What sharing changes about safety
+
+Every record now carries the `writer` that produced it, and two readers
+check it before acting. Both are asking to do **less** work:
+
+- **dedup's anchor** (`--dedup`) will not borrow a verdict from another
+  instance. Borrowing means acknowledging an alert with no model call at
+  all, on the strength of one record — one document in an index, and a
+  detection is silently off. Two instances on one queue therefore each
+  pay for the first copy of a noisy detection. That is a cost in money,
+  against a risk of silence.
+- **resume** will not finish a run it did not start. "Finish the run
+  this loop interrupted" is the premise; delivering someone else's
+  record would push a verdict this instance never reached.
+
+A record with **no** writer is not this instance's in shared mode, so it
+is cited freely and never borrowed. `--memory-status` counts them.
+
+Analyst rulings are **latest-wins**, in the reports and in the safety
+gates alike — one answer to "what did the analyst decide". A shared
+ledger does make that a way to *cancel* a block (a later
+`false_positive` on an alert ruled a true positive removes both the
+autonomous-close block and dedup's fingerprint-wide refusal), and there
+was a per-writer rule here to stop it. It was removed: `writer` is a
+field in a document, so anything able to append the cancelling ruling
+can append it under the blocked writer's name, while a real analyst's
+correction could be left unable to land. Which means the ruling ledger's
+integrity is the index ACL below, and nothing else.
+
+One consequence to accept deliberately: `--sync-feedback` trusts a ruling
+for an alert **this desk handled**, and with shared memory "this desk"
+becomes every instance writing to the index, not just this process. Two
+things follow, and both are worth knowing before you turn it on. The
+trusted set of alert ids grows to everything any instance ever
+investigated. And for the alerts this instance did not itself open a
+TheHive case for, there is no `created_alerts` entry to id-match the
+incoming ruling against, so those rulings are trusted on the alert id
+alone — the same footing as rulings on investigations that predate the
+provenance ledger. Whoever can post into your TheHive feed can therefore
+claim a ruling on any alert the desk has ever worked. That is what
+sharing a memory means; it is also why the next paragraph is the
+important one.
+
+### The index's write ACL is the security boundary
+
+`writer` is self-asserted. It separates honest instances from each other;
+it does not separate an attacker from the desk, because anything that can
+write to the memory index can write any `writer` it likes. Provision the
+key accordingly:
+
+- The copilot instances need **read and write** on the memory index.
+- **Nothing else should have write on it.** A dashboard, an ingest
+  pipeline or a shared "elastic admin" key with write here is a way to
+  plant a prior sighting, a ruling, or an anchor.
+- Keep it a **separate index** from the results index. That one is a
+  dashboard surface whose documents other things may map and mutate;
+  this one is the desk's memory and its mapping is load-bearing.
+
+That mapping matters more than it looks. `record` is stored but **not
+indexed** (`"enabled": false`), because a record carries full alert and
+investigation dumps and a dynamically mapped index hits
+`index.mapping.total_fields.limit` and then starts *rejecting* writes —
+a desk that stops remembering without saying so. `--memory-status`
+refuses to use an index whose `record` is mapped any other way, which is
+what an index auto-created by a stray write looks like.
+
+### Retention, and two watchers
+
+`--rotate-history` splits local JSONL files, so in shared mode it rotates
+the local ledgers and **holds the shared ones back**, saying so. Retention
+on the memory index is the cluster's job — an ILM policy or a scoped
+delete-by-query — and it must pin the same rows this command pins: the
+investigation row an analyst ruling points at. Archive that row and the
+carefully retained ruling has nothing to attach to, the prior sighting
+never exists, and a documented block on autonomous closure silently
+becomes an auto-close.
+
+Shared memory shares **memory, not work assignment**. Two `--watch`
+instances polling the same alert index will both pick up the same open
+alert and both pay for it; nothing here leases an alert. Partition the
+queue (different Elastic queries per instance) or run one watcher and as
+many read-only `--ask`/report users as you like — the second shape is the
+one this was built for.
+
+Finally: a memory outage **fails loudly**. A store that answered "no
+prior sightings" because the cluster was unreachable would turn every
+gate that rests on memory off at exactly the moment nobody is watching,
+so a read that cannot reach the index raises, the cycle is marked sick,
+and the dead-man's switch above takes it from there.
 
 ## Reading the log
 
@@ -82,7 +282,9 @@ with `jq 'select(.level != "INFO")'`.
 prior-sighting context, dedup anchors, the scorecard's evidence, and
 the provenance ledger that lets analyst rulings be trusted. Back up
 `data/history/` like you back up any small append-only database — and
-beside it, the two operator-owned inputs a rebuild cannot regenerate:
+with shared memory, back up the memory index too and keep backing up
+`data/history/`, which still holds the three local ledgers. And beside
+them, the two operator-owned inputs a rebuild cannot regenerate:
 `data/asset_context.json` (your tuned inventory, the false-positive
 discriminator) and `.env` (secrets — store it wherever you keep
 secrets, not with the data).
@@ -92,7 +294,7 @@ secrets, not with the data).
 | Code | Meaning | Right response |
 |---|---|---|
 | 0 | clean end: one-shot commands, and a **drained stop** of `--watch` (SIGTERM finished the in-flight alert and exited) | none |
-| 1 | configuration error (missing/invalid key, bad `WEBHOOK_URL`) — printed as one line, at startup | fix `.env`, start again |
+| 1 | configuration error (missing/invalid key, bad `WEBHOOK_URL`) — printed as one line, at startup. With `HISTORY_BACKEND=elastic`, a memory index that cannot be reached at startup lands here too: the desk refuses to begin with no memory rather than begin with a blank one | fix `.env`, start again. If the message names the memory index, the cluster is the problem — the supervisor will keep retrying until the start limit turns it into a failed unit |
 | 2 | two distinct causes, easy to tell apart: an **instant** exit 2 with a usage message is argparse rejecting a flag (fix the command); an exit 2 after ~30 minutes is **the watchdog giving up** on systemic failure (fetch crashing, or 2+ distinct alerts all failing) | typo: fix the flag. Watchdog: the supervisor restarts it; if it exits 2 again, read the log (stderr — `journalctl`/`docker logs` capture it): the cause is printed every cycle |
 | 130 | operator Ctrl+C | none |
 | 143 | SIGTERM outside a drain: a **second** signal during a watch drain (immediate stop on request), a signal arriving during watch *startup* before the drain handler is installed, or a signal to a one-shot command. In each case the process dies **by** the signal, which systemd counts as a clean stop (no `SuccessExitStatus=` needed) | none — this is what an impatient (or non-watch) stop looks like |
@@ -267,6 +469,17 @@ Records whose age cannot be established — malformed lines, or records
 from before `investigated_at` existed — are **kept**, never archived,
 and the report counts them. Aging a record out requires knowing it is
 old.
+
+**With shared memory this command only rotates what is still local.**
+The investigations and rulings ledgers live in the memory index, which
+this command cannot split; it lists them as held back and points at the
+cluster. Everything above about pinning applies just as hard there — an
+ILM policy or delete-by-query that ages out an investigation row whose
+alert carries a ruling turns a documented block on autonomous closure
+into an auto-close, and no warning will be printed by anything. The
+three local ledgers are still rotated normally, which matters because
+`watch_progress.jsonl` grows two lines per alert whatever the backend
+is.
 
 If the watch loop is running, rotation aborts with exit 1 and changes
 nothing: every file's size is re-checked before any of them is replaced,

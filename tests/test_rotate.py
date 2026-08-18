@@ -511,7 +511,7 @@ def test_rotation_is_detected_by_the_store_even_in_the_cache_worst_case(tmp_path
     ])
     first_64_before = store.path.read_bytes()[:64]
     inode_before = store.path.stat().st_ino
-    assert [r["alert_id"] for r in store._records_cache.records()] == [
+    assert [r["alert_id"] for r in store.log("investigations").records()] == [
         "KEEP", "OLD",
     ]                                        # cache warmed on the old file
 
@@ -519,7 +519,7 @@ def test_rotation_is_detected_by_the_store_even_in_the_cache_worst_case(tmp_path
 
     assert store.path.read_bytes()[:64] == first_64_before   # worst case held
     assert store.path.stat().st_ino != inode_before
-    assert [r["alert_id"] for r in store._records_cache.records()] == ["KEEP"]
+    assert [r["alert_id"] for r in store.log("investigations").records()] == ["KEEP"]
 
 
 # --- the review's confirmed findings, each with its oracle ------------------
@@ -637,7 +637,7 @@ def test_a_torn_final_line_stays_torn(tmp_path):
     assert after.endswith(b'{"alert_id": "TORN", "investigated')
     assert not after.endswith(b"\n")
     # And the store still reads, ignoring the remnant exactly as before.
-    assert [r["alert_id"] for r in store._records_cache.records()] == ["NEW"]
+    assert [r["alert_id"] for r in store.log("investigations").records()] == ["NEW"]
 
 
 def test_a_file_ending_without_a_newline_is_not_given_one(tmp_path):

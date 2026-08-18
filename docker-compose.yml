@@ -14,6 +14,13 @@ services:
     # --auto-close, --notify, --case, --dedup, --tiered here once each
     # has earned trust in this environment (see README).
     command: ["--watch", "60"]
+    # A container gets a fresh random hostname on every recreate, and with
+    # HISTORY_BACKEND=elastic the hostname is this instance's IDENTITY in
+    # shared memory — the field that decides which records it may borrow a
+    # verdict from and which interrupted run is its own to finish. Left to
+    # drift, every redeploy makes the desk a stranger to its own history
+    # and the shared-memory guard refuses to start. Pin it.
+    hostname: soc-copilot-watch
     volumes:
       # The whole data/ tree: history persists across restarts, and
       # operator edits to asset_context.json (the false-positive

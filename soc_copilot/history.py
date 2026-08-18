@@ -5,19 +5,33 @@ involved. When a new alert arrives, the store surfaces past investigations that
 touched the same IOCs — the context a human analyst keeps in their head ("this
 IP was flagged true_positive last week").
 
-Backed by a JSONL file (one investigation record per line): appends are cheap,
-no new dependency, and it matches the project's existing file-based persistence.
-The interface is deliberately backend-agnostic — a SQLite implementation could
-replace it without touching callers.
+This module is the QUERIES. Where the records live is soc_copilot/memory.py:
+a JSONL file per ledger by default, or a shared Elasticsearch index so a
+whole desk works from one memory. Every predicate below runs in Python
+over whatever the ledger hands back, so the two backends cannot disagree
+about whether an alert is a campaign — see memory.py for why the seam is
+the log rather than the query.
 """
 import bisect
 import ipaddress
-import json
 import re
 from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from .memory import (
+    CLOSURES,
+    CREATED_ALERTS,
+    DISPOSITIONS,
+    INVESTIGATIONS,
+    LEDGERS,
+    WATCH_PROGRESS,
+    HistoryBackend,
+    HistoryLog,
+    JsonlBackend,
+    instance_id,
+    open_backend,
+)
 from .models import (
     Alert,
     Correlation,
@@ -32,10 +46,6 @@ DEFAULT_WINDOW_HOURS = 72
 CAMPAIGN_MIN_RELATED = 2
 
 _TCODE_RE = re.compile(r"T\d{4}(?:\.\d{3})?")
-
-# How many trailing bytes of the already-parsed prefix to re-verify before
-# splicing an append onto it. Enough to catch a rewritten file, O(1) to read.
-_PREFIX_CHECK_BYTES = 64
 
 
 def alert_host(alert: Alert) -> str | None:
@@ -93,138 +103,6 @@ def _parent_tcodes(techniques: list[str]) -> set[str]:
     return codes
 
 
-class _CachedJsonl:
-    """Parsed-record cache for one append-only JSONL file.
-
-    Every read of the store used to re-read and re-parse the whole file
-    from disk. In watch mode the same file is walked many times per poll
-    cycle — queue prioritization, memory lookups inside each
-    investigation, dedup's anchor scan — so the cost was
-    O(alerts x records) json.loads per cycle, growing with every day the
-    desk runs.
-
-    Caching alone did NOT fix that, which is the point of the byte offset
-    below. A cache keyed only on (mtime, size) is invalidated by any
-    write — and the watch loop's own last act on every alert is to append
-    a record, so the next alert re-parsed the entire history. Measured
-    before this change: ~2ms per alert against 1k records, ~506ms against
-    100k, growing without bound.
-
-    So the cache parses only what was APPENDED since it last looked,
-    tracking the byte offset it has consumed. Cost per alert becomes
-    O(new lines) instead of O(history). This is sound only because every
-    writer in this project appends and nothing rewrites in place; the
-    guards below detect when that assumption breaks (a different file, a
-    truncation, any shrink) and fall back to a full re-parse rather than
-    trusting a prefix that may have changed underneath.
-
-    Three contracts callers rely on:
-    - Records are the SAME dict objects across calls. Callers treat them
-      as read-only (every store reader builds new structures; the one
-      annotator, latest_record, copies first). Mutating one in place
-      would poison every later read until the file next changes.
-    - A re-parse or an append REBINDS the list, never mutates it, so an
-      iterator handed out earlier keeps walking its own snapshot.
-    - A half-written final line is never parsed: only bytes up to the
-      last newline are consumed, so a reader that catches a writer
-      mid-append sees the record on the next read, never a JSON error.
-    """
-
-    def __init__(self, path: Path) -> None:
-        self.path = path
-        # (st_dev, st_ino, st_mtime_ns, st_size) of the last look: an
-        # exact match means nothing at all has happened to the file.
-        self._state: tuple[int, int, int, int] | None = None
-        self._offset = 0          # bytes consumed, always at a line boundary
-        self._tail = b""          # last bytes consumed, to verify the prefix
-        self._records: list[dict] = []
-        # Bumped every time the record list is REBUILT rather than extended
-        # (file replaced, truncated, or gone). Derived structures — the
-        # store's query index — key their own validity on this: same
-        # generation means their prefix of the list is still exactly what
-        # they indexed, so they only need to index the new tail.
-        self.generation = 0
-
-    def records(self) -> list[dict]:
-        try:
-            st = self.path.stat()
-        except OSError:  # missing file: an empty store, not an error
-            if self._state is not None or self._records:
-                self.generation += 1     # a real wipe, not a repeat look
-            self._state, self._offset = None, 0
-            self._tail, self._records = b"", []
-            return self._records
-        state = (st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size)
-        if state == self._state:
-            return self._records
-        reset = (
-            self._state is None
-            or state[:2] != self._state[:2]   # replaced (rename, recreate)
-        )
-        with self.path.open("rb") as f:
-            if not reset and self._tail:
-                # Splicing new bytes onto a prefix assumes the prefix is
-                # still those bytes. Appending is all this project does,
-                # but a file rewritten in place would otherwise graft a
-                # new tail onto stale records — a corrupted view the old
-                # read-everything code could not produce. Re-reading the
-                # last few bytes we consumed is an O(1) check that the
-                # ground has not moved. It subsumes truncation too: a file
-                # shorter than our offset cannot return those bytes there,
-                # so an explicit size check would be unreachable (mutation
-                # testing proved it dead — no test could tell it apart).
-                # The check is PROBABILISTIC, and honestly so: a rewrite
-                # that reuses the inode and preserves both the byte at
-                # our offset boundary and the exact final 64 bytes passes
-                # it (observed in a test where two same-shape records
-                # differed only mid-line). The supported rotation —
-                # offline, see deploy/RUNBOOK.md — sidesteps the window
-                # entirely; a same-size in-place rewrite under a running
-                # process is outside the append-only contract.
-                f.seek(self._offset - len(self._tail))
-                reset = f.read(len(self._tail)) != self._tail
-            # Everything below is staged in locals and committed to self
-            # only once the parse has SUCCEEDED. Committing earlier would
-            # advance the cache past a parse that never happened, and the
-            # next call's fast path would then serve a silently TRUNCATED
-            # history — a lost analyst ruling reading as "never overturned"
-            # is far worse than the loud, repeatable error a bad line used
-            # to cause (review catch: three lenses, independently).
-            offset = 0 if reset else self._offset
-            f.seek(offset)
-            chunk = f.read()
-        # stat-then-read is deliberate: a write landing between the two
-        # leaves NEWER content cached under the OLDER state, so the next
-        # read picks it up — never stale data, at worst one read late.
-        consumed = chunk.rfind(b"\n") + 1     # whole lines only
-        if consumed <= 0:
-            # Nothing complete to add. Leave _state uncommitted so the next
-            # call looks again: the file is mid-append, and the rest of that
-            # line must not be skipped once the writer finishes it.
-            if reset:
-                self.generation += 1
-                self._offset, self._records, self._tail = 0, [], b""
-                self._state = state
-            return self._records
-        fresh = [
-            json.loads(line)
-            for line in chunk[:consumed].decode().splitlines()
-            if line.strip()
-        ]
-        base = [] if reset else self._records
-        if reset:
-            self.generation += 1
-        # Rebind rather than extend, so an iterator handed out before this
-        # append keeps walking the snapshot it started on.
-        self._records = base + fresh if fresh else base
-        self._offset = offset + consumed
-        self._tail = (
-            (b"" if reset else self._tail) + chunk[:consumed]
-        )[-_PREFIX_CHECK_BYTES:]
-        self._state = state
-        return self._records
-
-
 def _net24(value: object) -> str | None:
     """The /24 network key for anything ip_address() reads as IPv4, or
     None. The input domain is deliberately as WIDE as the readers'
@@ -247,7 +125,7 @@ _EPOCH = datetime.min.replace(tzinfo=timezone.utc)
 
 
 class _RecordIndex:
-    """Query indexes over one _CachedJsonl's records.
+    """Query indexes over one ledger's records.
 
     The incremental cache removed the PARSE cost; these remove the SCAN
     cost. Every hot reader used to walk all of history per alert —
@@ -282,12 +160,16 @@ class _RecordIndex:
     cutoff too. Unparseable or missing times index as the previous max
     (they cannot advance the clock); naive times are assumed UTC.
 
-    Maintenance mirrors the cache: same generation -> the already-indexed
-    prefix is untouched, index only the new tail; a generation bump
-    (file replaced, truncated, gone) -> rebuild from scratch.
+    Maintenance mirrors the log: same generation -> the already-indexed
+    prefix is untouched, index only the new tail; a generation bump (the
+    file replaced or truncated, or a shared log's tail turning out not to
+    be what it was) -> rebuild from scratch. That contract is the whole
+    reason this class did not have to learn about shared memory: a late
+    document arriving out of order in a shared ledger is, to the index,
+    the same event as a rewritten file.
     """
 
-    def __init__(self, cache: _CachedJsonl) -> None:
+    def __init__(self, cache: HistoryLog) -> None:
         self._cache = cache
         self._generation = cache.generation - 1   # force first build
         self._count = 0
@@ -422,17 +304,34 @@ class _RecordIndex:
 class AlertHistoryStore:
     """Persist investigations and look them up by shared indicator.
 
-    Beside the investigations file lives a dispositions file
-    (dispositions.jsonl): analyst rulings synced back from case
-    management. The copilot's own verdicts are opinions; a human ruling
-    on one of them is ground truth, and prior sightings carry both so
-    the model can never cite an overturned opinion as unchallenged.
+    Beside the investigations ledger lives a dispositions ledger:
+    analyst rulings synced back from case management. The copilot's own
+    verdicts are opinions; a human ruling on one of them is ground truth,
+    and prior sightings carry both so the model can never cite an
+    overturned opinion as unchallenged.
 
-    Reads go through per-file parsed-record caches (_CachedJsonl) that
-    parse only what was appended since the last look, so a long-running
-    watch never re-parses its whole history. Writes are unchanged: plain
+    Reads go through per-ledger incremental logs (soc_copilot/memory.py)
+    that parse only what was appended since the last look, so a long
+    running watch never re-parses its whole history. Writes are plain
     appends, which is exactly the property the incremental read depends
     on.
+
+    WHO WROTE A RECORD becomes a question the moment the ledgers are
+    shared, so every record this store appends carries a `writer`. In
+    local mode the file is the boundary and every record in it is the
+    desk's own; in shared mode the field is the only claim available, and
+    `wrote()` treats an absent claim as not-ours. That field is
+    self-asserted — it separates honest instances from each other, not an
+    attacker from the desk. Whoever can write the shared index can write
+    any `writer` they like, which is why the index's write ACL is the
+    security boundary and deploy/RUNBOOK.md says so in those words.
+
+    Two readers ask `wrote()` before acting, and both are asking to do
+    LESS work rather than more: dedup's anchor (borrow a verdict and skip
+    the model entirely) and resume (deliver an interrupted run's
+    conclusion). Every reader that can only make the desk louder — prior
+    sightings, correlation, the analyst-overturn block — reads the whole
+    shared ledger, because that is the sharing the item was for.
 
     The incremental cache removed the PARSE cost; the query index
     (_RecordIndex) removed the SCAN cost that then dominated. Measured
@@ -453,27 +352,101 @@ class AlertHistoryStore:
     cache.
     """
 
-    def __init__(self, path: str | Path) -> None:
-        self.path = Path(path)
-        self.dispositions_path = self.path.with_name("dispositions.jsonl")
-        self.closures_path = self.path.with_name("closures.jsonl")
-        self.created_alerts_path = self.path.with_name("created_alerts.jsonl")
-        self.watch_progress_path = self.path.with_name("watch_progress.jsonl")
-        self._records_cache = _CachedJsonl(self.path)
-        self._dispositions_cache = _CachedJsonl(self.dispositions_path)
-        self._closures_cache = _CachedJsonl(self.closures_path)
-        self._created_alerts_cache = _CachedJsonl(self.created_alerts_path)
-        self._watch_progress_cache = _CachedJsonl(self.watch_progress_path)
+    def __init__(
+        self,
+        path: str | Path | None = None,
+        *,
+        backend: HistoryBackend | None = None,
+        writer: str | None = None,
+    ) -> None:
+        if backend is None:
+            if path is None:
+                raise TypeError(
+                    "AlertHistoryStore needs a path or a backend"
+                )
+            backend = JsonlBackend(path)
+        elif path is not None:
+            raise TypeError("pass a path or a backend, not both")
+        from .config import settings
+
+        self.backend = backend
+        self.shared = bool(getattr(backend, "shared", False))
+        self.writer = writer or instance_id(settings)
+        self._logs: dict[str, HistoryLog] = {
+            name: backend.log(name) for name in LEDGERS
+        }
         # Incrementally folded latest-per-alert view of the progress
         # ledger; see watch_progress(). Generation starts one behind so
         # the first read always builds.
         self._watch_progress_view: dict[str, dict] = {}
         self._watch_progress_seen = 0
-        self._watch_progress_gen = self._watch_progress_cache.generation - 1
-        self._record_index = _RecordIndex(self._records_cache)
+        self._watch_progress_gen = self._logs[WATCH_PROGRESS].generation - 1
+        self._record_index = _RecordIndex(self._logs[INVESTIGATIONS])
 
-    def _iter_records(self) -> Iterator[dict]:
-        yield from self._records_cache.records()
+    # --- where the ledgers live ---------------------------------------------
+
+    def _file(self, ledger: str) -> Path:
+        """The local file backing one ledger, or a legible refusal.
+
+        Only file-shaped operations ask — retention above all. A shared
+        ledger has no file, and answering with the stale local one would
+        have `--rotate-history` carefully pinning analyst rulings in a
+        file nothing reads any more while the real memory grew unbounded.
+        """
+        paths = getattr(self.backend, "paths", {})
+        if ledger not in paths:
+            raise RuntimeError(
+                f"the '{ledger}' ledger has no local file: "
+                f"{self.backend.describe()}"
+            )
+        return paths[ledger]
+
+    @property
+    def path(self) -> Path:
+        return self._file(INVESTIGATIONS)
+
+    @property
+    def dispositions_path(self) -> Path:
+        return self._file(DISPOSITIONS)
+
+    @property
+    def closures_path(self) -> Path:
+        return self._file(CLOSURES)
+
+    @property
+    def created_alerts_path(self) -> Path:
+        return self._file(CREATED_ALERTS)
+
+    @property
+    def watch_progress_path(self) -> Path:
+        return self._file(WATCH_PROGRESS)
+
+    def log(self, ledger: str) -> HistoryLog:
+        """One ledger's append-only log. The store's own readers go
+        through these; `--memory-status` and the tests that exercise the
+        incremental read reach for them by name."""
+        return self._logs[ledger]
+
+    def wrote(self, rec: dict) -> bool:
+        """True if this instance is the one that wrote `rec`.
+
+        Local mode answers True for everything: a private file in a
+        private directory is the boundary, so re-deriving ownership from a
+        field could only ever take dedup savings away from an operator who
+        renamed a host. Shared mode requires the claim to be present and
+        to match — the conservative direction, since the only two callers
+        use a False to do MORE work rather than less.
+        """
+        if not self.shared:
+            return True
+        writer = rec.get("writer")
+        return writer is not None and writer == self.writer
+
+    def iter_records(self) -> Iterator[dict]:
+        """Every investigation record, oldest first. The whole-history
+        readers (the scorecard, the digest, the tuning and inventory
+        reports) walk this; the indexed readers below do not."""
+        yield from self._logs[INVESTIGATIONS].records()
 
     def _index(self) -> _RecordIndex:
         """The synced query index over the investigations file. Internal:
@@ -502,10 +475,9 @@ class AlertHistoryStore:
             # When the ruling was SYNCED (not when the analyst clicked in
             # TheHive) — enough for "what came back since yesterday".
             "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "writer": self.writer,
         }
-        self.dispositions_path.parent.mkdir(parents=True, exist_ok=True)
-        with self.dispositions_path.open("a") as f:
-            f.write(json.dumps(rec) + "\n")
+        self._logs[DISPOSITIONS].append(rec)
 
     def dispositions(self) -> dict[str, dict]:
         """Latest analyst ruling per alert_id.
@@ -514,9 +486,55 @@ class AlertHistoryStore:
         the record dicts inside are the cache's — read-only by contract.
         """
         out: dict[str, dict] = {}
-        for rec in self._dispositions_cache.records():
+        for rec in self._logs[DISPOSITIONS].records():
             out[rec["alert_id"]] = rec
         return out
+
+    def blocking_rulings(self) -> dict[str, dict]:
+        """alert_id -> the analyst ruling, for every alert whose latest
+        ruling is NOT a false positive.
+
+        Dedup's suppression gate asks exactly this: "has an analyst
+        documented a correction on this detection?" Latest wins, which
+        is also what `dispositions()` reports and what the scorecard
+        measures against — one answer to "what did the analyst decide",
+        not two.
+
+        There WAS a second answer here, and removing it is the more
+        interesting half of this method. Sharing the ruling ledger turns
+        "latest wins" into a way to CANCEL a block: append a later
+        `false_positive` for an alert an analyst ruled a true positive
+        and both the autonomous-close block and dedup's fingerprint-wide
+        refusal go away. So the gates read every writer's latest ruling
+        and took the one that blocked — you could correct yourself, not
+        someone else.
+
+        It does not survive its own threat model. `writer` is a field in
+        a document; anything able to append the cancelling ruling is
+        equally able to append it under the blocked writer's name, so
+        the rule stopped exactly nobody. What it did stop was a real
+        analyst: rulings arrive through whichever instance ran
+        `--sync-feedback`, and an instance that sees another's
+        correction first records nothing of its own — so a corrected
+        ruling could leave the stale one blocking on one desk forever.
+        A defense that only binds the honest party is worse than no
+        defense, so the integrity of this ledger rests where the rest of
+        it does: on who may write to the index (deploy/RUNBOOK.md).
+
+        `wrote()` keeps its writer check for a reason that does survive:
+        there, an unrecognized writer makes this instance do MORE work
+        (investigate rather than suppress, re-run rather than resume),
+        so the check costs money when it is wrong instead of silence.
+        Making `writer` authoritative rather than self-asserted is a
+        cluster-side job — an ingest pipeline stamping it from the
+        authenticated principal — and that is where this goes if the
+        trust boundary ever needs to be finer than the index.
+        """
+        return {
+            alert_id: ruling
+            for alert_id, ruling in self.dispositions().items()
+            if ruling.get("human_verdict") != "false_positive"
+        }
 
     def record_created_alert(self, alert_id: str, thehive_id: str) -> None:
         """Record that THIS copilot created a TheHive alert for `alert_id`
@@ -534,16 +552,15 @@ class AlertHistoryStore:
             "alert_id": alert_id,
             "thehive_id": thehive_id,
             "created_at": datetime.now(timezone.utc).isoformat(),
+            "writer": self.writer,
         }
-        self.created_alerts_path.parent.mkdir(parents=True, exist_ok=True)
-        with self.created_alerts_path.open("a") as f:
-            f.write(json.dumps(rec) + "\n")
+        self._logs[CREATED_ALERTS].append(rec)
 
     def created_alerts(self) -> dict[str, str]:
         """alert_id (sourceRef) -> the latest TheHive object id we created
         for it. The trusted set for the feedback loop."""
         out: dict[str, str] = {}
-        for rec in self._created_alerts_cache.records():
+        for rec in self._logs[CREATED_ALERTS].records():
             out[rec["alert_id"]] = rec.get("thehive_id", "")
         return out
 
@@ -559,15 +576,14 @@ class AlertHistoryStore:
             "alert_id": alert_id,
             "reason": reason,
             "closed_at": datetime.now(timezone.utc).isoformat(),
+            "writer": self.writer,
         }
-        self.closures_path.parent.mkdir(parents=True, exist_ok=True)
-        with self.closures_path.open("a") as f:
-            f.write(json.dumps(rec) + "\n")
+        self._logs[CLOSURES].append(rec)
 
     def closures(self) -> dict[str, dict]:
         """Latest autonomous-closure event per alert_id."""
         out: dict[str, dict] = {}
-        for rec in self._closures_cache.records():
+        for rec in self._logs[CLOSURES].records():
             out[rec["alert_id"]] = rec
         return out
 
@@ -596,10 +612,9 @@ class AlertHistoryStore:
             "doc_id": doc_id,
             "phase": phase,
             "at": datetime.now(timezone.utc).isoformat(),
+            "writer": self.writer,
         }
-        self.watch_progress_path.parent.mkdir(parents=True, exist_ok=True)
-        with self.watch_progress_path.open("a") as f:
-            f.write(json.dumps(rec) + "\n")
+        self._logs[WATCH_PROGRESS].append(rec)
 
     def watch_progress(self, alert_id: str) -> dict | None:
         """The latest watch-loop progress event for one alert, or None.
@@ -617,11 +632,11 @@ class AlertHistoryStore:
         is never handed out to be mutated (the sibling accessors can
         afford to hand out fresh copies; this one cannot).
         """
-        records = self._watch_progress_cache.records()
-        if self._watch_progress_cache.generation != self._watch_progress_gen:
+        records = self._logs[WATCH_PROGRESS].records()
+        if self._logs[WATCH_PROGRESS].generation != self._watch_progress_gen:
             # The file was replaced or truncated: the prefix we folded is
             # no longer what the file says, so start over.
-            self._watch_progress_gen = self._watch_progress_cache.generation
+            self._watch_progress_gen = self._logs[WATCH_PROGRESS].generation
             self._watch_progress_view = {}
             self._watch_progress_seen = 0
         for row in range(self._watch_progress_seen, len(records)):
@@ -666,10 +681,11 @@ class AlertHistoryStore:
             "duplicate_of": investigation.duplicate_of,
             "alert": alert.model_dump(mode="json"),
             "investigation": investigation.model_dump(mode="json"),
+            # Which instance reached this conclusion. Read by the two
+            # readers that skip work on the strength of a record.
+            "writer": self.writer,
         }
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a") as f:
-            f.write(json.dumps(rec) + "\n")
+        self._logs[INVESTIGATIONS].append(rec)
 
     def latest_record(self, alert_id: str) -> dict | None:
         """The most recent investigation record for an alert, with the
@@ -696,30 +712,46 @@ class AlertHistoryStore:
 
         rulings = self.dispositions()
         sightings: list[PriorSighting] = []
-        seen_alert_ids: set[str] = set()
         index = self._index()
-        # The index preselects rows sharing at least one IOC — in file
-        # order, so the record chosen per alert_id is the one the full
-        # scan chose; the exact match below re-derives matched_iocs.
+        # The index preselects rows sharing at least one IOC; the exact
+        # match below re-derives matched_iocs, exactly as the full scan
+        # did.
+        #
+        # An alert can hold MORE THAN ONE record — a re-arrival after a
+        # failed push, an alert an analyst re-opened — and the sighting
+        # must carry the LATEST of them, in ledger order. Carrying the
+        # earliest (which is what skipping an already-seen alert_id did)
+        # made the sighting report a verdict the desk had since revised,
+        # and closure.py's overturn gate blocks precisely when a
+        # sighting's ruling DIFFERS from its verdict: an alert first
+        # called a false positive, later revised to a true positive, and
+        # then ruled a false positive by an analyst produced a sighting
+        # whose stale verdict AGREED with the ruling, and the block that
+        # should have fired did not. `latest_record` already answers
+        # "last one wins" for the same question (review catch).
+        #
+        # Only MATCHING records take the slot, so a later record that
+        # happens not to share an indicator can never remove a sighting
+        # an earlier one earned.
+        chosen: dict[str, dict] = {}
         for row in index.candidate_rows(iocs=current):
             rec = index.rows[row]
             if rec["alert_id"] == alert.alert_id:
                 continue  # don't match an alert against itself
-            if rec["alert_id"] in seen_alert_ids:
+            if not current & set(rec.get("iocs", [])):
                 continue
-            matched = sorted(current & set(rec.get("iocs", [])))
-            if not matched:
-                continue
-            seen_alert_ids.add(rec["alert_id"])
-            ruling = rulings.get(rec["alert_id"], {})
+            chosen[rec["alert_id"]] = rec
+
+        for alert_id, rec in chosen.items():
+            ruling = rulings.get(alert_id, {})
             sightings.append(
                 PriorSighting(
-                    alert_id=rec["alert_id"],
+                    alert_id=alert_id,
                     timestamp=rec["timestamp"],
                     verdict=rec["verdict"],
                     confidence=rec["confidence"],
                     title=rec["title"],
-                    matched_iocs=matched,
+                    matched_iocs=sorted(current & set(rec.get("iocs", []))),
                     human_verdict=ruling.get("human_verdict"),
                     human_summary=ruling.get("summary"),
                 )
@@ -848,3 +880,20 @@ class AlertHistoryStore:
             related_alerts=related,
             summary=summary,
         )
+
+
+def open_store(cfg=None, **kwargs) -> AlertHistoryStore:
+    """The history store this configuration asks for — local by default,
+    shared when HISTORY_BACKEND=elastic.
+
+    One seam, so "which memory am I talking to?" has one answer and no
+    command can accidentally keep talking to the local file after the
+    desk moved to a shared one.
+
+    `settings` is imported HERE rather than bound at module import, so a
+    replaced configuration (every CLI runner's own `from .config import
+    settings`, and the tests that swap it) is what this reads.
+    """
+    from .config import settings
+
+    return AlertHistoryStore(backend=open_backend(cfg or settings, **kwargs))

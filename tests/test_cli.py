@@ -11,6 +11,7 @@ defaulted (the original `--digest -1` catch).
     uv run pytest tests/test_cli.py -v
 """
 import argparse
+import dataclasses
 
 import pytest
 
@@ -353,3 +354,221 @@ def test_propose_inventory_is_in_the_usage_text():
     from soc_copilot.main import USAGE
 
     assert "--propose-inventory" in USAGE
+
+
+# --- shared memory -----------------------------------------------------------
+
+
+def test_memory_status_takes_no_arguments():
+    command, _ = _parse_args(["--memory-status"])
+    assert command == "memory-status"
+
+
+def test_memory_status_rejects_a_stray_argument():
+    with pytest.raises(SystemExit):
+        _parse_args(["--memory-status", "24"])
+
+
+def test_migrate_memory_parses_its_dry_run():
+    command, args = _parse_args(["--migrate-memory", "--dry-run"])
+    assert command == "migrate-memory"
+    assert args.dry_run is True
+    _, plain = _parse_args(["--migrate-memory"])
+    assert plain.dry_run is False
+
+
+def test_migrate_memory_rejects_an_abbreviated_flag():
+    """allow_abbrev=False, same as every other command: --dry silently
+    meaning --dry-run is how a destructive run becomes a report, or the
+    other way round."""
+    with pytest.raises(SystemExit):
+        _parse_args(["--migrate-memory", "--dry"])
+
+
+@pytest.mark.parametrize(
+    "command", ["--memory-status", "--migrate-memory"]
+)
+def test_the_shared_memory_commands_are_in_the_usage_text(command):
+    from soc_copilot.main import USAGE
+
+    assert command in USAGE
+
+
+async def test_memory_status_reports_a_local_desk(tmp_path, monkeypatch, capsys):
+    """The operator question is "am I actually sharing?", which the
+    configuration cannot answer — it says what was asked for."""
+    import soc_copilot.config as config_mod
+    from soc_copilot.main import _run_memory_status
+
+    monkeypatch.setattr(
+        config_mod, "settings",
+        dataclasses.replace(
+            config_mod.Settings(),
+            HISTORY_PATH=str(tmp_path / "investigations.jsonl"),
+        ),
+    )
+    await _run_memory_status()
+    out = capsys.readouterr().out
+    assert "local JSONL" in out
+    assert "investigations" in out and "(local)" in out
+    assert "shared" not in out
+
+
+async def test_memory_status_names_the_other_instances(tmp_path, capsys):
+    """Which other writers are really in this memory, and which records
+    this desk can cite but never borrow."""
+    from soc_copilot.history import AlertHistoryStore
+    from soc_copilot.main import _run_memory_status
+    from soc_copilot.memory import INVESTIGATIONS, ElasticBackend
+    from tests.fake_memory import FakeMemoryIndex
+
+    es = FakeMemoryIndex()
+    es.create_index("mem")
+    store = AlertHistoryStore(
+        backend=ElasticBackend(
+            base_url="https://es.test:9200", api_key="k", index="mem",
+            writer="host-a", local_path=tmp_path / "local" / "inv.jsonl",
+            client=es.client(), max_staleness=0.0,
+        ),
+        writer="host-a",
+    )
+    for writer in ("host-a", "host-b", "host-b"):
+        store.log(INVESTIGATIONS).append(
+            {"alert_id": "A", "writer": writer}
+        )
+    store.log(INVESTIGATIONS).append({"alert_id": "LEGACY"})
+
+    await _run_memory_status(store=store)
+    out = capsys.readouterr().out
+    assert "shared memory" in out
+    assert "host-b" in out and "<- this instance" in out
+    assert "(unattributed)" in out
+    assert "dispositions" in out and "(shared)" in out
+    assert "watch_progress" in out and "(local)" in out
+
+
+async def test_memory_status_reports_a_clock_that_is_ahead(tmp_path, caplog, capsys):
+    """Two instances whose clocks are further apart than the re-read
+    window cannot see each other's writes at all, and nothing else in
+    the system notices: both desks look healthy and both report full
+    counts. This is the number that makes it readable."""
+    import logging
+    from datetime import datetime, timedelta, timezone
+
+    from soc_copilot.history import AlertHistoryStore
+    from soc_copilot.main import _run_memory_status
+    from soc_copilot.memory import INVESTIGATIONS, ElasticBackend
+    from tests.fake_memory import FakeMemoryIndex
+
+    es = FakeMemoryIndex()
+    es.create_index("mem")
+    far_future = datetime.now(timezone.utc) + timedelta(hours=2)
+    es.put("mem", INVESTIGATIONS, {"alert_id": "A", "writer": "host-b"},
+           written_at=far_future.isoformat(), writer="host-b")
+    store = AlertHistoryStore(
+        backend=ElasticBackend(
+            base_url="https://es.test:9200", api_key="k", index="mem",
+            writer="host-a", local_path=tmp_path / "local" / "inv.jsonl",
+            client=es.client(), max_staleness=0.0,
+        ),
+        writer="host-a",
+    )
+    with caplog.at_level(logging.WARNING, logger="soc_copilot"):
+        await _run_memory_status(store=store)
+    assert "in the FUTURE" in capsys.readouterr().out
+    assert "AHEAD of this host" in caplog.text
+
+
+async def test_memory_status_notices_a_half_finished_import(tmp_path, caplog):
+    """The start-up guard asks only whether this instance is represented
+    at all, so a migration that died a third of the way through disarms
+    it with its first record and the desk starts on a fraction of its
+    own memory."""
+    import logging
+
+    from soc_copilot.history import AlertHistoryStore
+    from soc_copilot.main import _run_memory_status
+    from soc_copilot.memory import INVESTIGATIONS, ElasticBackend, JsonlBackend
+    from tests.fake_memory import FakeMemoryIndex
+
+    local_root = tmp_path / "local"
+    JsonlBackend(local_root / "investigations.jsonl")
+    es = FakeMemoryIndex()
+    es.create_index("mem")
+    store = AlertHistoryStore(
+        backend=ElasticBackend(
+            base_url="https://es.test:9200", api_key="k", index="mem",
+            writer="host-a", local_path=local_root / "investigations.jsonl",
+            client=es.client(), max_staleness=0.0,
+        ),
+        writer="host-a",
+    )
+    for i in range(5):
+        JsonlBackend(local_root / "investigations.jsonl").log(
+            INVESTIGATIONS
+        ).append({"alert_id": f"A{i}"})
+    store.log(INVESTIGATIONS).append({"alert_id": "A0", "writer": "host-a"})
+
+    with caplog.at_level(logging.WARNING, logger="soc_copilot"):
+        await _run_memory_status(store=store)
+    assert "half-finished import" in caplog.text
+
+
+async def test_migrate_memory_refuses_when_the_desk_is_not_sharing(
+    tmp_path, monkeypatch, caplog
+):
+    import logging
+
+    import soc_copilot.config as config_mod
+    from soc_copilot.main import _run_migrate_memory
+
+    monkeypatch.setattr(
+        config_mod, "settings",
+        dataclasses.replace(
+            config_mod.Settings(), HISTORY_BACKEND="jsonl",
+            HISTORY_PATH=str(tmp_path / "investigations.jsonl"),
+        ),
+    )
+    with caplog.at_level(logging.ERROR, logger="soc_copilot"):
+        with pytest.raises(SystemExit):
+            await _run_migrate_memory(argparse.Namespace(dry_run=False))
+    assert "HISTORY_BACKEND=elastic" in caplog.text
+
+
+async def test_migrate_memory_says_out_loud_what_it_claimed(
+    tmp_path, monkeypatch, caplog, capsys
+):
+    """Claiming a pre-writer record for this instance is what re-enables
+    dedup and resume over it — an assertion, so it is said."""
+    import logging
+
+    import soc_copilot.config as config_mod
+    from soc_copilot.main import _run_migrate_memory
+    from soc_copilot.memory import ElasticBackend, JsonlBackend
+    from tests.fake_memory import FakeMemoryIndex
+
+    monkeypatch.setattr(
+        config_mod, "settings",
+        dataclasses.replace(
+            config_mod.Settings(), HISTORY_BACKEND="elastic",
+            INSTANCE_ID="host-a",
+            HISTORY_PATH=str(tmp_path / "investigations.jsonl"),
+        ),
+    )
+    JsonlBackend(tmp_path / "investigations.jsonl").log(
+        "investigations"
+    ).append({"alert_id": "OLD", "investigated_at": "2026-01-01T00:00:00Z"})
+
+    es = FakeMemoryIndex()
+    es.create_index("mem")
+    shared = ElasticBackend(
+        base_url="https://es.test:9200", api_key="k", index="mem",
+        writer="host-a", local_path=tmp_path / "shared" / "inv.jsonl",
+        client=es.client(), max_staleness=0.0,
+    )
+    with caplog.at_level(logging.WARNING, logger="soc_copilot"):
+        await _run_migrate_memory(
+            argparse.Namespace(dry_run=False), shared=shared
+        )
+    assert "claimed for 'host-a'" in caplog.text
+    assert "imported 1" in capsys.readouterr().out

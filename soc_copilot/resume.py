@@ -155,6 +155,16 @@ def find_resumable(
     rec = store.latest_record(alert.alert_id)
     if rec is None:
         return None
+    if not store.wrote(rec):
+        # "Finish the run THIS loop interrupted" is the whole premise, and
+        # with a shared investigations ledger the record for a started-
+        # and-never-completed alert can belong to someone else. Delivering
+        # it would push a verdict this instance never reached and
+        # acknowledge the alert on the strength of it. Falling through
+        # costs one investigation; the alternative lets whoever can write
+        # the shared index choose the verdict for any alert this instance
+        # happens to crash on inside the window.
+        return None
     if rec.get("ruling"):
         return None
     if rec.get("duplicate_of"):

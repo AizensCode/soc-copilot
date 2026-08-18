@@ -66,6 +66,14 @@
     # written nowhere: soc_copilot/inventory.py explains why the role
     # field is left for the human.
     uv run soc-copilot --propose-inventory [DAYS]
+
+    # Which memory this instance is talking to, how much is in it, and
+    # — when it is shared — which other instances have written to it.
+    uv run soc-copilot --memory-status
+
+    # Copy a local JSONL history into shared memory (HISTORY_BACKEND=
+    # elastic). Idempotent: re-running imports nothing twice.
+    uv run soc-copilot --migrate-memory [--dry-run]
 """
 import argparse
 import asyncio
@@ -111,7 +119,9 @@ USAGE = (
     "  soc-copilot --ask ALERT_ID [\"question\"]\n"
     "  soc-copilot --digest [hours]\n"
     "  soc-copilot --export-case [ALERT_ID]\n"
-    "  soc-copilot --rotate-history [DAYS] [--dry-run] [--include-human-records]"
+    "  soc-copilot --rotate-history [DAYS] [--dry-run] [--include-human-records]\n"
+    "  soc-copilot --memory-status\n"
+    "  soc-copilot --migrate-memory [--dry-run]"
 )
 
 
@@ -123,11 +133,10 @@ async def _run_export_case(args: argparse.Namespace) -> None:
     alerts that can't be exported yet so the operator knows what a
     re-investigation would unlock.
     """
-    from .config import settings
     from .evalcase import export_case, exportable_alert_ids
-    from .history import AlertHistoryStore
+    from .history import open_store
 
-    store = AlertHistoryStore(settings.HISTORY_PATH)
+    store = open_store()
     alert_id = args.alert_id
 
     if alert_id:
@@ -143,7 +152,7 @@ async def _run_export_case(args: argparse.Namespace) -> None:
     for aid in eligible:
         # The product: the list of what was exported, on stdout, pipeable.
         print(f"Exported {aid} -> {export_case(store, aid)}")
-    known = {r["alert_id"] for r in store._iter_records()}
+    known = {r["alert_id"] for r in store.iter_records()}
     blocked = [
         aid for aid in store.dispositions()
         if aid in known and aid not in eligible
@@ -167,15 +176,14 @@ async def _run_rotate_history(args: argparse.Namespace) -> None:
     the PRODUCT (stdout, pipeable); the warnings around it are narration.
     Nothing is deleted: rotation splits each file and moves the old part.
     """
-    from .config import settings
-    from .history import AlertHistoryStore
+    from .history import open_store
     from .rotate import (
         ConcurrentWriteError,
         apply_rotation,
         plan_rotation,
     )
 
-    store = AlertHistoryStore(settings.HISTORY_PATH)
+    store = open_store()
     plan = plan_rotation(
         store, args.days,
         include_human_records=args.include_human_records,
@@ -251,9 +259,9 @@ async def _run_digest(args: argparse.Namespace) -> None:
     """
     from .config import settings
     from .digest import build_digest_data, render_quiet, write_briefing
-    from .history import AlertHistoryStore
+    from .history import open_store
 
-    store = AlertHistoryStore(settings.HISTORY_PATH)
+    store = open_store()
     data = build_digest_data(store, since_hours=args.hours)
     if data["quiet"]:
         print(render_quiet(data))
@@ -273,15 +281,15 @@ async def _run_ask(args: argparse.Namespace) -> None:
     """
     from .config import settings
     from .followup import FollowUpSession
-    from .history import AlertHistoryStore
+    from .history import open_store
 
     settings.require("ANTHROPIC_KEY")  # every answer is an LLM call
     alert_id = args.alert_id
-    store = AlertHistoryStore(settings.HISTORY_PATH)
+    store = open_store()
     try:
         session = FollowUpSession(alert_id, history_store=store)
     except KeyError:
-        known = list(dict.fromkeys(r["alert_id"] for r in store._iter_records()))
+        known = list(dict.fromkeys(r["alert_id"] for r in store.iter_records()))
         log.error("No investigation on record for %r.", alert_id)
         if known:
             log.info(
@@ -313,11 +321,10 @@ async def _run_ask(args: argparse.Namespace) -> None:
 
 async def _run_scorecard() -> None:
     """Print the copilot-vs-analyst accuracy record from local memory."""
-    from .config import settings
-    from .history import AlertHistoryStore
+    from .history import open_store
     from .scorecard import build_scorecard, render_scorecard
 
-    store = AlertHistoryStore(settings.HISTORY_PATH)
+    store = open_store()
     print(render_scorecard(build_scorecard(store)))
 
 
@@ -325,11 +332,10 @@ async def _run_tuning_report(args: argparse.Namespace) -> None:
     """Print what the desk learned about the DETECTIONS: which rules
     spend analyst attention on nothing, which confirmed compromises
     arrived ranked as routine, and where an exception can safely go."""
-    from .config import settings
-    from .history import AlertHistoryStore
+    from .history import open_store
     from .tuning import build_tuning_report, render_tuning_report
 
-    store = AlertHistoryStore(settings.HISTORY_PATH)
+    store = open_store()
     print(render_tuning_report(build_tuning_report(store, days=args.days)))
 
 
@@ -338,11 +344,10 @@ async def _run_propose_inventory(args: argparse.Namespace) -> None:
     evidence only. Writes nothing: the inventory is the trust anchor, and
     the role field is the operator's claim to make (soc_copilot/inventory.py)."""
     from .assets import load_inventory
-    from .config import settings
-    from .history import AlertHistoryStore
+    from .history import open_store
     from .inventory import propose_entries, render_proposals
 
-    store = AlertHistoryStore(settings.HISTORY_PATH)
+    store = open_store()
     result = propose_entries(store, load_inventory(), days=args.days)
     print(render_proposals(result))
 
@@ -436,6 +441,203 @@ def _print_rejected_rulings(rejected: list[dict]) -> None:
         )
 
 
+async def _run_memory_status(store=None) -> None:
+    """Which memory this instance is talking to, and who else is in it.
+
+    The operator question this answers is "am I actually sharing?", which
+    a configuration file cannot answer: HISTORY_BACKEND says what was
+    asked for, and this says what happened — the index really reached,
+    the ledgers really shared, and the other instances really writing.
+    It is also the one command that must work when the cold-start refusal
+    would fire, because reporting the situation is how you decide what to
+    do about it.
+    """
+    from collections import Counter
+
+    from .history import open_store
+    from .memory import LEDGERS, SHARED_LEDGERS
+
+    # `store` is injectable for the same reason every side-effect client
+    # in this project is: so the shared branch can be exercised against a
+    # fake cluster instead of only the local one.
+    store = store or open_store(allow_cold=True)
+    print(store.backend.describe())
+    print(f"writing as: {store.writer}")
+    print()
+    for ledger in LEDGERS:
+        where = (
+            "shared" if store.shared and ledger in SHARED_LEDGERS else "local"
+        )
+        count = len(store.log(ledger).records())
+        print(f"  {ledger:<16} {count:>8} records  ({where})")
+
+    if not store.shared:
+        return
+
+    print()
+    writers = Counter(
+        rec.get("writer") or "(unattributed)" for rec in store.iter_records()
+    )
+    if not writers:
+        print("No investigations in shared memory yet.")
+    else:
+        print("Investigations by writer:")
+        for name, count in writers.most_common():
+            mine = "   <- this instance" if name == store.writer else ""
+            print(f"  {name:<28} {count:>8}{mine}")
+        _report_clock_skew(store)
+        _report_unmigrated(store)
+        unattributed = writers.get("(unattributed)", 0)
+        if unattributed:
+            # Not a warning about integrity — a statement about REACH:
+            # dedup and resume skip records they cannot attribute, so
+            # these are records the desk can cite but never borrow.
+            log.info(
+                "%d record(s) carry no writer: they still ground prior "
+                "sightings, correlation and the overturn block, but "
+                "dedup and resume will not act on them.", unattributed,
+            )
+
+
+def _report_unmigrated(store) -> None:
+    """Say when a local ledger holds more than this instance put into
+    shared memory.
+
+    The start-up guard asks only whether this instance is represented at
+    all, so a migration that died a third of the way through disarms it
+    with its first record and the desk starts on a fraction of its own
+    memory. Counting is not proof — records legitimately leave the local
+    files by rotation — so this reports rather than refuses, on the one
+    command an operator reads before trusting the switch.
+    """
+    from .memory import CLOSURES, SHARED_LEDGERS, JsonlBackend
+
+    # The shared ledgers have no local path on this backend, so anchor on
+    # one that does and let JsonlBackend derive the sibling names.
+    root = store.backend.paths[CLOSURES].parent
+    local = JsonlBackend(root / "investigations.jsonl")
+    for ledger in sorted(SHARED_LEDGERS):
+        here = len(local.log(ledger).records())
+        mine = sum(
+            1 for rec in store.log(ledger).records()
+            if rec.get("writer") == store.writer
+        )
+        if here > mine:
+            log.warning(
+                "%s: %d record(s) in %s, but only %d written by '%s' in "
+                "shared memory. If that is a half-finished import, "
+                "re-run --migrate-memory (it imports nothing twice).",
+                ledger, here, local.paths[ledger], mine, store.writer,
+            )
+
+
+def _report_clock_skew(store) -> None:
+    """Say how far the newest shared record is from this host's clock.
+
+    Shared memory orders records by wall-clock timestamps from writers
+    nobody sequences, and each instance only re-reads a lag window behind
+    its own tail — so two instances whose clocks are further apart than
+    that window cannot see each other's writes at all. Nothing else in
+    the system notices: both desks look healthy, both report full counts,
+    and each is quietly missing the other. This is the number that turns
+    that into something an operator can read.
+    """
+    from datetime import datetime, timezone
+
+    from .memory import SHARED_LEDGERS, ElasticLog
+
+    lag = store.backend.lag_seconds
+    now = datetime.now(timezone.utc)
+    for ledger in sorted(SHARED_LEDGERS):
+        log = store.log(ledger)
+        if not isinstance(log, ElasticLog):
+            continue
+        newest = log.newest_written_at()
+        if newest is None:
+            continue
+        ahead = (newest - now).total_seconds()
+        print(
+            f"  newest {ledger} record was written "
+            f"{_relative(ahead)} by its writer's clock"
+        )
+        if ahead > lag:
+            log_ = logging.getLogger("soc_copilot")
+            log_.warning(
+                "A writer's clock is %.0fs AHEAD of this host, past the "
+                "%.0fs re-read window. Instances further apart than that "
+                "window cannot see each other's writes — fix the clocks "
+                "(NTP) before trusting shared memory.", ahead, lag,
+            )
+
+
+def _relative(seconds: float) -> str:
+    if seconds >= 0:
+        return f"{seconds:.0f}s in the FUTURE"
+    return f"{-seconds:.0f}s ago"
+
+
+async def _run_migrate_memory(args: argparse.Namespace, shared=None) -> None:
+    """Copy a local JSONL history into shared memory.
+
+    Re-runnable: document ids are derived from the records, so a second
+    run reports what was already there rather than doubling the desk's
+    memory (which matters, because a half-finished import has really
+    written half).
+    """
+    from .config import settings
+    from .memory import JsonlBackend, instance_id, migrate_to_shared, open_backend
+
+    if settings.HISTORY_BACKEND != "elastic":
+        log.error(
+            "--migrate-memory imports INTO shared memory, and "
+            "HISTORY_BACKEND is %r. Set HISTORY_BACKEND=elastic (with "
+            "ELASTIC_URL and ELASTIC_API_KEY) and run it again.",
+            settings.HISTORY_BACKEND,
+        )
+        sys.exit(1)
+
+    shared = shared or open_backend(settings, allow_cold=True)
+    local = JsonlBackend(settings.HISTORY_PATH)
+    writer = instance_id(settings)
+
+    result = migrate_to_shared(
+        local, shared, writer=writer, dry_run=args.dry_run
+    )
+    verb = "would import" if args.dry_run else "imported"
+    for ledger, (imported, already, stamped) in sorted(result.items()):
+        line = f"  {ledger:<16} {verb} {imported}"
+        if already:
+            line += f", {already} already present"
+        print(line)
+        if stamped:
+            # An assertion the operator is making, said out loud: these
+            # records had no writer, and importing them claims them for
+            # this instance — which is what lets dedup borrow their
+            # verdicts and resume deliver them.
+            log.warning(
+                "%s: %d record(s) had no writer and were claimed for "
+                "'%s'. That is this desk asserting they are its own; "
+                "dedup and resume will act on them accordingly.",
+                ledger, stamped, writer,
+            )
+    if args.dry_run:
+        print("Dry run: nothing was written.")
+    else:
+        print(
+            "Done. The local files are left exactly as they were — move "
+            "them aside once --memory-status shows what you expect."
+        )
+        # Imported records carry their ORIGINAL write times, which are
+        # older than any running instance's re-read window, so a tail
+        # already in flight will never pick them up.
+        log.warning(
+            "Restart any running --watch instance: imported records are "
+            "backdated to when they were first written, and a loop that "
+            "is already tailing shared memory only re-reads a short "
+            "window behind its own position."
+        )
+
+
 async def _run_sync_feedback() -> None:
     """Pull analyst rulings from TheHive into the copilot's memory.
 
@@ -445,11 +647,10 @@ async def _run_sync_feedback() -> None:
     exists for cron jobs and one-off catch-ups.
     """
     from .casemgmt import TheHiveClient, sync_dispositions
-    from .config import settings
-    from .history import AlertHistoryStore
+    from .history import open_store
 
-    store = AlertHistoryStore(settings.HISTORY_PATH)
-    known = {r["alert_id"] for r in store._iter_records()}
+    store = open_store()
+    known = {r["alert_id"] for r in store.iter_records()}
     try:
         changed, total, rejected = await sync_dispositions(TheHiveClient(), store)
     except RuntimeError as e:
@@ -463,8 +664,12 @@ async def _run_sync_feedback() -> None:
     _print_rulings(changed, known)
     await _annotate_elastic(changed)
     log.info(
+        # Where the rulings LANDED, asked of the backend rather than of a
+        # filename: with shared memory there is no dispositions file, and
+        # this line runs after the sync has already succeeded — reaching
+        # for a path here failed the whole command on its last narration.
         "%d new/changed ruling(s), %d already known (%s)",
-        len(changed), total - len(changed), store.dispositions_path,
+        len(changed), total - len(changed), store.backend.describe(),
     )
 
 
@@ -704,7 +909,15 @@ def _parse_args(argv: list[str]) -> tuple[str, argparse.Namespace]:
         )
         return "rotate-history", p.parse_args(rest)
 
-    if cmd in ("--sync-feedback", "--scorecard"):
+    if cmd == "--migrate-memory":
+        p = _p("--migrate-memory")
+        p.add_argument(
+            "--dry-run", action="store_true",
+            help="report what would be imported, write nothing",
+        )
+        return "migrate-memory", p.parse_args(rest)
+
+    if cmd in ("--sync-feedback", "--scorecard", "--memory-status"):
         _p(cmd).parse_args(rest)  # accepts nothing; rejects stray args
         return cmd.lstrip("-"), argparse.Namespace()
 
@@ -1579,7 +1792,7 @@ async def _run_watch(args: argparse.Namespace) -> None:
                     log.info("Analyst feedback synced from TheHive:")
                     known = {
                         r["alert_id"]
-                        for r in copilot.history._iter_records()
+                        for r in copilot.history.iter_records()
                     }
                     _print_rulings(changed, known)
                     await _annotate_elastic(changed, stop=stop)
@@ -1602,6 +1815,10 @@ async def _dispatch(command: str, args: argparse.Namespace) -> None:
         await _run_sync_feedback()
     elif command == "scorecard":
         await _run_scorecard()
+    elif command == "memory-status":
+        await _run_memory_status()
+    elif command == "migrate-memory":
+        await _run_migrate_memory(args)
     elif command == "tuning-report":
         await _run_tuning_report(args)
     elif command == "propose-inventory":

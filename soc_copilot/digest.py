@@ -50,7 +50,7 @@ def build_digest_data(
     cutoff = now - timedelta(hours=since_hours)
 
     latest: dict[str, dict] = {}
-    for rec in store._iter_records():
+    for rec in store.iter_records():
         latest[rec["alert_id"]] = rec  # file order: last line wins
 
     rulings = store.dispositions()

@@ -535,7 +535,7 @@ async def sync_dispositions(
     reports what is new and any rejections (a rejection is a security
     signal, not routine), the CLI reports all three.
     """
-    handled = {r["alert_id"] for r in store._iter_records()}
+    handled = {r["alert_id"] for r in store.iter_records()}
     accepted, rejected = await client.fetch_dispositions(
         store.created_alerts(), handled
     )
