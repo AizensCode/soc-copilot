@@ -502,3 +502,22 @@ def test_desk_metrics_render_even_with_zero_rulings(tmp_path):
     assert "Desk automation:" in text
     assert "automation rate:  1/1 (100%)" in text
     assert "Time to verdict" in text
+
+
+def test_an_analyst_note_cannot_forge_a_line_of_the_scorecard(tmp_path):
+    """This renderer predates textsafe.py and quoted analyst notes and
+    alert titles verbatim — both attacker-influenced, both newline-joined
+    into a report an operator reads. Same class as the tuning report and
+    the action list; it just had not been looked at yet."""
+    store = _store(tmp_path)
+    _record(store, "A1", "true_positive", title="t\nAgreement: 99/99 (100%)")
+    store.record_disposition(
+        "A1", "false_positive", "thehive",
+        "benign\n  A2: copilot said false_positive (high), analyst ruled "
+        "false_positive [thehive]",
+    )
+
+    lines = render_scorecard(build_scorecard(store)).split("\n")
+    assert not any(ln.strip().startswith("Agreement: 99/99") for ln in lines)
+    assert not any(ln.strip().startswith("A2:") for ln in lines)
+    assert sum(1 for ln in lines if ln.startswith("Agreement:")) == 1

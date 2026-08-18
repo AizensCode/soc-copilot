@@ -330,3 +330,26 @@ def test_tuning_report_is_in_the_usage_text():
     from soc_copilot.main import USAGE
 
     assert "--tuning-report" in USAGE
+
+
+def test_propose_inventory_parses_its_optional_window():
+    command, args = _parse_args(["--propose-inventory"])
+    assert command == "propose-inventory"
+    assert args.days is None
+
+    _, windowed = _parse_args(["--propose-inventory", "90"])
+    assert windowed.days == 90
+
+
+def test_propose_inventory_rejects_a_nonpositive_window(capsys):
+    for bad in ("0", "-1"):
+        with pytest.raises(SystemExit) as exc:
+            _parse_args(["--propose-inventory", bad])
+        assert exc.value.code == 2
+    assert "positive integer" in capsys.readouterr().err
+
+
+def test_propose_inventory_is_in_the_usage_text():
+    from soc_copilot.main import USAGE
+
+    assert "--propose-inventory" in USAGE

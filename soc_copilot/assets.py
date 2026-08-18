@@ -25,8 +25,12 @@ from .models import Alert, AssetMatch
 ASSET_CONTEXT_PATH = Path("data/asset_context.json")
 
 # raw_log keys that may carry a hostname, in either fixture shape
-# (plain string) or ECS shape ({"name": ...}).
-_HOST_KEYS = ["host", "source_host", "destination_host"]
+# (plain string) or ECS shape ({"name": ...}). Public because
+# soc_copilot/inventory.py must read exactly the keys this matcher reads:
+# an entity the matcher would match but the proposal engine cannot see is
+# one the operator is never warned about (review catch).
+HOST_KEYS = ["host", "source_host", "destination_host"]
+_HOST_KEYS = HOST_KEYS      # the historical private name, kept for callers
 
 
 def load_inventory(path: str | Path = ASSET_CONTEXT_PATH) -> dict:

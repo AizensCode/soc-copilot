@@ -40,6 +40,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
 from .history import AlertHistoryStore
+from .textsafe import sanitize_lines
 
 _CONFIDENCE_ORDER = {"high": 0, "medium": 1, "low": 2}
 
@@ -403,4 +404,8 @@ def render_scorecard(card: Scorecard) -> str:
                     lines.append(f"    alert: {r.title}")
         else:
             lines.append("No disagreements on record.")
-    return "\n".join(lines)
+    # Alert titles and analyst notes are quoted verbatim above, and both
+    # carry content this project treats as hostile everywhere else. This
+    # renderer predates textsafe.py and had the same forge-a-line hole
+    # the tuning report and the action list shipped with.
+    return "\n".join(sanitize_lines(lines))

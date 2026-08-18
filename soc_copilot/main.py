@@ -55,6 +55,17 @@
     # two files that are SAFETY inputs — analyst rulings and the TheHive
     # provenance ledger — are held back unless asked for explicitly.
     uv run soc-copilot --rotate-history [DAYS] [--dry-run] [--include-human-records]
+
+    # What the desk learned about the DETECTIONS: which rules spend
+    # analyst attention on nothing, which confirmed compromises arrived
+    # ranked as routine, and where an exception can safely be scoped.
+    uv run soc-copilot --tuning-report [DAYS]
+
+    # Environment-context entries the record supports, as EVIDENCE for an
+    # operator to act on. Mined from analyst-dismissed alerts only, and
+    # written nowhere: soc_copilot/inventory.py explains why the role
+    # field is left for the human.
+    uv run soc-copilot --propose-inventory [DAYS]
 """
 import argparse
 import asyncio
@@ -96,6 +107,7 @@ USAGE = (
     "  soc-copilot --sync-feedback\n"
     "  soc-copilot --scorecard\n"
     "  soc-copilot --tuning-report [DAYS]\n"
+    "  soc-copilot --propose-inventory [DAYS]\n"
     "  soc-copilot --ask ALERT_ID [\"question\"]\n"
     "  soc-copilot --digest [hours]\n"
     "  soc-copilot --export-case [ALERT_ID]\n"
@@ -319,6 +331,20 @@ async def _run_tuning_report(args: argparse.Namespace) -> None:
 
     store = AlertHistoryStore(settings.HISTORY_PATH)
     print(render_tuning_report(build_tuning_report(store, days=args.days)))
+
+
+async def _run_propose_inventory(args: argparse.Namespace) -> None:
+    """Print environment-context entries the desk's record supports —
+    evidence only. Writes nothing: the inventory is the trust anchor, and
+    the role field is the operator's claim to make (soc_copilot/inventory.py)."""
+    from .assets import load_inventory
+    from .config import settings
+    from .history import AlertHistoryStore
+    from .inventory import propose_entries, render_proposals
+
+    store = AlertHistoryStore(settings.HISTORY_PATH)
+    result = propose_entries(store, load_inventory(), days=args.days)
+    print(render_proposals(result))
 
 
 async def _annotate_elastic(
@@ -642,6 +668,17 @@ def _parse_args(argv: list[str]) -> tuple[str, argparse.Namespace]:
                  "(default: all recorded history)",
         )
         return "tuning-report", p.parse_args(rest)
+
+    if cmd == "--propose-inventory":
+        p = _p("--propose-inventory")
+        p.add_argument(
+            "days", nargs="?", type=positive_int("window days"), default=None,
+            help="only mine alerts the desk INVESTIGATED in the last DAYS "
+                 "days (investigated_at, as the digest windows; a ruling "
+                 "that arrived later still counts). Default: all history. "
+                 "The window never scopes the true-positive disqualifier.",
+        )
+        return "propose-inventory", p.parse_args(rest)
 
     if cmd == "--export-case":
         p = _p("--export-case")
@@ -1567,6 +1604,8 @@ async def _dispatch(command: str, args: argparse.Namespace) -> None:
         await _run_scorecard()
     elif command == "tuning-report":
         await _run_tuning_report(args)
+    elif command == "propose-inventory":
+        await _run_propose_inventory(args)
     elif command == "ask":
         await _run_ask(args)
     elif command == "digest":

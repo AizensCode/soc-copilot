@@ -18,37 +18,53 @@ recommendation.
 Twice is a class of bug, not an accident, so it gets one shared answer
 rather than a fix per renderer:
 
-- `one_line` for a value that is about to be interpolated,
-- `sanitize_lines` at the single point a renderer emits its lines, so a
+- `one_line` for a VALUE about to be interpolated: collapse it to one
+  tidy line, whitespace runs and all.
+- `sanitize_lines` at the single point a renderer EMITS its lines, so a
   field added later cannot reopen the hole by forgetting to escape
   itself.
 
-C1 controls and DEL are stripped along with C0, so an escape sequence in
-an indicator cannot drive the reader's terminal. This is not HTML
-escaping: `report.py` escapes for its own context, and a browser
-collapses whitespace anyway.
+The two do deliberately different things, and the difference is not
+cosmetic. The security property is that content cannot BREAK the line or
+drive the terminal — not that spacing is tidy. `sanitize_lines`
+therefore neutralizes line breaks and control characters while leaving
+the layout alone, because a renderer's internal padding is structure it
+chose: applying `one_line` to whole lines collapsed the scorecard's
+aligned columns the moment it was adopted there.
+
+C1 controls and DEL are handled along with C0, so an escape sequence in
+an indicator cannot drive the reader's terminal, and the two Unicode
+line separators are covered too — they are not in the C0/C1 ranges but
+they do end a line. This is not HTML escaping: `report.py` escapes for
+its own context, and a browser collapses whitespace anyway.
 """
 import re
 
 # C0, DEL and C1. ESC (0x1b) is in here, which is the point: an ANSI
-# sequence in an IOC would otherwise reach the operator's terminal.
+# sequence in an IOC would otherwise reach the operator's terminal. NEL
+# (0x85) falls in the C1 range and is covered with them.
 _CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+# Line breaks that are not control characters. Missing these would leave
+# a renderer that only strips C0/C1 still forgeable.
+_SEPARATORS = re.compile(r"[\u2028\u2029]")
 _RUNS = re.compile(r"\s+")
+
+
+def _flatten(value: str) -> str:
+    """Replace everything that could end a line, or drive a terminal,
+    with a space. Layout is left exactly as it was."""
+    return _SEPARATORS.sub(" ", _CONTROL.sub(" ", value))
 
 
 def one_line(value: str) -> str:
     """Collapse a string to a single printable line."""
-    return _RUNS.sub(" ", _CONTROL.sub(" ", value)).strip()
+    return _RUNS.sub(" ", _flatten(value)).strip()
 
 
 def sanitize_lines(lines: list[str]) -> list[str]:
-    """Apply `one_line` to every emitted line, preserving indentation.
+    """Make every emitted line unbreakable, without touching layout.
 
-    Indentation is structure the renderer chose; everything after it is
-    content that may not have been.
+    Whitespace runs are preserved: a report that aligns columns with
+    padding must survive its own safety net.
     """
-    out = []
-    for line in lines:
-        indent = len(line) - len(line.lstrip(" "))
-        out.append(" " * indent + one_line(line))
-    return out
+    return [_flatten(line).rstrip() for line in lines]

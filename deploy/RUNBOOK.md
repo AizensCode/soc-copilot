@@ -3,7 +3,7 @@
 What the unattended deployment does, what it touches, and what to do
 when it makes noise. This document covers the `--watch` service; the
 one-shot CLI commands (`--scorecard`, `--digest`, `--sync-feedback`,
-`--tuning-report`, single-alert runs) need nothing beyond a shell in the
+`--tuning-report`, `--propose-inventory`, single-alert runs) need nothing beyond a shell in the
 same directory.
 
 ## What the process is
@@ -306,6 +306,49 @@ Two limits worth knowing before you work the list in bulk:
 - **A `block_ip` is a perimeter change and the desk does not know your
   topology.** It refuses non-routable addresses and AbuseIPDB-whitelisted
   ones; it cannot know that a given address is your own egress NAT.
+
+## Keeping the inventory current
+
+    soc-copilot --propose-inventory [DAYS]
+
+Read-only, no API calls, safe to run while the watch loop is running.
+**It writes nothing to `data/asset_context.json`** — it prints evidence
+for entries you write by hand.
+
+`data/asset_context.json` is the trust anchor: it is the one source the
+copilot may cite for "this is sanctioned infrastructure", and its own
+header warns that a stale entry blessing a decommissioned scanner is an
+attacker's best friend. Keeping it current is an operator job, and this
+command is the input to it.
+
+What it prints:
+
+- **CANDIDATES** — identifiers that recurred in 3+ alerts *analysts
+  dismissed*, across 2+ days, and are not already in the inventory. Only
+  analyst rulings count; the copilot's own false-positive verdicts are
+  never evidence here, because an entry learned from model output would
+  let the desk cite its own opinion back at itself as authority.
+- **REFUSED** — recurred, but an analyst has since confirmed a true
+  positive on the same entity. Do not write these.
+- **STALE ENTRIES** — already in your inventory, *and* since confirmed in
+  a true positive. This is the dangerous row: an entry that is currently
+  telling every investigation the asset is sanctioned, on an asset the
+  desk has been wrong about. Re-read it.
+- A JSON fragment with `role`, `owner` and `notes` left as **TODO**. It
+  is deliberately not paste-ready. `role` is the sentence a future
+  investigation will cite to call activity routine; the desk has shown
+  the identifier recurs in dismissed alerts, which is not the same claim.
+
+Read the caveats on individual rows. A `service_accounts` proposal only
+means the identifier arrived in a `user.name` field — a **person's**
+account recurring in dismissed alerts is a case for training or a
+detection change, not an entry that blesses it as automation. An `ips`
+entry is only a pointer to a `hosts` entry and grants the bare role
+"inventoried asset" on its own.
+
+`DAYS` bounds the evidence, never the refusals: an entity an analyst has
+ever confirmed is refused whatever window you pass, because an inventory
+entry does not expire the way a report does.
 
 ## Tuning the detections
 
